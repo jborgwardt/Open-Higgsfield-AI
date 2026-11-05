@@ -1,7 +1,7 @@
 // node --test engine/test
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseWhisperJson, dropHallucinations, buildCues, splitLines, toSrt, toVtt, toAss, timestamp, transcriptText, iso639_2, assStyle, clampCues } from '../lib/subtitles.js';
+import { parseWhisperJson, dropHallucinations, buildCues, splitLines, toSrt, toVtt, toAss, timestamp, transcriptText, iso639_2, assStyle, clampCues, placeWords } from '../lib/subtitles.js';
 
 const tok = (text, from, to, p = 0.9, dtw = -1) => ({ text, offsets: { from, to }, id: 1, p, t_dtw: dtw });
 
@@ -35,6 +35,29 @@ test('parseWhisperJson drops punctuation-only words and empty segments', () => {
   const r = parseWhisperJson(j);
   assert.equal(r.words.length, 0);
   assert.equal(r.segments.length, 1);
+});
+
+test('placeWords: VAD-timeline tokens are mapped onto the real segment, collapsed ones spread by length', () => {
+  // whisper.cpp with VAD: segment at 19.2–23.8 s, tokens on the speech-only timeline from 0 s.
+  const vad = placeWords([{ text: 'On', start: 0, end: 0.16 }, { text: 'all', start: 0.16, end: 0.29 }, { text: 'counts', start: 0.39, end: 0.82 }, { text: 'guilty.', start: 3.9, end: 4.4 }], 19.2, 23.8);
+  assert.equal(vad[0].start, 19.2);
+  assert.ok(Math.abs(vad.at(-1).end - 23.8) < 1e-9);
+  assert.ok(vad[1].start > vad[0].start && vad[2].start > vad[1].start);
+  // Every token at one instant → spread across the segment by character count.
+  const flat = placeWords(['On', 'all', 'counts', 'of', 'being', 'bipolar'].map((t) => ({ text: t, start: 18.8, end: 18.8 })), 18.8, 23.8);
+  assert.equal(flat[0].start, 18.8);
+  assert.ok(flat.every((w, i) => !i || w.start > flat[i - 1].start));
+  assert.ok(flat.at(-1).end <= 23.8 + 1e-9 && flat.at(-1).end > 23);
+  // Normal tokens inside the segment are left alone.
+  const ok = [{ text: 'a', start: 1.2, end: 1.5 }, { text: 'b', start: 1.6, end: 2.4 }];
+  assert.deepEqual(placeWords(ok, 1, 3), ok);
+});
+
+test('parseWhisperJson with VAD: words land inside their segment, not all on its first instant', () => {
+  const j = { transcription: [{ offsets: { from: 19200, to: 23800 }, text: ' On all counts guilty.', tokens: [tok(' On', 0, 160), tok(' all', 160, 290), tok(' counts', 390, 820), tok(' guilty', 3900, 4300), tok('.', 4300, 4400)] }] };
+  const w = parseWhisperJson(j).words;
+  assert.equal(new Set(w.map((x) => x.start)).size, 4);
+  assert.ok(w.every((x) => x.start >= 19.2 && x.end <= 23.8));
 });
 
 test('dropHallucinations removes low-confidence stock phrases and loops, keeps real speech', () => {

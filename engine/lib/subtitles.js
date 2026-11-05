@@ -45,7 +45,8 @@ export function parseWhisperJson(j) {
       }
     }
     if (cur) segWords.push(cur);
-    const ws = segWords.filter((w) => /[\p{L}\p{N}]/u.test(w.text)).map((w) => ({ text: w.text, start: round3(Math.max(segStart, Math.min(w.start, segEnd))), end: round3(Math.min(segEnd, Math.max(w.end, w.start))), p: round3(avg(w.ps)) }));
+    const ws = placeWords(segWords.filter((w) => /[\p{L}\p{N}]/u.test(w.text)), segStart, segEnd)
+      .map((w) => ({ text: w.text, start: round3(Math.max(segStart, Math.min(w.start, segEnd))), end: round3(Math.min(segEnd, Math.max(w.end, w.start))), p: round3(avg(w.ps)) }));
     // Token times can run backwards a little; keep them monotonic and inside the segment.
     for (let i = 0; i < ws.length; i++) {
       if (i && ws[i].start < ws[i - 1].start) ws[i].start = ws[i - 1].start;
@@ -58,6 +59,32 @@ export function parseWhisperJson(j) {
     words.push(...ws);
   }
   return { language: j?.result?.language || j?.params?.language || null, words, segments };
+}
+
+/**
+ * Put a segment's words on the real timeline. whisper.cpp's segment times are reliable, its token times
+ * less so: with VAD they are on the compressed speech-only timeline (starting near 0), and some segments
+ * come back with every token at one instant. Tokens already inside the segment are kept; tokens outside it
+ * are mapped linearly onto it; collapsed ones are spread by character count.
+ */
+export function placeWords(words, segStart, segEnd) {
+  if (!words.length) return words;
+  const dur = Math.max(0.01, segEnd - segStart);
+  const t0 = Math.min(...words.map((w) => w.start));
+  const t1 = Math.max(...words.map((w) => w.end));
+  const span = t1 - t0;
+  if (words.length > 1 && span < Math.max(0.05, 0.2 * dur)) {
+    const total = words.reduce((n, w) => n + w.text.length + 1, 0);
+    let at = 0;
+    return words.map((w) => {
+      const a = at;
+      at += w.text.length + 1;
+      return { ...w, start: segStart + (dur * a) / total, end: segStart + (dur * (at - 1)) / total };
+    });
+  }
+  if (t0 >= segStart - 0.05 && t1 <= segEnd + 0.05) return words;
+  const k = span > 0 ? dur / span : 0;
+  return words.map((w) => ({ ...w, start: segStart + (w.start - t0) * k, end: segStart + (w.end - t0) * k }));
 }
 
 const avg = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);

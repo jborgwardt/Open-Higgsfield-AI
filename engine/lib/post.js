@@ -26,7 +26,9 @@ export function dtwPreset(file) {
   const m = path.basename(String(file)).match(/ggml-(tiny|base|small|medium|large-v[123](?:-turbo)?)(\.en)?[-.]/);
   return m ? `${m[1].replace(/-/g, '.')}${m[2] || ''}` : '';
 }
-const WHISPER_DTW = process.env.WHISPER_DTW ?? dtwPreset(WHISPER_MODEL); // '' disables
+// DTW token timing is opt-in (WHISPER_DTW=1 or a preset name): it needs flash attention off, which costs speed.
+// Default timing comes from token offsets mapped onto whisper's reliable segment times (subtitles.placeWords).
+const WHISPER_DTW = !process.env.WHISPER_DTW || process.env.WHISPER_DTW === '0' ? '' : process.env.WHISPER_DTW === '1' ? dtwPreset(WHISPER_MODEL) : process.env.WHISPER_DTW;
 const VAD_MODEL = process.env.WHISPER_VAD_MODEL || path.join(MODELS, 'ggml-silero-v6.2.0.bin');
 const RNN_DIR = process.env.RNNOISE_DIR || path.join(MODELS, 'rnnoise');
 const SUB_FONT = process.env.SUBTITLE_FONT || 'Inter';
@@ -318,7 +320,7 @@ export async function transcribe(file, { language = 'auto', translate = false, v
     // Silero VAD skips music / silence (no "thank you for watching" over the score) and halves CPU time;
     // vad: false also transcribes sung lyrics, which VAD classes as non-speech.
     if (vad && process.env.WHISPER_VAD !== '0' && fs.existsSync(VAD_MODEL)) args.push('--vad', '-vm', VAD_MODEL, '--vad-min-silence-duration-ms', '300', '--vad-speech-pad-ms', '200');
-    if (WHISPER_DTW) args.push('-dtw', WHISPER_DTW);
+    if (WHISPER_DTW) args.push('-nfa', '-dtw', WHISPER_DTW);
     await exec(WHISPER, args, { signal, onProgress });
     const raw = await fsp.readFile(`${base}.json`, 'utf8');
     let json;
