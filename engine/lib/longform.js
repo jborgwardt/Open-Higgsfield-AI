@@ -60,7 +60,7 @@ const DEFAULT_BRIEF = {
   imageModel: 'google/gemini-nano-banana-2.1',
   continuity: 'extend', // extend | lastframe | cut
   keyframes: true, // generate a keyframe for every "cut" shot
-  characters: [], // { name, description, refAssetId }
+  characters: [], // { name, description, refAssetId, refAssetIds: [] } — several photos per character sharpen likeness
   sceneFades: true,
   autoAssemble: true,
   // sound
@@ -296,6 +296,23 @@ async function lastFrameOf(shot, signal) {
   return (await addAsset({ ...out, mime: 'image/jpeg', meta: { source: 'last-frame' } })).id;
 }
 
+const refIdsOf = (c) => [...new Set([...(c.refAssetIds || []), c.refAssetId].filter(Boolean))];
+
+/** Reference photos for keyframes (up to the image model's limit) plus a line telling it which photo shows whom. */
+export function characterRefs(characters = [], max = 6) {
+  const refs = [];
+  const parts = [];
+  for (const c of characters) {
+    const ids = refIdsOf(c).slice(0, Math.max(0, max - refs.length));
+    if (!ids.length) continue;
+    const a = refs.length + 1;
+    refs.push(...ids);
+    parts.push(`${ids.length > 1 ? `images ${a}-${refs.length} show` : `image ${a} shows`} ${c.name || 'a character'}`);
+  }
+  const guide = parts.length ? `Reference photos: ${parts.join('; ')}. Keep every referenced person's face, hairline, beard and build exactly as in their photos. ` : '';
+  return { refs, guide };
+}
+
 /** Work out the start frame / extension source for a shot. */
 async function inputsFor(p, s, m, signal, onStatus) {
   const prev = prevShot(p, s);
@@ -313,8 +330,8 @@ async function inputsFor(p, s, m, signal, onStatus) {
     const im = getModel(p.brief.imageModel);
     if (!im) throw new Error(`image model ${p.brief.imageModel} not found`);
     onStatus({ message: `Keyframe · ${im.label}` });
-    const refs = (p.brief.characters || []).map((c) => c.refAssetId).filter(Boolean);
-    const kf = await generate({ model: im.id, prompt: `Cinematic film still, ${p.brief.aspect} frame. ${s.prompt}`, refs, aspect: p.brief.aspect }, { onStatus, signal });
+    const { refs, guide } = characterRefs(p.brief.characters, im.refs ?? 0);
+    const kf = await generate({ model: im.id, prompt: `Cinematic film still, ${p.brief.aspect} frame. ${guide}${s.prompt}`, refs, aspect: p.brief.aspect }, { onStatus, signal });
     await setShot(p.id, s.id, { keyframeId: kf.asset.id });
     return { image: kf.asset.id, startFrameId: kf.asset.id };
   }
@@ -564,7 +581,7 @@ export function hydrate(p) {
     ...p,
     running: runners.has(p.id),
     shotCount: shotCountFor(p.brief),
-    brief: { ...briefOf(p), musicUrl: u(p.brief.musicAssetId), characters: (p.brief.characters || []).map((c) => ({ ...c, refUrl: u(c.refAssetId) })) },
+    brief: { ...briefOf(p), musicUrl: u(p.brief.musicAssetId), characters: (p.brief.characters || []).map((c) => ({ ...c, refUrl: u(c.refAssetId || c.refAssetIds?.[0]), refUrls: refIdsOf(c).map(u) })) },
     scenes: (p.scenes || []).map((sc) => ({ ...sc, musicUrl: u(sc.musicId) })),
     shots: p.shots.map((s) => ({ ...s, videoUrl: u(s.videoId), posterUrl: u(s.posterId), keyframeUrl: u(s.keyframeId), startFrameUrl: u(s.startFrameId), voiceUrl: u(s.voiceId) })),
   };
