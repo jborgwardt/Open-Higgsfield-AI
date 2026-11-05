@@ -110,8 +110,9 @@ export const extractAudio = (video, out, { signal } = {}) => run(FFMPEG, ['-y', 
 /** Swap a clip's audio for a new track (picture copied untouched); the original can stay underneath as a quiet bed. */
 export async function replaceAudio({ video, audio, out, bedVolume = 0, signal }) {
   const af = bedVolume > 0
-    ? ['-filter_complex', `[1:a]aresample=48000,aformat=channel_layouts=stereo[new];[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=${bedVolume}[bed];[new][bed]amix=inputs=2:normalize=0:duration=first[a]`, '-map', '0:v', '-map', '[a]']
-    : ['-map', '0:v', '-map', '1:a', '-af', 'aresample=48000,aformat=channel_layouts=stereo'];
+    ? ['-filter_complex', `[1:a]aresample=48000,aformat=channel_layouts=stereo,apad[new];[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=${bedVolume}[bed];[new][bed]amix=inputs=2:normalize=0:duration=longest[a]`, '-map', '0:v', '-map', '[a]']
+    : ['-map', '0:v', '-map', '1:a', '-af', 'aresample=48000,aformat=channel_layouts=stereo,apad'];
+  // apad + -shortest: the picture sets the length, even if the new track comes back a little short.
   await run(FFMPEG, ['-y', '-v', 'error', '-i', video, '-i', audio, ...af, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-shortest', '-movflags', '+faststart', out], { signal });
 }
 
