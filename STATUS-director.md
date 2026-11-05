@@ -24,8 +24,14 @@ Branch `worktree-agent-ac5f0664b252af2fb` (based on `multi-provider-longform` @ 
   screening card with re-cut buttons. Also fixes scene blocks collapsing to 0 px. Checked in the browser pane
   against a local build.
 
+- **VPS image** `studio:director` built from this worktree (/opt/studio-test/director). The pinned CLI 2.1.318
+  runs (323 MB native binary) with config in /data/claude, and `/status` reports "installed, not signed in".
+  ffmpeg 5.1.9. In container `studio-test-director`: `/directors` lists Gemini 18, Qwen 12, Venice 140 and
+  ApiMart 191 chat models; planning without a director returns 400 "Choose a director first"; the Gemini
+  writers' room planned the bipolar trial (11 shots, 50.4 s cut from 66 s of renders, 7/7 lines kept).
+
 ## In progress / not verified
-- Docker image build with the pinned Claude Code CLI (2.1.318) has not been built yet. The VPS test is next.
+- VPS: animatic render → assemble → screen → apply in the test container (running).
 - The Claude CLI in the container needs `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`); not set yet.
 - The Qwen director run was interrupted by the move to VPS testing (concept + shot passes had completed).
 - Grok director: untested (no xAI login locally).
