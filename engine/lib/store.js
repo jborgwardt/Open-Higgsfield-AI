@@ -42,6 +42,7 @@ const DEFAULTS = {
   apimartKey: '',
   elevenKey: '',
   elevenModel: 'eleven_v4',
+  qwenKey: '', // Qwen Cloud Token Plan (HappyHorse video, Qwen-Image / Wan 2.7 images); base URL via QWEN_BASE
   comfyUrl: 'http://127.0.0.1:8188',
   llmBaseUrl: 'http://127.0.0.1:11434/v1',
   llmModel: 'qwen3:8b',
@@ -49,7 +50,7 @@ const DEFAULTS = {
   directorProvider: 'auto', // auto | xai | google | apimart | openai
   directorModel: '',
   handoffDir: path.join(os.homedir(), 'Downloads'),
-  concurrency: { xai: 2, google: 2, apimart: 3, fal: 4, replicate: 3, muapi: 2, kie: 3, comfy: 1, local: 2 },
+  concurrency: { xai: 2, google: 2, apimart: 3, fal: 4, replicate: 3, muapi: 2, kie: 3, comfy: 1, local: 2, qwen: 1 },
   accessToken: '', // required when the engine is reachable from other devices
   oidcIssuer: '',
   oidcClientId: '',
@@ -71,6 +72,7 @@ const ENV = {
   kieKey: ['KIE_API_KEY'],
   apimartKey: ['APIMART_API_KEY'],
   elevenKey: ['ELEVENLABS_API_KEY', 'ELEVEN_API_KEY'],
+  qwenKey: ['QWEN_API_KEY'],
   comfyUrl: ['COMFY_URL'],
   llmBaseUrl: ['LLM_BASE_URL'],
   llmModel: ['LLM_MODEL'],
@@ -84,7 +86,7 @@ export function getSettings() {
   return s;
 }
 
-const SECRET_KEYS = ['falKey', 'replicateToken', 'xaiKey', 'googleKey', 'muapiKey', 'kieKey', 'apimartKey', 'elevenKey', 'llmKey', 'accessToken', 'oidcClientSecret'];
+const SECRET_KEYS = ['falKey', 'replicateToken', 'xaiKey', 'googleKey', 'muapiKey', 'kieKey', 'apimartKey', 'elevenKey', 'qwenKey', 'llmKey', 'accessToken', 'oidcClientSecret'];
 
 export function publicSettings() {
   const s = getSettings();

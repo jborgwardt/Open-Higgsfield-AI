@@ -16,6 +16,7 @@ import { apimartImage, apimartVeoExtend } from './providers/apimart.js';
 import { falUpload } from './providers/fal.js';
 import { elevenAvailable } from './providers/eleven.js';
 import { TOOL_MODELS } from './toolmodels.js';
+import { qwenImage, qwenVideo, qwenAvailable } from './providers/qwen.js';
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const first = (o) => (Array.isArray(o) ? o[0] : o);
@@ -32,6 +33,7 @@ export const PROVIDERS = {
   comfy: { label: 'ComfyUI', note: 'self-hosted' },
   local: { label: 'Offline (ffmpeg)', note: 'previs, free' },
   handoff: { label: 'Subscription hand-off', note: 'you generate in Flow / grok.com, Gaffer imports the clip' },
+  qwen: { label: 'Qwen Cloud · Token Plan', note: 'subscription key — HappyHorse video, Qwen-Image' },
 };
 
 /* ------------------------------------------------------------------ video models */
@@ -98,6 +100,12 @@ const PARITY_VIDEO = [
   { id: 'apimart/kling-3.0-turbo', provider: 'apimart', label: 'Kling 3.0 Turbo (ApiMart)', blurb: 'Fast Kling 3.0, 3–15 s.', caps: { t2v: true, i2v: true }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1'], resolutions: ['720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
   { id: 'apimart/seedance-2.0-fast', provider: 'apimart', label: 'Seedance 2.0 Fast (ApiMart)', blurb: 'Cheaper Seedance 2.0 with audio, up to 720p.', caps: { t2v: true, i2v: true, end: true }, refs: 6, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['480p', '720p'], resolutionDefault: '720p', maxClip: 15 },
 ];
+// Qwen Token Plan (subscription credits). HappyHorse routes to t2v / i2v / r2v (identity-preserving references).
+PARITY_VIDEO.push({ id: 'qwen/happyhorse-1.1', provider: 'qwen', label: 'HappyHorse 1.1 (Qwen plan)', blurb: 'Alibaba’s top video model on your Qwen subscription; up to 9 identity references.', caps: { t2v: true, i2v: true }, refs: 9, durations: [3, 5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 });
+PARITY_IMAGE.push(
+  { id: 'qwen/qwen-image-3.0-pro', provider: 'qwen', label: 'Qwen-Image 3.0 Pro (Qwen plan)', blurb: 'Strong text rendering and layout.', refs: 3, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
+  { id: 'qwen/wan2.7-image-pro', provider: 'qwen', label: 'Wan 2.7 Image Pro (Qwen plan)', blurb: 'Edits with up to 4 references.', refs: 4, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
+);
 // Seedance 2.x also takes reference images (and reference video/audio) when no start frame is given.
 for (const m of VIDEO) if (/^apimart\/seedance-2\.[05]$/.test(m.id)) m.refs = 6;
 
@@ -130,6 +138,7 @@ export function availableProviders() {
     local: true,
     handoff: true,
     eleven: elevenAvailable(),
+    qwen: qwenAvailable(),
   };
 }
 
@@ -188,6 +197,7 @@ export async function asInput(provider, asset, signal) {
   switch (provider) {
     case 'google': return { mime: asset.mime, base64: buffer.toString('base64'), kind: asset.kind };
     case 'xai':
+    case 'qwen':
     case 'fal': return remote.source && /^https:/.test(remote.source) && age(asset.createdAt) < 864e5 ? remote.source : `data:${asset.mime};base64,${buffer.toString('base64')}`;
     case 'replicate': return cache('replicate', () => replicateUpload({ token: getSettings().replicateToken, buffer, mime: asset.mime, filename: asset.file, signal }), 20 * 36e5);
     case 'muapi': return cache('muapi', () => muapiUpload({ buffer, mime: asset.mime, filename: asset.file }, signal), 20 * 36e5);
@@ -264,6 +274,7 @@ export async function generate(job, { onStatus, signal } = {}) {
       }
       case 'replicate': r = { url: first(await replicateRun({ token: getSettings().replicateToken, model: 'black-forest-labs/flux-schnell', input: { prompt: job.prompt, aspect_ratio: job.aspect === '3:4' ? '3:4' : job.aspect, output_format: 'jpg', seed, go_fast: true }, onStatus, signal })) }; break;
       case 'kie': r = await kieJob({ model: 'nano-banana-2', input: { prompt: job.prompt, aspect_ratio: job.aspect, output_format: 'jpg', ...(img || refs.length ? { image_input: [img, ...refs].filter(Boolean) } : {}) } }, ctx); break;
+      case 'qwen': r = await qwenImage({ model: slug, prompt: job.prompt, images: [img, ...refs].filter(Boolean), aspect: job.aspect }, ctx); break;
       case 'apimart': {
         const maskA = await materialize(job.mask, signal);
         r = await apimartImage({ model: slug, label: m.label, prompt: job.prompt, image: img, refs, aspect: job.aspect, resolution: job.resolution, mask: maskA && (await asInput('apimart', maskA, signal)), format: job.format }, ctx);
@@ -317,6 +328,7 @@ export async function generate(job, { onStatus, signal } = {}) {
       r = await apimartVideo({ model: slug, label: m.label, prompt: job.prompt, image: img, endImage: end, refs, videos: await pub(job.videos), audios: await pub(job.audios), aspect: job.aspect, resolution: job.resolution || m.resolutionDefault, duration: dur, seed }, ctx);
       break;
     }
+    case 'qwen': r = await qwenVideo({ prompt: job.prompt, image: img, refs, aspect: job.aspect, resolution: job.resolution || m.resolutionDefault, duration: dur, seed }, ctx); break;
     case 'fal': {
       const vAspect = ['16:9', '9:16', '1:1'].includes(job.aspect) ? job.aspect : '16:9';
       if (slug === 'wan22-a14b') {

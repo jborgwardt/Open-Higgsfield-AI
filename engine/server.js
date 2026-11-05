@@ -19,6 +19,7 @@ import { fetchJSON } from './lib/http.js';
 import { apimartModels, APIMART_LLMS } from './lib/providers/apimart.js';
 import { elevenSubscription, elevenVoices, elevenAvailable, ELEVEN_TTS_MODELS } from './lib/providers/eleven.js';
 import * as tools from './lib/tools.js'; // Higgsfield-parity one-click tools (server-driven registry)
+import { qwenModels, qwenTaskPing } from './lib/providers/qwen.js';
 
 const PORT = Number(process.env.ENGINE_PORT) || 4848;
 const HOST = process.env.ENGINE_HOST || '127.0.0.1';
@@ -165,6 +166,10 @@ route('POST', '/test/:provider', async ({ params }) => {
       const [sub, voices] = await Promise.all([elevenSubscription(), elevenVoices({ fresh: true })]);
       const used = sub.character_limit ? ` · ${Math.round(((sub.character_count || 0) / sub.character_limit) * 100)}% of ${sub.character_limit.toLocaleString('en')} credits used` : '';
       return { ok: true, detail: `${sub.tier || 'plan'} plan${used} · ${voices.length} voices (${voices.filter((v) => v.category === 'cloned').map((v) => v.name).join(', ') || 'no clones'} cloned)` };
+    }
+    case 'qwen': { // free: model list + a task lookup proves the key; entitlement is per model (see providers/qwen.js)
+      const [ids] = await Promise.all([qwenModels(), qwenTaskPing()]);
+      return { ok: true, detail: `Token Plan key works · ${ids.length} models listed (HappyHorse video, ${ids.filter((i) => /image/.test(i)).join(', ')})` };
     }
     case 'comfy': return { ok: true, detail: JSON.stringify((await comfyPing(s.comfyUrl)).devices?.[0]?.name || 'online') };
     case 'llm': return { ok: true, detail: `${(await openaiPing()).length} models` };
