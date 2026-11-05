@@ -87,7 +87,7 @@ already-verified pipeline.
 |---|---|---|---|
 | Effects (45+ VFX: Bullet Time, Earth Zoom, Melting, Particles…) | `effects` tool — 53 VFX + 12 trending templates (On Fire, Mukbang, Cloud Surf, Idol, Behind the Scenes, ASMR Host…) with tuned prompts | Kling 3.0 (ApiMart) | ✅ Verified |
 | Shorts / viral presets ("hundreds") | Same tool | Kling 3.0 | 🟡 65 presets, not hundreds |
-| Genjutsu (rebuild part of a clip; trend motion library) | `video-edit` | Kling 3.0 Omni edit | 🟡 edit ✅; no community motion library |
+| Genjutsu (rebuild part of a clip; trend motion library) | `video-edit` | Wan 2.7 VideoEdit | 🟡 edit ✅; no community motion library |
 | Games & Characters, Extras (Game Dump, Nano Strike, Nano Theft, Simlife, Plushies, 3D Figure, Mugshot, Signboard, Paint App, Japanese Show, Glitter Sticker, Outfit Vending…) | `photo-styles` tool, 16 styles | Nano Banana 2.1 | ✅ Verified |
 | Mixed Media / style transfer for video | `restyle` (16 looks or a style frame) | Wan 2.7 VideoEdit (ApiMart) | ✅ Verified |
 
@@ -128,9 +128,8 @@ already-verified pipeline.
 
 | Higgsfield feature | Here | Model | Status |
 |---|---|---|---|
-| Edit video | `video-edit` | Kling 3.0 Omni (ApiMart) | ✅ Verified (shares the Recast pipeline) |
-| Recast | `recast` | Kling 3.0 Omni (ApiMart) | ✅ Verified |
-| Video Face Swap | `video-face-swap` (person / object / background) | PixVerse Swap (fal) | ✅ Verified |
+| Edit video | `video-edit` | Wan 2.7 VideoEdit (ApiMart) | ✅ model + request verified via Mixed Media; an instruction edit was not run separately |
+| Recast + Video Face Swap | one tool, `recast` (person / object / background) | PixVerse Swap (fal) | ✅ Verified (see VPS runs). Kling 3.0 Omni edit failed to replace the person and is no longer used |
 | Motion Control | `motion-control` | Kling 3.0 Motion Control (ApiMart) | ✅ Verified |
 | Video Extender | `extend` (joined into one file) | Grok Imagine Extend (fal); native Veo 3.1 extension for ApiMart Veo clips in Long-form | ✅ Verified |
 | Video Upscaler | `video-upscale` | SeedVR2 (fal) | ✅ Verified · CPU upscale/interpolation ↗ VPS agent |
@@ -203,7 +202,32 @@ motion control, video edit and Veo remix; ElevenLabs sound effects and music.
 - **Real runs** on a local engine (`ENGINE_PORT=4953`, keys only in the process environment). Each output was downloaded and
   inspected (frames, duration, alpha, dimensions):
 
-<!-- RUNS -->
+| Tool / model | Result | Cost |
+|---|---|---|
+| Background Remover (Bria RMBG), twice: once over the API, once through the web Tools page | RGBA PNG, clean hair edge | $0.036 |
+| Upscale Image (Topaz Wonder 3.5, 2×) / SeedVR2 | 1280 → 2560 px | ≈$0.07 |
+| Edit Image on Seedream 5.0 Pro (ApiMart) | "mustard sweater" applied, identity kept, 2048² | $0.056 |
+| Face Swap (NB 2.1) | 1st run swapped the wrong way → prompt fixed → 2nd run correct | ≈$0.13 |
+| Photo Styles "3D Figure", Relight (golden hour from left) | both on-brief | ≈$0.13 |
+| Storyboard (2 frames), Shots (coverage ×2) | same woman, wardrobe and light across frames | ≈$0.27 |
+| Inpaint (FLUX Fill, painted mask) | necklace added only inside the mask | ≈$0.08 |
+| Expand (Bria, → 16:9) | 2275×1280, seamless | $0.04 |
+| Breakdown (Seedream Layerize) | 7 layers: bottle, label, "GLOW" text… | $0.034 |
+| Try-on (Google VTO) | red leather jacket on the person | $0.075 |
+| Vector & GIF (GPT Image 2.6, SVG) | valid 7.7 KB SVG, 22 shapes, sanitised | $0.094 |
+| Talking Avatar: VEED Fabric 480p (3.3 s), OmniHuman v2 (4 s, audio padded) | natural lip-sync | ≈$0.26 + $0.42 |
+| Lipsync (sync-3) on the avatar clip with a new ElevenLabs line | new mouth shapes, 3.1 s | ≈$0.42 |
+| Extend (Grok on fal, +3 s) | seamless continuation, joined 7.0 s file | ≈$0.15 |
+| Motion Control (Kling 3.0 Motion Control, ApiMart, pro) | man performs the woman's talking performance, 1440², 4 s | $0.52 |
+| Effects "Particles" (Kling 3.0 i2v, 5 s) | dissolves into particles, identity kept | ≈$0.35 |
+| Mixed Media "Watercolor" (Wan 2.7 VideoEdit via a fal-hosted clip) | watercolor restyle, motion kept, 960², audio kept | $0.378 |
+| Video Swap (PixVerse, person) | swap applied, 1280², audio kept | $0.05 |
+| Add Sound Effects (Mirelo SFX 2.0), Sound Effects (ElevenLabs) | synced audio track / 2 s mp3 | $0.03 + credits |
+| Cinema Studio via the web UI (Veo 3.1 Lite, Dolly In → Crane Up, Noir) | 1080p, 7.85 s, audio; Lite follows the stacked moves only loosely | $0.067 |
+| Recast on Kling 3.0 Omni edit | **failed the quality bar**: clip re-rendered, person not replaced → Recast moved to PixVerse Swap | ≈$0.32 |
+| Qwen-Image 3.0 Pro, Wan 2.7 Image Pro edit (Qwen plan) | perfect sign text; green raincoat with identity kept | plan credits |
+
+<!-- RUNS-VPS -->
 
 ## Backlog (ranked)
 
