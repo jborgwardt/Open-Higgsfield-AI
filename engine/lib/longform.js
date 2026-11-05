@@ -549,6 +549,7 @@ export async function assemble(id) {
     let out = newAssetPath('video/mp4');
     await ff.concat({ segments: segs, out: out.abs });
     const b = briefOf(p);
+    let leveled = false;
     if (b.music !== 'off' || b.narration) {
       const starts = [];
       durs.reduce((t, d, k) => { starts[k] = t; return t + d; }, 0);
@@ -557,10 +558,19 @@ export async function assemble(id) {
       if (sound.music.length || sound.voice.length) {
         await mutate(id, (x) => { x.message = 'Mixing music and narration'; });
         const mixed = newAssetPath('video/mp4');
-        await ff.mixSoundtrack({ video: out.abs, out: mixed.abs, music: sound.music, voice: sound.voice, musicVolume: Number(b.musicVolume) || 0.35, clipVolume: b.narration ? Math.min(Number(b.clipVolume) || 1, 0.6) : Number(b.clipVolume) || 1 });
+        await ff.mixSoundtrack({ video: out.abs, out: mixed.abs, music: sound.music, voice: sound.voice, musicVolume: Number(b.musicVolume) || 0.35, clipVolume: Number(b.clipVolume) || 1 });
         await fsp.rm(out.abs, { force: true });
         out = mixed;
+        leveled = true;
       }
+    }
+    if (!leveled) {
+      // No soundtrack to mix: still level the clips' own audio to the same loudness target.
+      await mutate(id, (x) => { x.message = 'Levelling audio'; });
+      const level = newAssetPath('video/mp4');
+      await ff.normalizeAudio({ video: out.abs, out: level.abs });
+      await fsp.rm(out.abs, { force: true });
+      out = level;
     }
     const info = await ff.probe(out.abs).catch(() => ({}));
     const asset = await addAsset({ ...out, mime: 'video/mp4', meta: { source: 'master', ...info } });

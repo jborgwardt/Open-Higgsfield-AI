@@ -82,7 +82,7 @@ export async function animatic({ image, out, duration = 5, aspect, signal }) {
  * concatenated losslessly. Optional trim (start/end), scene fades.
  */
 export async function conform({ input, out, W, H, start = 0, duration, fadeIn = 0, fadeOut = 0, hasAudio, signal }) {
-  const vf = [`scale=${W}:${H}:force_original_aspect_ratio=decrease`, `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`, 'fps=24', 'setsar=1', 'format=yuv420p'];
+  const vf = [`scale=${W}:${H}:force_original_aspect_ratio=decrease:flags=lanczos`, `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`, 'fps=24', 'setsar=1', 'format=yuv420p'];
   const af = ['aresample=48000', 'aformat=sample_fmts=fltp:channel_layouts=stereo'];
   if (fadeIn) { vf.push(`fade=t=in:st=0:d=${fadeIn}`); af.push(`afade=t=in:st=0:d=${fadeIn}`); }
   if (fadeOut && duration) { vf.push(`fade=t=out:st=${Math.max(0, duration - fadeOut).toFixed(3)}:d=${fadeOut}`); af.push(`afade=t=out:st=${Math.max(0, duration - fadeOut).toFixed(3)}:d=${fadeOut}`); }
@@ -92,8 +92,16 @@ export async function conform({ input, out, W, H, start = 0, duration, fadeIn = 
   if (!hasAudio) args.push('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo');
   if (duration) args.push('-t', duration.toFixed(3));
   args.push('-map', '0:v:0', '-map', hasAudio ? '0:a:0' : '1:a:0', '-vf', vf.join(','), '-af', af.join(','),
-    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-r', '24', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2', '-shortest', '-movflags', '+faststart', out);
+    '-c:v', 'libx264', '-preset', process.env.ENGINE_X264_PRESET || 'slow', '-crf', '17', '-r', '24', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-shortest', '-movflags', '+faststart', out);
   await run(FFMPEG, args, { signal });
+}
+
+// Streaming loudness target (−16 LUFS integrated, −1.5 dBTP) so every master plays at a consistent level.
+const LOUDNORM = 'loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000';
+
+/** Loudness-normalise a finished video's audio; picture is copied untouched. */
+export async function normalizeAudio({ video, out, signal }) {
+  await run(FFMPEG, ['-y', '-v', 'error', '-i', video, '-map', '0:v', '-map', '0:a', '-c:v', 'copy', '-af', LOUDNORM, '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', '-movflags', '+faststart', out], { signal });
 }
 
 /** Concatenate conformed segments without re-encoding. */
@@ -138,22 +146,23 @@ export async function mixSoundtrack({ video, out, music = [], voice = [], musicV
     voiceLabels.push(`[v${n}]`);
     n++;
   }
-  parts.push(`[0:a]volume=${clipVolume}[clip]`);
-  const mixIn = ['[clip]'];
-  let voiceBus = null;
+  parts.push(`[0:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${clipVolume}[clip0]`);
+  const mixIn = [];
+  // The narrator ducks both the clip's own sound and the score, so dialogue keeps full level elsewhere.
   if (voiceLabels.length) {
-    parts.push(`${voiceLabels.join('')}amix=inputs=${voiceLabels.length}:normalize=0:dropout_transition=0,volume=${voiceVolume}[vbus]`);
-    voiceBus = 'vbus';
-  }
+    const keys = ['[vkey0]', ...(musicLabels.length ? ['[vkey1]'] : [])];
+    parts.push(`${voiceLabels.join('')}amix=inputs=${voiceLabels.length}:normalize=0:dropout_transition=0,volume=${voiceVolume},asplit=${keys.length + 1}[vmix]${keys.join('')}`);
+    parts.push('[clip0][vkey0]sidechaincompress=threshold=0.03:ratio=4:attack=20:release=500[clip]');
+    mixIn.push('[clip]', '[vmix]');
+  } else mixIn.push('[clip0]');
   if (musicLabels.length) {
     parts.push(`${musicLabels.join('')}amix=inputs=${musicLabels.length}:normalize=0:dropout_transition=0,volume=${musicVolume}[mbus]`);
-    if (voiceBus) {
-      parts.push('[vbus]asplit=2[vmix][vkey]');
-      parts.push('[mbus][vkey]sidechaincompress=threshold=0.03:ratio=6:attack=30:release=600[mduck]');
-      mixIn.push('[mduck]', '[vmix]');
+    if (voiceLabels.length) {
+      parts.push('[mbus][vkey1]sidechaincompress=threshold=0.03:ratio=6:attack=30:release=600[mduck]');
+      mixIn.push('[mduck]');
     } else mixIn.push('[mbus]');
-  } else if (voiceBus) mixIn.push('[vbus]');
-  parts.push(`${mixIn.join('')}amix=inputs=${mixIn.length}:normalize=0:dropout_transition=0,alimiter=limit=0.95[aout]`);
-  args.push('-filter_complex', parts.join(';'), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out);
+  }
+  parts.push(`${mixIn.join('')}amix=inputs=${mixIn.length}:normalize=0:dropout_transition=0,${LOUDNORM}[aout]`);
+  args.push('-filter_complex', parts.join(';'), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', '-shortest', '-movflags', '+faststart', out);
   await run(FFMPEG, args, { signal });
 }
