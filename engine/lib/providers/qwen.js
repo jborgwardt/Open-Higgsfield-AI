@@ -43,7 +43,15 @@ export function qwenImageBody({ model, prompt, images = [], aspect }) {
 /** p: { model, prompt, images: [url|dataURI], aspect } → { url } */
 export async function qwenImage(p, { onStatus, signal } = {}) {
   onStatus?.({ message: `Rendering with ${p.model} (Qwen)` });
-  const j = await fetchJSON('qwen', `${qwenBase()}/api/v1/services/aigc/multimodal-generation/generation`, { method: 'POST', headers: H(), body: JSON.stringify(qwenImageBody(p)), signal });
+  // Sync endpoint: cap the wait so a stalled plan request fails the job instead of hanging it.
+  const capped = AbortSignal.any([signal, AbortSignal.timeout(240000)].filter(Boolean));
+  let j;
+  try {
+    j = await fetchJSON('qwen', `${qwenBase()}/api/v1/services/aigc/multimodal-generation/generation`, { method: 'POST', headers: H(), body: JSON.stringify(qwenImageBody(p)), signal: capped });
+  } catch (e) {
+    if (!signal?.aborted && capped.aborted) throw new ProviderError('qwen', 0, `${p.model} did not answer within 4 minutes`, { retryable: true });
+    throw e;
+  }
   if (j.code && !j.output) throw fail(j);
   const url = (j.output?.choices || []).flatMap((c) => c.message?.content || []).find((c) => c.image)?.image;
   if (!url) throw new ProviderError('qwen', 0, `no image returned: ${JSON.stringify(j).slice(0, 300)}`);

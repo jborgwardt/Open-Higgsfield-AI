@@ -283,19 +283,30 @@ test('Motion control → ApiMart Kling with fal-hosted reference video', async (
   assert.match(sub.body.image_url, /^https:\/\/cdn\.test\//);
 });
 
-test('Recast → Kling 3.0 Omni edit with the character as <<<image_1>>>', async () => {
+test('Recast → PixVerse Swap (person) with CDN-hosted clip and photo', async () => {
   const a = await fixture('img.png', 'image/png');
+  const v = await fixture('clip.mp4', 'video/mp4');
+  falOutput = { video: { url: 'https://cdn.test/out.mp4' } };
+  const n = falSubmits().length;
+  const j = await waitJob(tools.runTool('recast', { video: v.id, person: a.id }).id);
+  assert.equal(j.status, 'done', j.error);
+  const sub = falSubmits().slice(n)[0];
+  assert.equal(sub.url, 'https://queue.fal.run/fal-ai/pixverse/swap');
+  assert.deepEqual([sub.body.mode, sub.body.original_sound_switch], ['person', true]);
+  assert.match(sub.body.video_url, /^https:\/\/cdn\.test\/.*\.mp4$/);
+});
+
+test('Edit Video → Wan 2.7 VideoEdit, keeps original audio', async () => {
   const v = await fixture('clip.mp4', 'video/mp4');
   amTask = { result: { videos: [{ url: ['https://cdn.test/out.mp4'] }] } };
   const n = amSubmits().length;
-  const j = await waitJob(tools.runTool('recast', { video: v.id, person: a.id }).id);
+  const j = await waitJob(tools.runTool('video-edit', { video: v.id, prompt: 'make it snow' }).id);
   assert.equal(j.status, 'done', j.error);
   const sub = amSubmits().slice(n)[0];
-  assert.equal(sub.body.model, 'kling-v3-omni');
-  assert.match(sub.body.prompt, /<<<image_1>>>/);
-  assert.doesNotMatch(sub.body.prompt, /\{ref1\}|\{video\}/);
-  assert.equal(sub.body.video_list[0].refer_type, 'base');
-  assert.match(sub.body.image_urls[0], /^https:\/\/upload\.apimart\.test\//);
+  assert.equal(sub.body.model, 'wan2.7-videoedit');
+  assert.match(sub.body.video_urls[0], /^https:\/\/cdn\.test\//);
+  assert.equal(sub.body.metadata.audio_setting, 'origin');
+  assert.equal(sub.body.image_urls, undefined);
 });
 
 test('Product ad scene → keyframe on an image model, then image-to-video', async () => {

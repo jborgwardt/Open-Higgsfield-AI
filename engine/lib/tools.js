@@ -355,27 +355,22 @@ export const TOOLS = [
 
   /* ================= Video ================= */
   {
+    // Wan 2.7 VideoEdit: the model + request verified by Mixed Media. (Kling 3.0 Omni edit re-rendered clips without
+    // applying identity changes in testing, so it is no longer the default.)
     id: 'video-edit', title: 'Edit Video (Genjutsu)', sfSymbol: 'film.stack', category: 'Video', output: 'video',
-    description: 'Rebuild part of a clip with an instruction — swap objects, outfits, backgrounds — everything else stays as shot (Kling 3.0 Omni).',
-    inputs: [vid('video', 'Clip', { help: '3–10 s' }), long('prompt', 'Change', { required: true }), img('ref1', 'Reference image', { required: false, help: 'Mention it as "the reference"' })],
-    run: (v, ctx) => op.videoEdit({ video: v.video, refs: [v.ref1], prompt: `${v.prompt}${v.ref1 ? ' (reference: {ref1})' : ''}. Keep everything else exactly as in {video}: motion, camera, timing and people.` }, ctx),
+    description: 'Rebuild part of a clip with an instruction — swap objects, outfits, backgrounds — everything else stays as shot (Wan 2.7 VideoEdit).',
+    inputs: [vid('video', 'Clip', { help: '2–10 s' }), long('prompt', 'Change', { required: true }), img('ref1', 'Reference image', { required: false, help: 'Mention it as "image 1"' })],
+    run: (v, ctx) => op.videoEdit({ video: v.video, model: 'apimart/wan2.7-videoedit', keepAudio: true, refs: [v.ref1].filter(Boolean), prompt: `${v.prompt}. Keep everything else exactly as in the video: motion, camera, timing and people.` }, ctx),
   },
   {
-    id: 'recast', title: 'Recast', sfSymbol: 'person.and.arrow.left.and.arrow.right', category: 'Video', output: 'video',
-    description: 'Replace the actor in a clip with your character — performance, camera and timing kept (Kling 3.0 Omni).',
-    inputs: [vid('video', 'Clip', { help: '3–10 s' }), img('person', 'Character photo', { required: false }), character(), text('prompt', 'Extra direction')],
+    // One tool for Higgsfield's Recast and Video Face Swap apps: PixVerse Swap replaces the person (or an object / the
+    // background) from one photo while keeping motion and audio.
+    id: 'recast', title: 'Recast & Video Swap', sfSymbol: 'person.and.arrow.left.and.arrow.right', category: 'Video', output: 'video',
+    description: 'Replace the actor in a clip with your character — or swap an object or the background — from one photo; motion, timing and audio kept (PixVerse Swap).',
+    inputs: [vid('video', 'Clip'), img('person', 'Replacement photo', { required: false }), character(), sel('mode', 'Swap', opts([{ value: 'person', label: 'Person' }, { value: 'object', label: 'Object' }, { value: 'background', label: 'Background' }]), 'person')],
     async run(v, ctx) {
       const p = await personRef(v, 'person', ctx.signal);
-      return op.videoEdit({ video: v.video, refs: [p.image], prompt: `Replace the main person in {video} with the character from {ref1} — their face, hair, body and outfit — performing exactly the same motion, expressions and timing. Camera, background and lighting unchanged. ${v.prompt || ''}` }, ctx);
-    },
-  },
-  {
-    id: 'video-face-swap', title: 'Video Swap', sfSymbol: 'face.dashed', category: 'Video', output: 'video',
-    description: 'Swap the person, an object or the background of a clip from one photo (PixVerse Swap).',
-    inputs: [vid('video', 'Clip'), img('face', 'Replacement photo', { required: false }), character(), sel('mode', 'Swap', opts([{ value: 'person', label: 'Person' }, { value: 'object', label: 'Object' }, { value: 'background', label: 'Background' }]), 'person')],
-    async run(v, ctx) {
-      const f = await personRef(v, 'face', ctx.signal);
-      return op.videoSwap({ video: v.video, image: f.image, mode: v.mode }, ctx);
+      return op.videoSwap({ video: v.video, image: p.image, mode: v.mode }, ctx);
     },
   },
   {
