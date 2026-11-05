@@ -140,16 +140,29 @@ export async function extendTail({ video, out, seconds, signal }) {
 }
 
 /**
- * Concatenate conformed segments without re-encoding. Each entry carries its picture length (`duration`), so the
- * next segment starts exactly where this one's last frame ends — ffmpeg 5.1 otherwise offsets by the container
- * length, which the AAC frame grid rounds up, and the master drifts off 24 fps.
+ * Concatenate conformed segments. The picture is copied through the concat demuxer; each entry carries its picture
+ * length (`duration`), so the next segment starts exactly where this one's last frame ends — ffmpeg 5.1 otherwise
+ * offsets by the container length, which the AAC frame grid rounds up, and the master drifts off 24 fps.
+ * The sound can't be copied the same way: every AAC segment carries priming and tail-padding packets, which
+ * overlap the next file and push the audio ~30 ms later at every cut. So each segment's audio is decoded on its
+ * own (the mp4 edit list drops the priming), cut / padded to exactly its picture length in samples, and joined
+ * with the concat filter. An .mkv/.mov `out` keeps that as float PCM; .mp4 gets one AAC encode.
  */
 export async function concat({ segments, out, signal }) {
   const list = `${out}.txt`;
   const lens = await Promise.all(segments.map((s) => probe(s).then((i) => i.videoDuration).catch(() => null)));
-  await fsp.writeFile(list, segments.map((s, k) => `file '${s.replace(/'/g, "'\\''")}'${lens[k] ? `\nduration ${lens[k].toFixed(6)}` : ''}`).join('\n'));
+  // Only the picture (conform's track 1) goes through the demuxer: its unused AAC priming would otherwise set the
+  // input's start time to -1024 samples and delay the copied video by 21 ms against the audio.
+  await fsp.writeFile(list, ['ffconcat version 1.0', 'stream', 'exact_stream_id 1',
+    ...segments.map((s, k) => `file '${s.replace(/'/g, "'\\''")}'${lens[k] ? `\nduration ${lens[k].toFixed(6)}` : ''}`)].join('\n'));
+  const fit = (k) => { const n = lens[k] && Math.round(lens[k] * 48000); return n ? `,apad=whole_len=${n},atrim=end_sample=${n}` : ''; };
+  const graph = segments.map((_, k) => `[${k + 1}:a:0]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=PTS-STARTPTS${fit(k)}[a${k}]`).join(';')
+    + `;${segments.map((_, k) => `[a${k}]`).join('')}concat=n=${segments.length}:v=0:a=1[aout]`;
+  const pcm = /\.(mkv|mov)$/.test(out);
   try {
-    await run(FFMPEG, ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', '-movflags', '+faststart', out], { signal });
+    await run(FFMPEG, ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, ...segments.flatMap((s) => ['-i', s]),
+      '-filter_complex', graph, '-map', '0:v:0', '-map', '[aout]', '-c:v', 'copy',
+      ...(pcm ? ['-c:a', 'pcm_f32le'] : ['-c:a', 'aac', '-b:a', '256k', '-movflags', '+faststart']), '-ar', '48000', '-ac', '2', out], { signal });
   } finally {
     await fsp.rm(list, { force: true });
   }
@@ -209,8 +222,12 @@ export async function mixSoundtrack({ video, out, music = [], voice = [], musicV
       mixIn.push('[mduck]');
     } else mixIn.push('[mbus]');
   }
-  parts.push(`${mixIn.join('')}amix=inputs=${mixIn.length}:normalize=0:dropout_transition=0:duration=first,${normalize ? LOUDNORM : 'aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo'}[aout]`);
+  // End at the picture length (apad + -t), not -shortest: with copied B-frame video (x264 slow), ffmpeg 5.1 ends
+  // -shortest at the last video packet's decode time, ~100 ms before the end, which clipped the closing sound.
+  const vlen = (await probe(video).catch(() => ({}))).videoDuration;
+  parts.push(`${mixIn.join('')}amix=inputs=${mixIn.length}:normalize=0:dropout_transition=0:duration=first,${vlen ? 'apad,' : ''}${normalize ? LOUDNORM : 'aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo'}[aout]`);
   const pcm = /\.(mkv|mov)$/.test(out);
-  args.push('-filter_complex', parts.join(';'), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy', ...(pcm ? ['-c:a', 'pcm_f32le'] : ['-c:a', 'aac', '-b:a', '256k']), '-ar', '48000', '-shortest', ...(pcm ? [] : ['-movflags', '+faststart']), out);
+  args.push('-filter_complex', parts.join(';'), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy', ...(pcm ? ['-c:a', 'pcm_f32le'] : ['-c:a', 'aac', '-b:a', '256k']), '-ar', '48000',
+    ...(vlen ? ['-t', vlen.toFixed(6)] : ['-shortest']), ...(pcm ? [] : ['-movflags', '+faststart']), out);
   await run(FFMPEG, args, { signal });
 }

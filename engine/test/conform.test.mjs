@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-process.env.ENGINE_X264_PRESET = 'ultrafast';
+process.env.ENGINE_X264_PRESET = 'veryfast'; // has B-frames, like the production preset (ultrafast has none)
 const ff = await import('../lib/ffmpeg.js');
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const FFPROBE = process.env.FFPROBE || 'ffprobe';
@@ -21,7 +21,7 @@ function streams(file) {
   const j = JSON.parse(spawnSync(FFPROBE, ['-v', 'error', '-print_format', 'json', '-show_streams', '-count_packets', file]).stdout);
   const v = j.streams.find((s) => s.codec_type === 'video');
   const a = j.streams.find((s) => s.codec_type === 'audio');
-  return { v: Number(v.duration), frames: Number(v.nb_read_packets), rate: v.avg_frame_rate, r: v.r_frame_rate, a: a && Number(a.duration) };
+  return { v: Number(v.duration), vstart: Number(v.start_time), astart: a && Number(a.start_time), frames: Number(v.nb_read_packets), rate: v.avg_frame_rate, r: v.r_frame_rate, a: a && Number(a.duration) };
 }
 // Source clip: `vdur` s of 30 fps picture with `adur` s of tone (adur 0 → no audio track at all).
 function source(name, vdur, adur) {
@@ -30,6 +30,26 @@ function source(name, vdur, adur) {
   args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', ...(adur ? ['-c:a', 'aac'] : []), f(name));
   sh(args);
   return f(name);
+}
+
+// A decoded AAC file may keep its last frame's padding (ffmpeg 5.1 doesn't trim it): up to 1024 samples, at the end only.
+const tailOk = (audio, picture) => audio - picture > -0.005 && audio - picture < 1024 / 48000 + 0.001;
+// Decoded audio (mono s16 at 48 kHz) and the times where a marker beep starts after silence.
+function decode(file) {
+  const r = spawnSync(FFMPEG, ['-v', 'error', '-i', file, '-map', '0:a:0', '-ac', '1', '-ar', '48000', '-f', 's16le', '-'], { maxBuffer: 1 << 28 });
+  if (r.status) throw new Error(String(r.stderr));
+  return new Int16Array(r.stdout.buffer, r.stdout.byteOffset, r.stdout.length >> 1);
+}
+function onsets(pcm, gap = 0.3) {
+  const out = [];
+  let last = -Infinity;
+  const thr = 0.02 * 32768;
+  for (let i = 0; i < pcm.length; i++) {
+    if (Math.abs(pcm[i]) < thr) continue;
+    if (i - last > gap * 48000) out.push(i / 48000);
+    last = i;
+  }
+  return out;
 }
 
 test('conform: short audio padded, long audio trimmed, picture whole 24 fps frames; concat is gap-free', { skip: !have && 'ffmpeg not installed' }, async () => {
@@ -63,7 +83,10 @@ test('conform: short audio padded, long audio trimmed, picture whole 24 fps fram
   assert.equal(cut.frames, Math.round(total * 24));
   assert.equal(cut.rate, '24/1', `cut frame rate ${cut.rate}`);
   assert.ok(Math.abs(cut.v - total) < 0.01, `cut video ${cut.v} vs ${total}`);
-  assert.ok(Math.abs(cut.a - total) < 0.03, `cut audio ${cut.a} vs ${total}`);
+  // Decoded, not container durations: the muxer's timestamp fix-ups can hide audio that really runs long.
+  const cutA = decode(f('cut.mp4')).length / 48000;
+  assert.ok(tailOk(cutA, total), `cut audio decodes to ${cutA}s vs picture ${total}s`);
+  assert.ok(Math.abs(cut.vstart - cut.astart) < 0.001, `cut picture starts at ${cut.vstart}s, sound at ${cut.astart}s`);
 
   // Mix: narration line near the end outruns the picture → extendTail, then the mix must cover it all.
   const voice = f('line.m4a');
@@ -74,9 +97,40 @@ test('conform: short audio padded, long audio trimmed, picture whole 24 fps fram
   await ff.mixSoundtrack({ video: f('cut.tail.mp4'), out: f('mix.mov'), voice: [{ file: voice, start: lineStart, duration: 3 }], normalize: false });
   await ff.normalizeAudio({ video: f('mix.mov'), out: f('master.mp4') });
   const m = streams(f('master.mp4'));
-  assert.ok(Math.abs(m.a - m.v) < 0.05, `master audio ${m.a} vs picture ${m.v}`);
-  assert.ok(m.a >= lineStart + 3, 'closing narration line plays to its end');
+  const mA = decode(f('master.mp4')).length / 48000;
+  assert.ok(tailOk(mA, m.v), `master audio decodes to ${mA}s vs picture ${m.v}s`);
+  assert.ok(mA >= lineStart + 3, 'closing narration line plays to its end');
   assert.equal(m.rate, '24/1');
+});
+
+test('concat keeps every segment\'s sound on its picture: no drift at the cuts', { skip: !have && 'ffmpeg not installed' }, async () => {
+  // Odd lengths (not on the AAC 1024-sample grid); each source has a short beep at t=0 and silence after it.
+  const lens = [1.3, 0.9, 1.7, 1.25, 2.1, 0.8, 1.45, 1.05, 1.9, 1.15, 0.95, 1.6];
+  const segs = [];
+  const starts = [];
+  let t = 0;
+  for (const [k, d] of lens.entries()) {
+    const src = f(`beep${k}.mp4`);
+    sh(['-f', 'lavfi', '-i', `testsrc=s=160x90:r=30:d=${d + 0.5}`, '-f', 'lavfi', '-i', 'sine=f=1000:r=48000:d=0.08', '-af', 'apad', '-t', String(d + 0.5),
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', src]);
+    const out = f(`bseg${k}.mp4`);
+    await ff.conform({ input: src, out, W: 160, H: 90, duration: d, hasAudio: true });
+    segs.push(out);
+    starts.push(t);
+    t += ff.segmentLength(d);
+  }
+  await ff.concat({ segments: segs, out: f('bcut.mp4') });
+  await ff.normalizeAudio({ video: f('bcut.mp4'), out: f('bmaster.mp4') });
+  for (const file of ['bcut.mp4', 'bmaster.mp4']) {
+    const pcm = decode(f(file));
+    const st = streams(f(file));
+    assert.equal(st.frames, Math.round(t * 24), `${file} frames`);
+    assert.ok(Math.abs(st.vstart - st.astart) < 0.001, `${file}: picture starts at ${st.vstart}s, sound at ${st.astart}s`);
+    assert.ok(tailOk(pcm.length / 48000, t), `${file}: decoded audio ${pcm.length / 48000}s vs picture ${t}s`);
+    const got = onsets(pcm);
+    assert.equal(got.length, starts.length, `${file}: one beep per segment (${got.map((x) => x.toFixed(3))})`);
+    for (const [k, s] of starts.entries()) assert.ok(Math.abs(got[k] - s) < 0.006, `${file}: segment ${k} sound at ${got[k].toFixed(4)}s, picture cut at ${s.toFixed(4)}s`);
+  }
 });
 
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
