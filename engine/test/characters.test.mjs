@@ -233,7 +233,7 @@ test('identity lock: real people go to reference-to-video models, ahead of first
   const k = cat.getModel('apimart/kling-v4');
   const t = await ch.applyCharacters({ model: k.id, prompt: 'Justin waves', characters: ['ch_justin'], image: 'a_kf', identityLock: false }, k);
   assert.equal(t.refMode, undefined);
-  assert.match(t.prompt, /^Characters \(keep their look consistent\): Justin: Late 30s.*Staging: keep Justin's face visible/);
+  assert.match(t.prompt, /^Characters \(keep their look consistent\): Justin: Late 30s.*Staging: open with Justin's face clearly visible/);
   // Seedance never gets a real person's photos as references; a fictional character is fine
   const sd = cat.getModel('apimart/seedance-2.0');
   assert.equal(ch.refsOk(sd, [JUSTIN]), false);
@@ -248,7 +248,7 @@ test('generate(): first-frame model makes a keyframe from the refs, then animate
   const r = await cat.generate({ model: 'local/animatic', prompt: 'Justin looks out to sea', characters: ['ch_justin'], keyframeModel: 'local/plate', aspect: '16:9', duration: 1, identityLock: false, likeness: false });
   assert.equal(r.asset.kind, 'video');
   assert.deepEqual(r.asset.characters, ['ch_justin']);
-  assert.match(r.asset.prompt, /^Characters \(keep their look consistent\): Justin.*Staging: keep Justin's face visible/);
+  assert.match(r.asset.prompt, /^Characters \(keep their look consistent\): Justin.*Staging: open with Justin's face clearly visible/);
 });
 
 test('likeness summary: average, worst second, flags below threshold, ignores frames without the face', async () => {

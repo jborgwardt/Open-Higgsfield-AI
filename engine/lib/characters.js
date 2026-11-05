@@ -488,7 +488,9 @@ export function characterFallback(m, chars, { identityLock = true, hasImage = fa
 
 const names = (chars) => chars.map((c) => c.name).filter(Boolean).join(' and ') || 'the character';
 /** Staging that keeps a first-frame model from inventing a new face mid-shot. */
-export const stagingLine = (chars) => `Staging: keep ${names(chars)}'s face visible and close to the opening angle for the whole shot; no big head turns, spins or turning away from camera. `;
+// Only used when a real person must go through a first-frame-only model (no reference mode available): open on the
+// face and keep it in view, as normal coverage would — people still move and turn naturally.
+export const stagingLine = (chars) => `Staging: open with ${names(chars)}'s face clearly visible and keep it in view for most of the shot. `;
 
 /**
  * Rewrite a generate() job that names characters into what the model can actually take:

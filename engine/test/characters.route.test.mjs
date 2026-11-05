@@ -125,6 +125,6 @@ test('Veo 3.1 Quality first-frame + real person with identity lock off → keyfr
   const b = lastPost('apimart.ai/v1/videos/generations');
   assert.equal(b.model, 'veo3.1-quality');
   assert.equal(b.generation_type, 'frame');
-  assert.match(b.prompt, /Staging: keep Justin's face visible/);
+  assert.match(b.prompt, /Staging: open with Justin's face clearly visible/);
   assert.equal(r.asset.model, 'apimart/veo3.1-quality');
 });
