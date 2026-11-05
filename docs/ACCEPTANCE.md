@@ -91,3 +91,13 @@ Justin's correction: the 5–10 minute requirement means the app must be *capabl
 | Export | A single clip was exported (Photos + share sheet) on 3 devices | pass |
 | Exporting a full film master | Not exercised | open |
 | Real 5-minute master: audio continuity, loudness over its length | Not produced, by design | open (optional later) |
+
+## Install routes (2026-11-05 18:55)
+
+- **Signed OTA:** https://ota.heil.haus:8443/film-studio.html, Apple Development wildcard profile (team F2M8XJL997). The profile covers both devices and expires 2027-08-30.
+- **SignTools:** sign.heil.haus app `b46658af-d098-4534-9163-b2ab20d75baa`, "FilmStudio-1.0.0-c70102a (Film Studio).ipa", profile justin_dev, original bundle ID com.borgwardt.filmstudio. Signed by the self-hosted builder at 18:51. Install page: https://sign.heil.haus/apps/b46658af-d098-4534-9163-b2ab20d75baa/install (basic auth).
+- **Feather source:** https://ota.heil.haus:8443/feather-source.json (AltStore-format repo). It lists Film Studio 1.0.0 (1) with the same IPA. `~/OTA/rebuild-film-studio.sh` (and the isolated `~/OTA/rebuild-film-studio-staged.sh`) now keep its size and date in step with the published IPA.
+- **Feather on the devices:**
+  - waldgeist (iPhone): Feather 2.9.0 (thewonderofyou.Feather) is installed. Whether the source has been added, and which certificate Feather signs with, is NOT verified.
+  - Endbahnhof (iPad): Feather is not installed.
+- **Installed now (devicectl):** Film Studio 1.0.0 (1) from c70102a on both devices.
