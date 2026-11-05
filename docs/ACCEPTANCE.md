@@ -16,16 +16,16 @@ Owner: integration session. Updated 2026-11-05.
 
 Test engine: `studio-test-qa`, a throwaway container on the VPS reached through a tunnel. It holds a Grok access token only, with no refresh token, so the live login can't be affected.
 
-| Step | iPhone 17 Pro sim | iPhone 15 Pro Max sim (iOS 27) | iPad Pro 13" sim |
+| Step | iPhone 17 Pro sim | iPhone 15 Pro Max sim (iOS 27) | iPad Pro 13" M4 sim (iOS 27) |
 |---|---|---|---|
-| Sign in (access code) | pass | pass | pass (Return didn't submit; the Sign In button did) |
+| Sign in (access code) | pass | pass | pass |
 | Home: still images, film-reel hero, gold accent | pass | pass | n/a (opens on Create) |
 | Pick Grok Imagine Video 1.5, prompt, Generate | pass (asset `a_ebd753d34ceb`, 8.04 s, h264 + AAC) | — (no new generation) | — |
 | Progress: Generating view, then pill on Home (1% → 10%) | pass | — | — |
 | Open result from Library | pass | pass | pass |
-| Play / pause / seek −10 s / replay | pass | pass | not checked |
-| Save to Photos | **crashed**, then fixed in `256a958` and passes; file in Photos is 2,866,650 bytes with video + audio | pass ("Saved to Photos" shown, file present) | not checked |
-| Share / export (share sheet shows the mp4, 2.9 MB) | pass | pass | not checked |
+| Play / pause / seek −10 s / replay | pass | pass | pass |
+| Save to Photos | **crashed**, then fixed in `256a958` and passes; file in Photos is 2,866,650 bytes with video + audio | pass ("Saved to Photos" shown, file present) | pass ("Saved to Photos") |
+| Share / export (share sheet shows the mp4, 2.9 MB) | pass | pass | pass (popover anchored top-left, not at Share) |
 | Films list → film detail (QA-05), director shows "No AI (split my script)" (QA-02) | — | pass | — |
 | Sidebar layout, readable selected row (QA-13) | n/a | n/a | pass |
 
@@ -34,6 +34,12 @@ Test engine: `studio-test-qa`, a throwaway container on the VPS reached through 
 - Save to Photos crash (EXC_BREAKPOINT: a main-actor closure ran on the Photos queue): `256a958`.
 - Full players use a `.playback` audio session, so sound plays with the silent switch on: `256a958`.
 - UI-test false failures fixed: progress pill timing, filter IDs, plan wait.
+
+### Mac sign-in (reported frozen)
+- Cause: the passkey window only appears once Film Studio is the active app. Launched in the background, the first attempt waited about 90 s with only a spinner.
+- Logs: the second attempt worked (passkey 17:47:16, signed in 17:47:19).
+- Fix (`f21a119`, source only): activate the app before sign-in, show "Waiting for the Pocket ID passkey window…" and add a Cancel button.
+- Not yet in the installer: the user is in the live Mac session, which runs from the OTA build folder.
 
 ### Open / needs a human
 - **Audio audibility:** the file has an AAC track, but the simulator's player shows muted and I can't hear it. Check by ear on the phone.
