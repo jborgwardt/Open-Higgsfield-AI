@@ -190,4 +190,55 @@ matched.
 * Deflicker, hqdn3d/atadenoise/vaguedenoiser — see above.
 * Interpolation to 30/60 fps — soap-opera look on film content; only sub-23 fps sources are interpolated.
 
-END_TO_END
+## End-to-end (image `studio:pp-test` on the VPS, API calls only)
+
+Enhance jobs (wall time incl. queueing; loudness = EBU R128 of the result):
+
+| Job | Wall | Steps | Loudness before → after |
+|---|---|---|---|
+| Phone clip 18.5 s 1080×1920: soft subs (`vad:false`), `clean`, denoise | 217 s | whisper 19 s, nlmeans + encode 195 s | −26.5 → −16.0 LUFS, −1.5 dBTP |
+| Veo 8 s 720p: burned subs | 24 s | whisper 19.5 s, encode 3.1 s | −20.4 → −16.1 LUFS |
+| 16 fps clip 8 s 720p: smooth motion + burned “box” subs | 91 s | whisper 18 s, interpolate + encode 70 s | −22.2 → −16.0 LUFS |
+| Gemini 8 s 1080p: soft subs (video copied) | 22 s | whisper 19.6 s, mux 1 s | −27.1 → −16.3 LUFS, −1.4 dBTP |
+| Denoise only + a second job queued and cancelled | 193 s | | second job: `queued` → `cancelled` |
+| Transcript of a 4 min 53 s film | 72–97 s | 290 words, 53 cues | |
+
+whisper has a ≈ 18 s fixed cost per job (model load + one 30 s window), so short clips cost about the same as
+30-second ones.
+
+Long-form masters (6 shots / 48 s, 1080p, imported clips: 4 × Gemini 1080p, Veo 720p, a 16 fps clip):
+
+| Brief | Assembly wall | Master |
+|---|---|---|
+| plain (post off) | 40.8 s | 48.3 s, −15.9 LUFS, −1.4 dBTP |
+| soft subs + colour match + `clean` + smooth motion | 142 s (whisper 29.6 s) | 48.0 s, −15.9 LUFS, 7 cues, `mov_text` track |
+| burned subs | 73 s (burn-in encode 36.4 s) | −15.9 LUFS |
+| soft subs + uploaded music + local narration | 136 s (whisper 30.6 s) | 48.1 s, −16.0 LUFS, −1.5 dBTP, 9 cues |
+
+Cloud paths (paid, proven once each):
+
+| Job | Wall | Result |
+|---|---|---|
+| Topaz (Proteus) 720p → 1080p, 8 s Veo clip (est. $0.159) | 47 s (43 s on fal) | 1920×1080, sound kept; visibly finer hair / beard / skin texture than Lanczos |
+| ElevenLabs isolation + soft subs, 8 s Gemini clip (est. 135 credits) | 22 s (isolation 1.2 s) | −26.4 → −16.0 LUFS, transcript intact |
+| Long-form, 2 shots: `upscale: topaz` (Veo clip only) + `audioCleanup: isolate` + soft subs | 79 s first, 24 s re-assembly | derivatives cached on the source assets; no new cloud calls the second time |
+
+ElevenLabs actually charged ≈ 715 credits per minute of audio in these runs (1,240 credits for 104 s).
+
+The cost estimate in `/post/estimate` uses 1,000 credits per minute, a deliberate ceiling above the measured rate.
+
+Verdict on the paid paths (both stay **off by default**, opt-in per job / per production):
+
+* **Topaz upscale**: kept as an opt-in. A Lanczos-vs-Topaz crop of the same 720p→1080p frame shows real
+  extra detail (beard, forehead lines, hair edges) with a slight contrast increase. Only worth it for sub-1080p
+  sources; native 1080p clips are never sent.
+* **ElevenLabs isolation**: kept as an opt-in, but not shown to beat the local `clean` (RNNoise) chain: its
+  output is resynthesised, so it can't be scored against a reference, and on generated dialogue the transcript
+  was the same. `clean` stays the recommended choice; `isolate` is for genuinely noisy recordings.
+
+### Known issue (pre-existing, not changed here)
+
+Conformed segments keep the source clip's audio overhang (e.g. 8.04 s of audio on 7.96 s of picture), so the
+concat demuxer leaves ~85 ms timestamp gaps at cuts and the master reports a non-integer frame rate
+(e.g. 937984/39371). Burned-in masters are re-encoded at a clean 24 fps. Suggested fix in `conform`: pad the
+picture to the trimmed duration (`tpad=stop_mode=clone`) or trim the audio to the frame count.
