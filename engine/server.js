@@ -13,6 +13,7 @@ import { comfyPing } from './lib/providers/comfy.js';
 import { openaiPing } from './lib/providers/openai.js';
 import { directorBackend, chosenDirector, listDirectors, chooseDirector } from './lib/director.js';
 import { claudeStatus } from './lib/providers/claude-cli.js';
+import * as screening from './lib/screening.js';
 import { hasFfmpeg } from './lib/ffmpeg.js';
 import { soundCatalog } from './lib/sound.js';
 import { oidcConfig, loginRedirect, finishLogin, sessionFor, endSession, sessionCookie, clearSessionCookie } from './lib/oidc.js';
@@ -120,6 +121,7 @@ async function status(fresh) {
     directorChoice: chosenDirector(), // { id, model } — null id means the user has not picked one yet
     claude: await claudeStatus({ fresh }),
     directorModels: { apimart: APIMART_LLMS },
+    screening: screening.screeningAvailable(),
     eleven: { available: elevenAvailable(), models: ELEVEN_TTS_MODELS },
     ffmpeg: ffOk,
   };
@@ -215,6 +217,13 @@ route('POST', '/productions/:id/plan', async ({ params }) => lf.hydrate(await lf
 route('POST', '/productions/:id/start', async ({ params }) => lf.hydrate(await lf.start(params.id)));
 route('POST', '/productions/:id/pause', async ({ params }) => { await lf.pause(params.id); return lf.hydrate(prod(params.id)); });
 route('POST', '/productions/:id/assemble', async ({ params }) => { prod(params.id); lf.assemble(params.id); return lf.hydrate(prod(params.id)); });
+route('POST', '/productions/:id/screen', async ({ params }) => {
+  if (!prod(params.id).master?.assetId) throw new HttpError(409, 'assemble a master first');
+  if (!screening.screeningAvailable()) throw new HttpError(409, 'screening needs a Gemini API key');
+  screening.screenProduction(params.id).catch(() => {});
+  return lf.hydrate(prod(params.id));
+});
+route('POST', '/productions/:id/screen/apply', async ({ params, body }) => { prod(params.id); return lf.hydrate(await screening.applyScreening(params.id, body)); });
 route('POST', '/productions/:id/autoimport', async ({ params, body }) => lf.hydrate(await lf.setAutoImport(params.id, body.on)));
 route('POST', '/productions/:id/shots', async ({ params, body }) => { await lf.addShot(params.id, body.afterId, body); return lf.hydrate(prod(params.id)); });
 route('PATCH', '/productions/:id/scenes/:scid', async ({ params, body }) => { await lf.updateScene(params.id, params.scid, body); return lf.hydrate(prod(params.id)); });

@@ -684,6 +684,8 @@ export async function assemble(id) {
       if (x.status !== 'running' && x.shots.every((s) => TERMINAL.includes(s.status))) x.status = 'done';
       log(x, `Master ready: ${shots.length} shots, ${Math.round(info.duration || 0)}s`);
     });
+    // Screening: Gemini watches the new cut and writes notes (cheap; one call per master).
+    if (b.autoScreen) import('./screening.js').then((m) => (m.screeningAvailable() ? m.screenProduction(id) : null)).catch(() => {});
   } catch (e) {
     await mutate(id, (x) => { x.assembling = false; log(x, `Assembly failed: ${e.message}`); });
   } finally {
