@@ -59,7 +59,13 @@ async function interact(body, { onStatus, signal, label, revision = true }) {
     it = await fetchJSON('google', `${API}/interactions/${it.id}`, { headers: headers(), signal });
     onStatus?.({ message: `${label} · ${it.status}` });
   }
-  if (it.status === 'failed') throw new ProviderError('google', 0, it.error?.message || 'interaction failed', { retryable: true });
+  if (it.status === 'failed') {
+    // The API reports why in errors[] (e.g. INVALID_ARGUMENT when Omni refuses a real person's likeness).
+    const e0 = it.errors?.[0] || it.error || {};
+    const code = e0.code || e0.status || '';
+    const msg = e0.message || it.error?.message || 'interaction failed';
+    throw new ProviderError('google', 0, code ? `${code}: ${msg}` : msg, { retryable: !/INVALID_ARGUMENT|PERMISSION_DENIED|FAILED_PRECONDITION|SAFETY|BLOCKED/i.test(`${code} ${msg}`) });
+  }
   return it;
 }
 
@@ -82,7 +88,13 @@ export async function googleVideo(p, ctx = {}) {
     background: true,
   };
   if (p.previousInteractionId) body.previous_interaction_id = p.previousInteractionId;
-  const it = await interact(body, { ...ctx, label: p.previousInteractionId ? 'Extending with Omni Flash' : 'Rendering with Omni Flash' });
+  let it;
+  try {
+    it = await interact(body, { ...ctx, label: p.previousInteractionId ? 'Extending with Omni Flash' : 'Rendering with Omni Flash' });
+  } catch (e) {
+    if (p.image && /INVALID_ARGUMENT/.test(e.message)) e.message += ' — Gemini Omni refuses to animate stills of real people; use Veo 3.1, Kling, Seedance or Grok for character shots';
+    throw e;
+  }
   const file = await extractMedia(it, 'video', ctx.signal);
   return { ...file, ref: { provider: 'google', interactionId: it.id } };
 }

@@ -83,14 +83,17 @@ const pick = (v, list, fallback) => (list.includes(v) ? v : fallback);
 const res = (r, list, fallback) => pick(String(r || '').toLowerCase(), list, fallback);
 const roles = (img, end) => [{ url: img, role: 'first_frame' }, ...(end ? [{ url: end, role: 'last_frame' }] : [])];
 
-const veo = ({ prompt, img, end, aspect, resolution }) => ({
+// refs = character reference images (reference-to-video). A start frame always wins over refs on models that
+// can't combine the two; the router (characters.js) only sends refs without a frame to those.
+const asRefs = (refs) => (refs || []).map((url) => ({ url, role: 'reference_image' }));
+const veo = ({ prompt, img, end, aspect, resolution, refs }) => ({
   prompt, duration: 8, aspect_ratio: pick(aspect, ['16:9', '9:16'], '16:9'), resolution: res(resolution, ['720p', '1080p', '4k'], '720p'),
-  ...(img && { image_urls: [img, end].filter(Boolean), generation_type: 'frame' }),
+  ...(img ? { image_urls: [img, end].filter(Boolean), generation_type: 'frame' } : refs?.length ? { image_urls: refs.slice(0, 3), generation_type: 'reference' } : {}),
 });
-const seedance = (maxDur) => ({ prompt, img, end, aspect, resolution, dur, seed }) => ({
+const seedance = (maxDur, maxRefs) => ({ prompt, img, end, aspect, resolution, dur, seed, refs }) => ({
   prompt, duration: clamp(Math.round(dur), 4, maxDur), resolution: res(resolution, ['480p', '720p', '1080p'], '720p'),
   size: img ? 'adaptive' : pick(aspect, ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], '16:9'),
-  ...(img && { image_with_roles: roles(img, end) }), ...(seed != null && { seed }),
+  ...(img ? { image_with_roles: roles(img, end) } : refs?.length ? { image_with_roles: asRefs(refs.slice(0, maxRefs)) } : {}), ...(seed != null && { seed }),
 });
 
 const BODY = {
@@ -100,12 +103,27 @@ const BODY = {
     prompt, duration: clamp(Math.round(dur), 3, 15), mode: { '720p': 'std', '1080p': 'pro', '4k': '4k' }[res(resolution, ['720p', '1080p', '4k'], '720p')],
     aspect_ratio: pick(aspect, ['16:9', '9:16', '1:1'], '16:9'), watermark: false, ...(img && { image_urls: [img, end].filter(Boolean) }),
   }),
-  'kling-v4': ({ prompt, img, end, aspect, resolution, dur }) => ({
+  'kling-v4': ({ prompt, img, end, aspect, resolution, dur, refs }) => ({
     prompt, duration: clamp(Math.round(dur), 3, 30), resolution: res(resolution, ['720p', '1080p'], '720p'),
     ...(img ? { image_urls: [img, end].filter(Boolean) } : { aspect_ratio: pick(aspect, ['16:9', '9:16', '1:1', '21:9'], '16:9') }),
+    // Reference-based generation: refs are @Image1… in the prompt.
+    ...(!img && refs?.length && { image_with_roles: asRefs(refs.slice(0, 10)), omni_reference_task_type: 'reference' }),
   }),
-  'seedance-2.0': seedance(15),
-  'seedance-2.5': (a) => ({ ...seedance(30)(a), watermark: false }),
+  'kling-v3-omni': ({ prompt, img, end, aspect, resolution, dur, refs }) => ({
+    prompt, duration: clamp(Math.round(dur), 3, 15), mode: { '720p': 'std', '1080p': 'pro', '4k': '4k' }[res(resolution, ['720p', '1080p', '4k'], '720p')],
+    aspect_ratio: pick(aspect, ['16:9', '9:16', '1:1'], '16:9'),
+    // Refs are <<<image_N>>> in the prompt; image_urls and image_with_roles are mutually exclusive.
+    ...(img ? { image_with_roles: [{ url: img, role: 'first_frame' }, ...(end ? [{ url: end, role: 'last_frame' }] : [])] } : refs?.length ? { image_urls: refs.slice(0, 7) } : {}),
+  }),
+  'seedance-2.0': seedance(15, 9),
+  'seedance-2.5': (a) => ({ ...seedance(30, 30)(a), watermark: false, ...(!a.img && a.refs?.length && { omni_reference_task_type: 'reference' }) }),
+  // Reference-to-video: refs are "image 1…" in the prompt; an optional first frame rides along (≤ 5 images in all).
+  'wan2.7-r2v': ({ prompt, img, aspect, resolution, dur, seed, refs }) => ({
+    prompt, duration: clamp(Math.round(dur), 2, 15), resolution: res(resolution, ['720p', '1080p'], '1080p').toUpperCase(), watermark: false, prompt_extend: false,
+    ...(img ? {} : { size: pick(aspect, ['16:9', '9:16', '1:1', '4:3', '3:4'], '16:9') }),
+    image_with_roles: [...asRefs((refs || []).slice(0, img ? 4 : 5)), ...(img ? [{ url: img, role: 'first_frame' }] : [])],
+    ...(seed != null && { seed }),
+  }),
   'wan2.6': ({ prompt, img, aspect, resolution, dur, seed }) => ({
     prompt, duration: nearest([5, 10, 15], dur), resolution: res(resolution, ['720p', '1080p'], '720p'), watermark: false,
     ...(img ? { image_urls: [img] } : { aspect_ratio: pick(aspect, ['16:9', '9:16', '1:1', '4:3', '3:4'], '16:9') }), ...(seed != null && { seed }),
@@ -117,15 +135,58 @@ const BODY = {
   }),
 };
 
-/** p: { model, prompt, image (URL), endImage (URL), aspect, resolution, duration, seed } */
-export async function apimartVideo(p, ctx = {}) {
+/** Request body for /videos/generations (exported for request-shape tests). */
+export function apimartVideoBody(p) {
   const build = BODY[p.model];
   if (!build) throw new ProviderError('apimart', 0, `no request shape for ${p.model}`);
-  const body = { model: p.model, ...build({ prompt: String(p.prompt || '').slice(0, 4000), img: p.image, end: p.endImage, aspect: p.aspect, resolution: p.resolution, dur: Number(p.duration) || 5, seed: p.seed }) };
+  return { model: p.model, ...build({ prompt: String(p.prompt || '').slice(0, 4000), img: p.image, end: p.endImage, aspect: p.aspect, resolution: p.resolution, dur: Number(p.duration) || 5, seed: p.seed, refs: (p.refs || []).filter(Boolean) }) };
+}
+
+/** p: { model, prompt, image (URL), endImage (URL), aspect, resolution, duration, seed, refs: [URL | asset://…] } */
+export async function apimartVideo(p, ctx = {}) {
+  const body = apimartVideoBody(p);
   const j = check(await fetchJSON('apimart', `${APIMART}/videos/generations`, { method: 'POST', headers: H(), body: JSON.stringify(body), signal: ctx.signal }));
   const d = Array.isArray(j.data) ? j.data[0] : j.data || j;
   const taskId = d?.task_id || d?.id || j.task_id;
   if (!taskId) throw new ProviderError('apimart', 0, `no task id in reply: ${JSON.stringify(j).slice(0, 200)}`);
   ctx.onStatus?.({ message: `Queued on ApiMart · ${p.label || p.model}`, remoteId: taskId });
   return waitTask(taskId, 'video', { ...ctx, label: p.label || 'ApiMart' });
+}
+
+/**
+ * Seedance won't take real faces as raw URLs; they go through ApiMart's private avatar library first (free,
+ * moderated once). Returns the approved asset://… id. Docs: /videos/seedance-2-0/private-avatar.
+ */
+export function apimartAvatarBody({ url, name }) {
+  return { group: { name: 'studio-characters' }, project_name: 'default', asset_type: 'Image', assets: [{ url, name: String(name || 'reference').slice(0, 60) }] };
+}
+
+export async function apimartAvatarAsset({ url, name }, { signal, onStatus } = {}) {
+  const body = JSON.stringify(apimartAvatarBody({ url, name }));
+  let j;
+  try {
+    j = check(await fetchJSON('apimart', `${APIMART}/seedance2/private-avatar`, { method: 'POST', headers: H(), body, signal }));
+  } catch (e) {
+    if (e.status !== 404) throw e;
+    j = check(await fetchJSON('apimart', `${APIMART}/seedance2/private-avatar/assets`, { method: 'POST', headers: H(), body, signal }));
+  }
+  const d = Array.isArray(j.data) ? j.data[0] : j.data || j;
+  const taskId = d?.id || d?.task_id;
+  if (!taskId) throw new ProviderError('apimart', 0, `avatar upload returned no task id: ${JSON.stringify(j).slice(0, 200)}`);
+  onStatus?.({ message: 'Registering the character with Seedance (moderation)' });
+  for (let i = 0; i < 120; i++) {
+    await sleep(i < 5 ? 2000 : 5000, signal);
+    const t = check(await fetchJSON('apimart', `${APIMART}/tasks/${encodeURIComponent(taskId)}`, { headers: H(false), signal }));
+    const td = t.data && !Array.isArray(t.data) ? t.data : t;
+    const st = String(td.status || '').toLowerCase();
+    const r = td.result || {};
+    const usable = r.usable_assets?.[0]?.asset_url || r.asset_url;
+    if (usable) return usable;
+    if (['failed', 'error', 'cancelled', 'canceled'].includes(st)) {
+      const why = r.failed_assets?.[0]?.reason || r.failed_assets?.[0]?.message || td.error?.message || '';
+      throw new ProviderError('apimart', 0, `Seedance moderation refused this reference photo${why ? `: ${why}` : ''}`);
+    }
+    if (['completed', 'succeeded', 'success'].includes(st)) throw new ProviderError('apimart', 0, 'avatar task finished without an asset');
+  }
+  throw new ProviderError('apimart', 0, 'avatar moderation timed out');
 }

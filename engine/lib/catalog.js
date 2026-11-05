@@ -10,7 +10,7 @@ import { replicateRun, replicateUpload } from './providers/replicate.js';
 import { muapiRun, muapiUpload, muapiUrl } from './providers/muapi.js';
 import { kieJob, kieVeo, kieUpload } from './providers/kie.js';
 import { comfyRun, listTemplates } from './providers/comfy.js';
-import { apimartVideo, apimartUpload, apimartAvailable } from './providers/apimart.js';
+import { apimartVideo, apimartUpload, apimartAvailable, apimartAvatarAsset } from './providers/apimart.js';
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const first = (o) => (Array.isArray(o) ? o[0] : o);
@@ -32,17 +32,19 @@ export const PROVIDERS = {
 /* ------------------------------------------------------------------ video models */
 
 const VIDEO = [
-  { id: 'xai/grok-imagine-video-1.5', provider: 'xai', label: 'Grok Imagine Video 1.5', blurb: 'Native 1080p with audio, start + end frame.', caps: { t2v: true, i2v: true, end: true, extend: true }, durations: [6, 8, 10, 15], aspects: AR_ALL, resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
+  { id: 'xai/grok-imagine-video-1.5', provider: 'xai', label: 'Grok Imagine Video 1.5', blurb: 'Native 1080p with audio, start + end frame, up to 14 character references (720p).', caps: { t2v: true, i2v: true, end: true, extend: true, refs: 14, refsWithImage: true, refTag: 'xai' }, durations: [6, 8, 10, 15], aspects: AR_ALL, resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
   { id: 'xai/grok-imagine-video-1.5-lite', provider: 'xai', label: 'Grok Imagine Video 1.5 Lite', blurb: 'Cheapest Grok video per second.', caps: { t2v: true, i2v: true, end: true, extend: true }, durations: [6, 8, 10, 15], aspects: AR_ALL, resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
-  { id: 'xai/grok-imagine-video', provider: 'xai', label: 'Grok Imagine Video (classic)', blurb: 'Supports native extension.', caps: { t2v: true, i2v: true, end: false, extend: true }, durations: [6, 8, 10, 15], aspects: AR_ALL, resolutions: ['480p', '720p'], resolutionDefault: '720p', maxClip: 15 },
-  { id: 'google/gemini-omni-1.1-flash', provider: 'google', label: 'Gemini Omni Flash', blurb: 'Google video with audio, first+last frame, multi-turn extension.', caps: { t2v: true, i2v: true, end: true, extend: true }, durations: [4, 6, 8, 10], aspects: ['16:9', '9:16'], resolutions: ['360p', '720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 10 },
+  { id: 'xai/grok-imagine-video', provider: 'xai', label: 'Grok Imagine Video (classic)', blurb: 'Supports native extension and up to 7 character references.', caps: { t2v: true, i2v: true, end: false, extend: true, refs: 7, refTag: 'xai' }, durations: [6, 8, 10, 15], aspects: AR_ALL, resolutions: ['480p', '720p'], resolutionDefault: '720p', maxClip: 15 },
+  { id: 'google/gemini-omni-1.1-flash', provider: 'google', label: 'Gemini Omni Flash', blurb: 'Google video with audio, first+last frame, multi-turn extension. Refuses real people\'s likeness.', caps: { t2v: true, i2v: true, end: true, extend: true, noRealPeople: true }, durations: [4, 6, 8, 10], aspects: ['16:9', '9:16'], resolutions: ['360p', '720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 10 },
   { id: 'apimart/veo3.1-quality', provider: 'apimart', label: 'Veo 3.1 Quality (ApiMart)', blurb: 'Top-tier Veo with native audio, start + end frame. 8 s clips.', caps: { t2v: true, i2v: true, end: true }, durations: [8], aspects: ['16:9', '9:16'], resolutions: ['720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 8 },
-  { id: 'apimart/veo3.1-fast', provider: 'apimart', label: 'Veo 3.1 Fast (ApiMart)', blurb: 'Cheaper Veo 3.1 with native audio, start + end frame. 8 s clips.', caps: { t2v: true, i2v: true, end: true }, durations: [8], aspects: ['16:9', '9:16'], resolutions: ['720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 8 },
+  { id: 'apimart/veo3.1-fast', provider: 'apimart', label: 'Veo 3.1 Fast (ApiMart)', blurb: 'Cheaper Veo 3.1 with native audio, start + end frame, or up to 3 character references. 8 s clips.', caps: { t2v: true, i2v: true, end: true, refs: 3, refTag: 'plain' }, durations: [8], aspects: ['16:9', '9:16'], resolutions: ['720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 8 },
   { id: 'apimart/kling-v3', provider: 'apimart', label: 'Kling 3.0 (ApiMart)', blurb: 'Kling 3.0, start + end frame, 3–15 s. 720p std / 1080p pro / 4k.', caps: { t2v: true, i2v: true, end: true }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1'], resolutions: ['720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 15 },
-  { id: 'apimart/kling-v4', provider: 'apimart', label: 'Kling V4 (ApiMart)', blurb: 'Kling V4 with native stereo audio, start + end frame, 3–30 s.', caps: { t2v: true, i2v: true, end: true }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '21:9'], resolutions: ['720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
-  { id: 'apimart/seedance-2.0', provider: 'apimart', label: 'Seedance 2.0 (ApiMart)', blurb: 'ByteDance Seedance 2.0 with audio, start + end frame, 4–15 s.', caps: { t2v: true, i2v: true, end: true }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
-  { id: 'apimart/seedance-2.5', provider: 'apimart', label: 'Seedance 2.5 (ApiMart)', blurb: 'Seedance 2.5 with audio, start + end frame, 4–30 s.', caps: { t2v: true, i2v: true, end: true }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
+  { id: 'apimart/kling-v4', provider: 'apimart', label: 'Kling V4 (ApiMart)', blurb: 'Kling V4 with native stereo audio, start + end frame or up to 10 character references, 3–30 s.', caps: { t2v: true, i2v: true, end: true, refs: 10, refTag: 'kling' }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '21:9'], resolutions: ['720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
+  { id: 'apimart/kling-v3-omni', provider: 'apimart', label: 'Kling 3.0 Omni (ApiMart)', blurb: 'Kling 3.0 Omni: up to 7 character references, start + end frame, 3–15 s.', caps: { t2v: true, i2v: true, end: true, refs: 7, refTag: 'omni' }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1'], resolutions: ['720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 15 },
+  { id: 'apimart/seedance-2.0', provider: 'apimart', label: 'Seedance 2.0 (ApiMart)', blurb: 'ByteDance Seedance 2.0 with audio, start + end frame or character references, 4–15 s.', caps: { t2v: true, i2v: true, end: true, refs: 9, refTag: 'plain' }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
+  { id: 'apimart/seedance-2.5', provider: 'apimart', label: 'Seedance 2.5 (ApiMart)', blurb: 'Seedance 2.5 with audio, start + end frame or character references, 4–30 s.', caps: { t2v: true, i2v: true, end: true, refs: 30, refTag: 'plain' }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
   { id: 'apimart/wan2.6', provider: 'apimart', label: 'Wan 2.6 (ApiMart)', blurb: 'Wan 2.6, start frame, 5 / 10 / 15 s.', caps: { t2v: true, i2v: true }, durations: [5, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'], resolutions: ['720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
+  { id: 'apimart/wan2.7-r2v', provider: 'apimart', label: 'Wan 2.7 Reference-to-Video (ApiMart)', blurb: 'Keeps characters consistent from up to 5 references (+ optional start frame), 2–15 s. Needs a character or start frame.', caps: { t2v: false, i2v: true, refs: 5, refsWithImage: true, refTag: 'plain' }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'], resolutions: ['720p', '1080p'], resolutionDefault: '1080p', maxClip: 15 },
   { id: 'apimart/wan3.0-video', provider: 'apimart', label: 'Wan 3.0 (ApiMart)', blurb: 'Wan 3.0 cinema video with audio, start + end frame, 2–30 s.', caps: { t2v: true, i2v: true, end: true }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
   { id: 'fal/wan22-a14b', provider: 'fal', label: 'Wan 2.2 A14B (fal)', blurb: 'Open weights, Apache-2.0. 720p, start + end frame.', caps: { t2v: true, i2v: true, end: true }, durations: [3, 5, 8], aspects: ['16:9', '9:16', '1:1'], resolutions: ['480p', '720p'], resolutionDefault: '720p', maxClip: 10 },
   { id: 'fal/ltxv-13b', provider: 'fal', label: 'LTX-Video 13B (fal)', blurb: 'Open weights, very fast.', caps: { t2v: false, i2v: true }, durations: [3, 5, 8], aspects: ['16:9', '9:16', '1:1'], resolutions: ['480p', '720p'], resolutionDefault: '720p', maxClip: 10 },
@@ -180,6 +182,14 @@ async function saveResult(r, { kind, signal, meta = {} }) {
   return getAsset(asset.id);
 }
 
+/** asset → asset://… id in ApiMart's Seedance avatar library (free; cached on the asset). */
+async function seedanceRef(asset, url, signal) {
+  if (asset.remote?.seedanceAsset) return asset.remote.seedanceAsset;
+  const id = await apimartAvatarAsset({ url, name: asset.id }, { signal });
+  updateAsset(asset.id, { remote: { ...(getAsset(asset.id)?.remote || {}), seedanceAsset: id } });
+  return id;
+}
+
 const falSize = (aspect) => { const { W, H } = ff.frameSize(aspect, 1280); return { width: Math.round(W / 16) * 16, height: Math.round(H / 16) * 16 }; };
 
 /* ------------------------------------------------------------------ generate */
@@ -194,18 +204,25 @@ export async function generate(job, { onStatus, signal } = {}) {
   if (m.provider === 'handoff') throw new Error('hand-off models are completed by importing a clip');
   const avail = availableProviders();
   if (!avail[m.provider]) throw new ProviderError(m.provider, 0, `${PROVIDERS[m.provider]?.label || m.provider} is not connected — open Providers`);
+  // Characters: route their best references into whatever this model can take (engine/lib/characters.js).
+  if (job.characters?.length) {
+    const next = await (await import('./characters.js')).applyCharacters(job, m, { onStatus, signal });
+    if (next.model !== job.model) return generate(next, { onStatus, signal }); // e.g. Omni can't animate real people
+    job = next;
+  }
   const P = m.provider;
   const slug = m.id.slice(P.length + 1);
   const ctx = { onStatus, signal };
   const startA = await materialize(job.image, signal);
   const endA = await materialize(job.endImage, signal);
-  const refAs = await Promise.all((job.refs || []).slice(0, m.refs ?? 0).map((r) => materialize(r, signal)));
+  const refMax = m.kind === 'image' ? m.refs ?? 0 : job.refMode ? m.caps?.refs ?? 0 : 0;
+  const refAs = await Promise.all((job.refs || []).slice(0, refMax).map((r) => materialize(r, signal)));
   const img = startA && (await asInput(P, startA, signal));
   const end = endA && m.caps?.end ? await asInput(P, endA, signal) : null;
   const refs = await Promise.all(refAs.map((a) => asInput(P, a, signal)));
   const dur = clamp(Number(job.duration) || 5, 1, m.maxClip || 15);
   const seed = Number.isInteger(job.seed) ? job.seed : undefined;
-  const meta = { model: m.id, prompt: job.prompt };
+  const meta = { model: m.id, prompt: job.prompt, ...(job.characterIds?.length && { characters: job.characterIds }) };
 
   if (m.kind === 'image') {
     let r;
@@ -240,7 +257,7 @@ export async function generate(job, { onStatus, signal } = {}) {
   }
 
   /* ---- video ---- */
-  if (!img && !m.caps?.t2v) throw new Error(`${m.label} needs a start frame`);
+  if (!img && !m.caps?.t2v && !(job.refMode && refs.length)) throw new Error(`${m.label} needs a start frame${m.caps?.refs ? ' or a character' : ''}`);
   let r;
   let trimStart = 0;
   const ext = job.extend;
@@ -250,7 +267,7 @@ export async function generate(job, { onStatus, signal } = {}) {
         r = await xaiExtend({ videoUrl: ext.ref.videoUrl, prompt: job.prompt, duration: Math.min(10, dur) }, ctx);
         trimStart = ext.ref.duration || ext.sourceDuration || 0;
       } else {
-        r = await xaiVideo({ model: slug, prompt: job.prompt, image: img, endImage: end, aspect: job.aspect, duration: dur, resolution: job.resolution || m.resolutionDefault }, ctx);
+        r = await xaiVideo({ model: slug, prompt: job.prompt, image: img, endImage: end, aspect: job.aspect, duration: dur, resolution: job.resolution || m.resolutionDefault, refs: job.refMode ? refs : null }, ctx);
       }
       break;
     }
@@ -261,7 +278,9 @@ export async function generate(job, { onStatus, signal } = {}) {
       break;
     }
     case 'apimart': {
-      r = await apimartVideo({ model: slug, label: m.label, prompt: job.prompt, image: img, endImage: end, aspect: job.aspect, resolution: job.resolution || m.resolutionDefault, duration: dur, seed }, ctx);
+      // Seedance blocks real faces given as raw URLs: register them once in ApiMart's private avatar library.
+      const vrefs = job.refMode ? (/^seedance/.test(slug) ? await Promise.all(refAs.map((a, i) => seedanceRef(a, refs[i], signal))) : refs) : [];
+      r = await apimartVideo({ model: slug, label: m.label, prompt: job.prompt, image: img, endImage: end, aspect: job.aspect, resolution: job.resolution || m.resolutionDefault, duration: dur, seed, refs: vrefs }, ctx);
       break;
     }
     case 'fal': {

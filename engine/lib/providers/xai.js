@@ -145,9 +145,12 @@ async function pollVideo(requestId, { onStatus, signal }) {
 }
 
 /**
- * p: { model, prompt, image (data/http url), endImage, aspect, duration, resolution }
+ * Request body for /videos/generations.
+ * p: { model, prompt, image (data/http url), endImage, aspect, duration, resolution, refs: [url] }
+ * refs → reference-to-video (`reference_images`, named <IMAGE_n> in the prompt; a pinned `image` is <IMAGE_0>).
+ * Reference mode tops out at 720p; the classic model takes 7 refs / 10 s, 1.5 takes 14 refs / 15 s.
  */
-export async function xaiVideo(p, { onStatus, signal } = {}) {
+export function xaiVideoBody(p) {
   const body = {
     model: p.model,
     prompt: p.prompt || undefined,
@@ -157,6 +160,19 @@ export async function xaiVideo(p, { onStatus, signal } = {}) {
   };
   if (p.image) body.image = { url: p.image };
   if (p.endImage) body.last_frame = { url: p.endImage };
+  const refs = (p.refs || []).filter(Boolean);
+  if (refs.length) {
+    const classic = p.model === 'grok-imagine-video';
+    body.reference_images = refs.slice(0, classic ? 7 : 14).map((url) => ({ url }));
+    if (!['480p', '720p'].includes(body.resolution)) body.resolution = '720p';
+    if (classic && body.duration > 10) body.duration = 10;
+    if (classic) delete body.image;
+  }
+  return body;
+}
+
+export async function xaiVideo(p, { onStatus, signal } = {}) {
+  const body = xaiVideoBody(p);
   const { via } = await credential();
   const { request_id: id } = await call('/videos/generations', { method: 'POST', body, signal });
   onStatus?.({ message: `Queued on Grok Imagine (${via === 'subscription' ? 'SuperGrok' : 'API'})`, remoteId: id });
