@@ -20,6 +20,7 @@ import { oidcConfig, loginRedirect, finishLogin, sessionFor, endSession, session
 import { fetchJSON } from './lib/http.js';
 import { apimartModels, APIMART_LLMS } from './lib/providers/apimart.js';
 import { elevenSubscription, elevenVoices, elevenAvailable, ELEVEN_TTS_MODELS } from './lib/providers/eleven.js';
+import * as post from './lib/post.js';
 import { characterRoutes } from './lib/characters.js';
 import { appConfig, patchAppConfig, appVersion, appendAppLog, readAppLog, clearAppLog } from './lib/appconfig.js';
 import * as tools from './lib/tools.js'; // Higgsfield-parity one-click tools (server-driven registry)
@@ -269,6 +270,9 @@ route('POST', '/productions/:id/shots/:sid/voice-swap', async ({ params, body })
 // Characters (engine/lib/characters.js): /characters, /characters/:id, refs, coverage, sheet
 characterRoutes(route);
 route('POST', '/productions/:id/shots/:sid/import', async ({ params, body }) => lf.hydrate(await lf.importClip(params.id, params.sid, body.assetId)));
+
+// Post-production: /post/enhance, /post/transcribe, /post/jobs/:id, /post/transcripts/:assetId, /post/capabilities
+post.mountRoutes(route, HttpError);
 
 /* ---------------- server ---------------- */
 

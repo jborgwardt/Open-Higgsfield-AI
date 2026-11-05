@@ -2,6 +2,7 @@ import '../styles/engine.css';
 import { engine } from '../lib/engine.js';
 import { ProvidersModal, toast } from './ProvidersModal.js';
 import { directorPicker, genreSelect, roomCard, shotExtras, editFields, screeningCard, cutSeconds } from './longform-room.js';
+import { finishingSection, masterExtras } from './PostPanel.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const mmss = (sec) => `${Math.floor((sec || 0) / 60)}:${String(Math.round((sec || 0) % 60)).padStart(2, '0')}`;
@@ -200,6 +201,7 @@ export function LongFormStudio() {
             <label class="toggle"><input type="checkbox" data-b="autoAssemble" ${b.autoAssemble ? 'checked' : ''}/> Assemble the master automatically</label>
           </div>
           ${soundSection(b)}
+          ${finishingSection(b)}
           <button class="btn ghost sm" data-a="providers">Providers & accounts…</button>`;
     }
 
@@ -280,7 +282,8 @@ export function LongFormStudio() {
               </div></div>`;
         })() : '';
 
-        const master = p.master?.url ? `<div class="card master col"><div class="row"><h3 style="margin:0">Master</h3><span class="dim" style="font-size:12px">${mmss(p.master.duration)} · ${p.master.shots} shots · ${new Date(p.master.createdAt).toLocaleString()}</span><span class="grow"></span><a class="btn sm primary" href="${esc(p.master.url)}" download="${esc(p.title)}.mp4">↓ Download master</a></div><video src="${esc(p.master.url)}" controls playsinline preload="metadata"></video></div>` : '';
+        const mx = masterExtras(p.master);
+        const master = p.master?.url ? `<div class="card master col"><div class="row"><h3 style="margin:0">Master</h3><span class="dim" style="font-size:12px">${mmss(p.master.duration)} · ${p.master.shots} shots · ${new Date(p.master.createdAt).toLocaleString()}${mx.note ? ` · ${mx.note}` : ''}</span><span class="grow"></span>${mx.links}<a class="btn sm primary" href="${esc(p.master.url)}" download="${esc(p.title)}.mp4">↓ Download master</a></div><video src="${esc(p.master.url)}" controls playsinline preload="metadata">${mx.track}</video></div>` : '';
 
         if (statusOnly) {
             const top = main.querySelector('[data-region="head"]');
@@ -454,7 +457,7 @@ export function LongFormStudio() {
             }
             // Voice ids belong to one provider (an ElevenLabs id means nothing to Gemini).
             if (el.dataset.b === 'voiceProvider') patchBrief({ voice: '' });
-            if (['videoModel', 'clipSeconds', 'targetMinutes', 'music', 'narration', 'voiceProvider', 'likenessQA'].includes(el.dataset.b)) renderSide();
+            if (['videoModel', 'clipSeconds', 'targetMinutes', 'music', 'narration', 'voiceProvider', 'likenessQA', 'subtitles'].includes(el.dataset.b)) renderSide();
         }
     });
 

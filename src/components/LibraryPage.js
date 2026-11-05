@@ -4,6 +4,7 @@
 import { cfBackendEnabled, listLibrary, deleteLibraryItem } from '../lib/api.js';
 import { engine } from '../lib/engine.js';
 import { BackendModal } from './BackendModal.js';
+import { EnhancePanel } from './PostPanel.js';
 
 const state = { items: [], filter: 'all', error: '' };
 
@@ -132,6 +133,7 @@ function openPreview(item) {
             ${item.prompt ? `<p class="max-w-3xl text-center text-xs text-secondary leading-relaxed line-clamp-3">${item.prompt}</p>` : ''}
             <div class="flex items-center gap-3 flex-wrap justify-center">
                 <button data-save class="px-6 py-3 rounded-xl bg-primary text-black text-[11px] font-black uppercase tracking-widest shadow-glow hover:scale-105 active:scale-95 transition-all">Save to device</button>
+                ${isVideo && item.engine ? '<button data-enhance class="px-6 py-3 rounded-xl bg-white/10 text-white text-[11px] font-black uppercase tracking-widest hover:bg-white/20 transition-all">Enhance · Subtitles</button>' : ''}
                 <a href="${item.sourceUrl || fullUrl}" target="_blank" rel="noopener" class="px-6 py-3 rounded-xl bg-white/10 text-white text-[11px] font-black uppercase tracking-widest hover:bg-white/20 transition-all">Open original</a>
             </div>
         </div>
@@ -147,6 +149,7 @@ function openPreview(item) {
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     overlay.querySelector('[data-close]').onclick = close;
     overlay.querySelector('[data-save]').onclick = (e) => saveToDevice(item, e.currentTarget);
+    overlay.querySelector('[data-enhance]')?.addEventListener('click', () => EnhancePanel(item, () => window.dispatchEvent(new Event('engine:library-changed'))));
 }
 
 function card(item, onDelete) {
@@ -307,6 +310,7 @@ export function LibraryPage() {
     };
 
     page.$pageRefresh = load;
+    window.addEventListener('engine:library-changed', () => { if (document.body.contains(page)) load(); });
     select('all');
     load();
     return page;
