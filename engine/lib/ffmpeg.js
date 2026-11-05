@@ -170,7 +170,9 @@ export async function mixSoundtrack({ video, out, music = [], voice = [], musicV
   // The narrator ducks both the clip's own sound and the score, so dialogue keeps full level elsewhere.
   if (voiceLabels.length) {
     const keys = ['[vkey0]', ...(musicLabels.length ? ['[vkey1]'] : [])];
-    parts.push(`${voiceLabels.join('')}amix=inputs=${voiceLabels.length}:normalize=0:dropout_transition=0,volume=${voiceVolume},asplit=${keys.length + 1}[vmix]${keys.join('')}`);
+    // apad: sidechaincompress stops when its sidechain ends, which used to cut the whole film off at the
+    // end of the last narration line. The final amix follows the clip track (duration=first) instead.
+    parts.push(`${voiceLabels.join('')}amix=inputs=${voiceLabels.length}:normalize=0:dropout_transition=0,volume=${voiceVolume},apad,asplit=${keys.length + 1}[vmix]${keys.join('')}`);
     parts.push('[clip0][vkey0]sidechaincompress=threshold=0.03:ratio=4:attack=20:release=500[clip]');
     mixIn.push('[clip]', '[vmix]');
   } else mixIn.push('[clip0]');
@@ -181,7 +183,7 @@ export async function mixSoundtrack({ video, out, music = [], voice = [], musicV
       mixIn.push('[mduck]');
     } else mixIn.push('[mbus]');
   }
-  parts.push(`${mixIn.join('')}amix=inputs=${mixIn.length}:normalize=0:dropout_transition=0,${LOUDNORM}[aout]`);
+  parts.push(`${mixIn.join('')}amix=inputs=${mixIn.length}:normalize=0:dropout_transition=0:duration=first,${LOUDNORM}[aout]`);
   args.push('-filter_complex', parts.join(';'), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', '-shortest', '-movflags', '+faststart', out);
   await run(FFMPEG, args, { signal });
 }
