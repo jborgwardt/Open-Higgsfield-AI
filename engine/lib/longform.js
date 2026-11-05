@@ -6,7 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { PRODUCTIONS, DATA, uid, now, readJSON, writeJSON, getSettings, getAsset, assetPath, addAsset, newAssetPath, updateAsset } from './store.js';
 import { generate, getModel } from './catalog.js';
-import { planProduction, shotCountFor } from './director.js';
+import { planProduction, shotCountFor, chosenDirector } from './director.js';
 import * as ff from './ffmpeg.js';
 import { sleep } from './http.js';
 import { makeMusic, makeVoice, pickVoiceProvider } from './sound.js';
@@ -65,6 +65,9 @@ const DEFAULT_BRIEF = {
   characters: [], // { name, description, refAssetId, refAssetIds: [] } — several photos per character sharpen likeness
   sceneFades: true,
   autoAssemble: true,
+  genre: '', // '' = the director decides | comedy | drama | horror | thriller | ad | music-video | documentary
+  autoScreen: true, // have Gemini watch each new master and write notes
+
   // sound
   music: 'off', // off | ai | upload
   musicModel: 'google/lyria-3.5',
@@ -121,12 +124,13 @@ export async function plan(id) {
   const p = getProduction(id);
   if (!p) throw Object.assign(new Error('production not found'), { status: 404 });
   if (p.status === 'running') throw Object.assign(new Error('pause the production before re-planning'), { status: 409 });
+  if (!chosenDirector(briefOf(p)).id) throw Object.assign(new Error('Choose a director first'), { status: 400 });
   await mutate(id, (x) => { x.status = 'planning'; log(x, `Planning ${shotCountFor(x.brief)} shots`); });
   (async () => {
     try {
       const result = await planProduction(briefOf(p), { onStatus: ({ message }) => mutate(id, (x) => { x.message = message; }).catch(() => {}) });
       await mutate(id, (x) => {
-        x.plan = { title: result.title, logline: result.logline, style: result.style, director: result.director };
+        x.plan = { title: result.title, logline: result.logline, style: result.style, director: result.director, directorModel: result.directorModel || null, room: result.room || null };
         if (result.title && x.title === DEFAULT_BRIEF.title) x.title = result.title;
         x.scenes = result.scenes.map((s) => ({ id: uid('sc_'), title: s.title, summary: s.summary, music: s.music || '', musicId: null }));
         x.shots = [];
@@ -134,7 +138,9 @@ export async function plan(id) {
         x.shots.forEach((s, i) => { s.index = i; if (i === 0) s.continuity = 'cut'; });
         x.status = 'planned';
         x.master = null;
-        log(x, `Planned ${x.shots.length} shots in ${x.scenes.length} scenes (${result.director === 'local' ? 'local splitter' : `director: ${result.director}`})`);
+        x.screening = null;
+        log(x, `Planned ${x.shots.length} shots in ${x.scenes.length} scenes (${result.director === 'split' ? 'script split, no AI' : `director: ${result.director}${result.directorModel ? ` · ${result.directorModel}` : ''}`})${result.room ? ` · cut ${result.room.cutSeconds}s from ${result.room.renderSeconds}s of renders` : ''}`);
+        for (const w of result.room?.warnings || []) log(x, w);
       });
     } catch (e) {
       await mutate(id, (x) => { x.status = 'error'; log(x, `Planning failed: ${e.message}`); }).catch(() => {});

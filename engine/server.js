@@ -11,7 +11,8 @@ import * as lf from './lib/longform.js';
 import * as xai from './lib/providers/xai.js';
 import { comfyPing } from './lib/providers/comfy.js';
 import { openaiPing } from './lib/providers/openai.js';
-import { directorBackend } from './lib/director.js';
+import { directorBackend, chosenDirector, listDirectors, chooseDirector } from './lib/director.js';
+import { claudeStatus } from './lib/providers/claude-cli.js';
 import { hasFfmpeg } from './lib/ffmpeg.js';
 import { soundCatalog } from './lib/sound.js';
 import { oidcConfig, loginRedirect, finishLogin, sessionFor, endSession, sessionCookie, clearSessionCookie } from './lib/oidc.js';
@@ -116,6 +117,8 @@ async function status(fresh) {
     comfy,
     llm: { online: !!llm, models: llm || [] },
     director: await directorBackend(),
+    directorChoice: chosenDirector(), // { id, model } — null id means the user has not picked one yet
+    claude: await claudeStatus({ fresh }),
     directorModels: { apimart: APIMART_LLMS },
     eleven: { available: elevenAvailable(), models: ELEVEN_TTS_MODELS },
     ffmpeg: ffOk,
@@ -216,6 +219,9 @@ route('POST', '/productions/:id/autoimport', async ({ params, body }) => lf.hydr
 route('POST', '/productions/:id/shots', async ({ params, body }) => { await lf.addShot(params.id, body.afterId, body); return lf.hydrate(prod(params.id)); });
 route('PATCH', '/productions/:id/scenes/:scid', async ({ params, body }) => { await lf.updateScene(params.id, params.scid, body); return lf.hydrate(prod(params.id)); });
 route('GET', '/sound', () => soundCatalog());
+// Director picker (web + Apple apps): every chat model across connected keys, grouped by provider.
+route('GET', '/directors', ({ url }) => listDirectors({ fresh: url.searchParams.has('fresh') }));
+route('POST', '/directors', ({ body }) => chooseDirector({ provider: body.provider ?? body.directorProvider, model: body.model ?? body.directorModel }));
 route('PATCH', '/productions/:id/shots/:sid', async ({ params, body }) => { await lf.updateShot(params.id, params.sid, body); return lf.hydrate(prod(params.id)); });
 route('DELETE', '/productions/:id/shots/:sid', async ({ params }) => { await lf.deleteShot(params.id, params.sid); return lf.hydrate(prod(params.id)); });
 route('POST', '/productions/:id/shots/:sid/voice-swap', async ({ params, body }) => { await lf.voiceSwap(params.id, params.sid, body); return lf.hydrate(prod(params.id)); });

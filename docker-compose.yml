@@ -17,5 +17,9 @@ services:
       # APIMART_API_KEY: ""
       # ELEVENLABS_API_KEY: ""
       # XAI_API_KEY: ""
+      # QWEN_API_KEY: ""
+      # VENICE_API_KEY: ""
+      # Claude director on your Claude subscription: token from `claude setup-token` (never commit it).
+      # CLAUDE_CODE_OAUTH_TOKEN: ""
 volumes:
   studio-data:
