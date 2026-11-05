@@ -1,6 +1,6 @@
 {
   "name": "open-higgsfield-ai",
-  "description": "Open-source alternative to Higgsfield AI — AI image, video, cinema and lip sync studio",
+  "description": "Open-source alternative to Higgsfield AI \u2014 AI image, video, cinema and lip sync studio",
   "private": true,
   "version": "1.0.0",
   "workspaces": [
@@ -15,6 +15,9 @@
     "setup": "npm install && npm run build:studio",
     "vite:dev": "vite",
     "vite:build": "vite build",
+    "engine": "node engine/server.js",
+    "dev:local": "node scripts/dev-local.mjs",
+    "local": "vite build && node engine/server.js",
     "electron:build": "vite build && electron-builder --mac",
     "electron:build:win": "vite build && electron-builder --win",
     "electron:build:all": "vite build && electron-builder --mac --win"
@@ -22,19 +25,40 @@
   "build": {
     "appId": "ai.higgsfield.open",
     "productName": "Open Higgsfield AI",
-    "copyright": "Copyright © 2025",
-    "directories": { "output": "release" },
+    "copyright": "Copyright \u00a9 2025",
+    "directories": {
+      "output": "release"
+    },
     "afterPack": "./afterPack.js",
-    "files": ["dist/**/*", "electron/**/*"],
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
     "mac": {
       "category": "public.app-category.graphics-design",
       "icon": "public/banner.png",
       "gatekeeperAssess": false,
-      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }]
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
     },
     "win": {
       "icon": "public/banner.png",
-      "target": [{ "target": "nsis", "arch": ["x64", "arm64"] }]
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
     }
   },
   "dependencies": {

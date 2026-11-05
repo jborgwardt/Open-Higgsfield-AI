@@ -2,6 +2,7 @@
 
 import { BackendModal } from './BackendModal.js';
 import { logoutBackend } from '../lib/api.js';
+import { engine } from '../lib/engine.js';
 export function Header(navigate) {
     const header = document.createElement('header');
     header.className = 'w-full flex flex-col z-50 sticky top-0';
@@ -31,9 +32,9 @@ export function Header(navigate) {
 
     const menu = document.createElement('nav');
     menu.className = 'hidden lg:flex items-center gap-6 text-[13px] font-bold text-secondary';
-    const items = ['Library', 'Image', 'Video', 'Lip Sync', 'Cinema Studio'];
+    const items = ['Library', 'Image', 'Video', 'Long-form', 'Lip Sync', 'Cinema Studio'];
 
-    const pageForItem = { 'Library': 'library', 'Image': 'image', 'Video': 'video', 'Lip Sync': 'lipsync', 'Cinema Studio': 'cinema' };
+    const pageForItem = { 'Library': 'library', 'Image': 'image', 'Video': 'video', 'Long-form': 'longform', 'Lip Sync': 'lipsync', 'Cinema Studio': 'cinema' };
     const links = {};
 
     const activate = (name) => {
@@ -110,7 +111,15 @@ export function Header(navigate) {
         try { await logoutBackend(); } catch { /* cookie may already be gone */ }
         window.location.reload();
     };
-    rightPart.appendChild(signOutBtn);
+    // Providers (local engine): keys, SuperGrok sign-in, Gemini, ComfyUI, director LLM.
+    if (engine.online) {
+        const provBtn = document.createElement('button');
+        provBtn.textContent = 'Providers';
+        provBtn.className = 'text-[13px] font-bold text-secondary hover:text-white transition-colors cursor-pointer border border-white/10 rounded-lg px-3 py-1.5';
+        provBtn.onclick = () => import('./ProvidersModal.js').then(({ ProvidersModal }) => ProvidersModal());
+        rightPart.appendChild(provBtn);
+    }
+    if (localStorage.getItem('cf_backend') || !engine.online) rightPart.appendChild(signOutBtn);
 
 
     // Mobile navigation (bottom bar on small screens)

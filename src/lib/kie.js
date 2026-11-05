@@ -1,5 +1,6 @@
 import { getModelById, getVideoModelById, getI2IModelById, getI2VModelById } from './models.js';
 import * as cf from './api.js';
+import { engine, isEngineModel } from './engine.js';
 
 const KIE_BASE = 'https://api.kie.ai';
 
@@ -131,6 +132,7 @@ export class KieClient {
     }
 
     async pollForResult(requestId, key, maxAttempts = 300, interval = 2000) {
+        if (String(requestId).startsWith('engine:')) return engine.poll(requestId, maxAttempts, interval);
         if (String(requestId).startsWith('cf:')) {
             return cf.resumePoll(requestId, maxAttempts, interval);
         }
@@ -238,6 +240,7 @@ export class KieClient {
      * Generates an image (Text-to-Image or Image-to-Image)
      */
     async generateImage(params) {
+        if (isEngineModel(params.model)) return engine.generate(params);
         const bridge = cfPath();
         if (bridge) return bridge.generateImage(params);
         const modelInfo = this._imageModel(params.model);
@@ -254,6 +257,7 @@ export class KieClient {
      * Generates an image using an Image-to-Image model.
      */
     async generateI2I(params) {
+        if (isEngineModel(params.model)) return engine.generate(params);
         const bridge = cfPath();
         if (bridge) return bridge.generateI2I(params);
         const settings = this._editModel(params.model);
@@ -269,6 +273,7 @@ export class KieClient {
      * Generates a video (Text-to-Video or Image-to-Video)
      */
     async generateVideo(params) {
+        if (isEngineModel(params.model)) return engine.generate(params);
         const bridge = cfPath();
         if (bridge) return bridge.generateVideo(params);
         const settings = this._videoModel(params.model, 't2v', !!params.image_url);
@@ -279,6 +284,7 @@ export class KieClient {
      * Generates a video using an Image-to-Video model.
      */
     async generateI2V(params) {
+        if (isEngineModel(params.model)) return engine.generate(params);
         const bridge = cfPath();
         if (bridge) return bridge.generateI2V(params);
         const settings = this._videoModel(params.model, 'i2v', !!params.image_url);
@@ -388,6 +394,7 @@ export class KieClient {
     async uploadFile(file) {
         const bridge = cfPath();
         if (bridge) return bridge.uploadFile(file);
+        if (engine.online && !localStorage.getItem('kie_key')) return (await engine.upload(file)).url;
         const key = this.getKey();
         const url = `${this.baseUrl}/api/v1/file-stream-upload`;
 

@@ -1,5 +1,6 @@
 
 import { kie } from '../lib/kie.js';
+import { engine } from '../lib/engine.js';
 import { CameraControls } from './CameraControls.js';
 import { buildNanoBananaPrompt, CAMERA_MAP, LENS_MAP, FOCAL_PERSPECTIVE, APERTURE_EFFECT } from '../lib/promptUtils.js';
 import { AuthModal } from './AuthModal.js';
@@ -538,7 +539,7 @@ export function CinemaStudio() {
         if (!basePrompt) return;
 
         const apiKey = localStorage.getItem('kie_key');
-        const cfLogged = !!localStorage.getItem('cf_backend');
+        const cfLogged = !!localStorage.getItem('cf_backend') || !!localStorage.getItem('engine_on');
         if (!apiKey && !cfLogged) {
             AuthModal(() => generateBtn.click());
             return;
@@ -557,8 +558,11 @@ export function CinemaStudio() {
         );
 
         try {
+            // Without a kie key or content-factory session, shoot on the best engine image model.
+            const viaEngine = !apiKey && !localStorage.getItem('cf_backend') && engine.online;
+            const engineImage = viaEngine && (engine.catalog.find((m) => m.kind === 'image' && m.available && m.provider !== 'local') || engine.catalog.find((m) => m.kind === 'image' && m.available));
             const res = await kie.generateImage({
-                model: 'nano-banana-pro',
+                model: engineImage ? `engine:${engineImage.id}` : 'nano-banana-pro',
                 prompt: finalPrompt,
                 aspect_ratio: currentSettings.aspect_ratio,
                 resolution: (resBtn.dataset.value || '1k').toLowerCase(),

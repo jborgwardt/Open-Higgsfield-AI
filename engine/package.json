@@ -1,0 +1,6 @@
+{
+  "name": "open-higgsfield-engine",
+  "private": true,
+  "type": "module",
+  "description": "Local provider router + long-form production engine (zero dependencies)"
+}

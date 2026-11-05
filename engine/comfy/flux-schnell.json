@@ -1,0 +1,16 @@
+{
+  "label": "FLUX.1 [schnell] fp8",
+  "kind": "image",
+  "license": "Apache-2.0",
+  "notes": "Put flux1-schnell-fp8.safetensors (Comfy-Org/flux1-schnell) in ComfyUI/models/checkpoints.",
+  "output": "9",
+  "workflow": {
+    "4": { "class_type": "CheckpointLoaderSimple", "inputs": { "ckpt_name": "flux1-schnell-fp8.safetensors" } },
+    "6": { "class_type": "CLIPTextEncode", "inputs": { "text": "{{prompt}}", "clip": ["4", 1] } },
+    "7": { "class_type": "ConditioningZeroOut", "inputs": { "conditioning": ["6", 0] } },
+    "5": { "class_type": "EmptySD3LatentImage", "inputs": { "width": "{{width}}", "height": "{{height}}", "batch_size": 1 } },
+    "3": { "class_type": "KSampler", "inputs": { "seed": "{{seed}}", "steps": 4, "cfg": 1, "sampler_name": "euler", "scheduler": "simple", "denoise": 1, "model": ["4", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0] } },
+    "8": { "class_type": "VAEDecode", "inputs": { "samples": ["3", 0], "vae": ["4", 2] } },
+    "9": { "class_type": "SaveImage", "inputs": { "filename_prefix": "gaffer/keyframe", "images": ["8", 0] } }
+  }
+}

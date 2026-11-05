@@ -1,0 +1,21 @@
+# Studio server. `docker compose up -d`, then `docker compose logs studio` for the access code.
+services:
+  studio:
+    build: .
+    container_name: studio
+    restart: unless-stopped
+    ports:
+      - "4848:4848"
+    volumes:
+      - studio-data:/data
+    environment:
+      # Optional: fix the access code instead of generating one.
+      # ENGINE_TOKEN: "choose-a-long-random-code"
+      # Optional provider keys (can also be set in the app under Providers):
+      # FAL_KEY: ""
+      # GEMINI_API_KEY: ""
+      # APIMART_API_KEY: ""
+      # ELEVENLABS_API_KEY: ""
+      # XAI_API_KEY: ""
+volumes:
+  studio-data:

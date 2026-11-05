@@ -2,6 +2,7 @@
 // All media types in one place (images, videos, talking avatars), sorted with
 // the newest first. Requires a backend session; prompts sign-in otherwise.
 import { cfBackendEnabled, listLibrary, deleteLibraryItem } from '../lib/api.js';
+import { engine } from '../lib/engine.js';
 import { BackendModal } from './BackendModal.js';
 
 const state = { items: [], filter: 'all', error: '' };
@@ -182,7 +183,7 @@ function card(item, onDelete) {
         deleteBtn.disabled = true;
         deleteBtn.style.opacity = '0.5';
         try {
-            await deleteLibraryItem(item.id);
+            if (item.engine) await engine.del(`/media/${item.id}`); else await deleteLibraryItem(item.id);
             if (onDelete) onDelete(item);
         } catch (err) {
             deleteBtn.disabled = false;
@@ -293,9 +294,10 @@ export function LibraryPage() {
     });
 
     const load = async () => {
-        if (!cfBackendEnabled()) { showAuthNeeded(); return; }
+        const local = !localStorage.getItem('cf_backend') && engine.online;
+        if (!local && !cfBackendEnabled()) { showAuthNeeded(); return; }
         try {
-            const items = await listLibrary();
+            const items = local ? await engine.get('/media') : await listLibrary();
             state.items = items || [];
             renderGrid();
         } catch (err) {

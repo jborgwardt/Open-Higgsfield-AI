@@ -54,6 +54,38 @@ The app will install silently to `%LocalAppData%` with a Start Menu shortcut.
 
 ---
 
+## 🎬 Local engine: any provider, your subscriptions, 5–10 minute films
+
+`engine/` is a zero-dependency Node server that runs next to the UI. It adds:
+
+- **More providers besides muapi/kie:** xAI Grok Imagine, Google Gemini API (Omni Flash video, Nano Banana images), ApiMart (Veo 3.1 Quality/Fast, Kling 3.0/V4, Seedance 2.0/2.5, Wan 2.6/3.0), fal.ai (Wan 2.2, LTX-Video, FLUX), Replicate, muapi, kie.ai, self-hosted ComfyUI, and an offline ffmpeg previs. Every connected model shows up in the Image, Video and Cinema pickers.
+- **SuperGrok sign-in:** this uses xAI's official device-code OAuth, the same flow OpenCode, Warp and Crush use. You approve on accounts.x.ai, and the app never sees your password. Requests then draw on your subscription's included usage. An xAI API key works as a metered fallback.
+- **Google AI Ultra:** Ultra includes **$100/month of Google Cloud credits** through the Google Developer Program. Point a Gemini API key at the project those credits pay for. Generations you make *inside* Flow or the Gemini app use separate in-app credits that Google doesn't expose to any API, so the **Hand-off: Google Flow** model lets you generate those shots in Flow and auto-imports the downloaded clips.
+- **Long-form studio:** paste a script and pick a length (e.g. 10 min = 75 × 8s shots). A director LLM (Grok, Gemini, any ApiMart chat model, or any OpenAI-compatible server) writes scenes and self-contained shot prompts, and the engine renders every shot. Continuity comes from native extension (Grok Imagine / Omni Flash) or from starting each shot on the previous shot's last frame. The engine then conforms and cuts a master MP4 with audio and scene fades, plus AI music (Lyria) and narration (ElevenLabs incl. your cloned voices, Gemini, Grok, or a free offline voice). Runs persist on disk, resume after restarts, retry transient failures, and pause when a quota runs out.
+
+### Run it
+
+```bash
+npm install
+npm run dev:local     # engine on :4848 + Vite on :5173 → http://localhost:5173
+# or: npm run local   # build once, engine serves the app at http://127.0.0.1:4848
+```
+
+Open **Providers** in the header to connect accounts. Keys are stored in `engine-data/settings.json` (mode 600, gitignored) and are never returned to the browser. Environment variables also work: `FAL_KEY`, `REPLICATE_API_TOKEN`, `XAI_API_KEY`, `GEMINI_API_KEY`, `MUAPI_KEY`, `KIE_API_KEY`, `APIMART_API_KEY`, `ELEVENLABS_API_KEY`, `COMFY_URL`, `LLM_BASE_URL`, `LLM_MODEL`. Long-form assembly needs `ffmpeg` (`brew install ffmpeg`).
+
+When the engine is running, the app boots straight into the studios without the content-factory sign-in. Without it, the original content-factory / kie.ai behaviour is unchanged.
+
+| Engine file | What it does |
+|---|---|
+| `engine/server.js` | HTTP API (`/engine/api/*`), media server, serves `dist/` |
+| `engine/lib/catalog.js` | model catalog + one `generate()` for every provider |
+| `engine/lib/longform.js` | productions: plan → render with continuity → hand-off import → assemble |
+| `engine/lib/director.js` | script → scenes → shots (LLM, with an offline fallback splitter) |
+| `engine/lib/providers/` | xai (incl. SuperGrok OAuth), google, apimart, eleven, fal, replicate, muapi, kie, comfy, openai-compatible, localaudio |
+| `src/components/LongFormStudio.js`, `ProvidersModal.js`, `src/lib/engine.js` | UI |
+
+---
+
 Open Higgsfield AI is an open-source AI image, video, cinema, and lip sync studio that brings Higgsfield-style creative workflows to everyone. Powered by [Muapi.ai](https://muapi.ai), it supports text-to-image, image-to-image, text-to-video, image-to-video, and audio-driven lip sync generation across models like Flux, Nano Banana, Midjourney, Kling, Sora, Veo, Seedream, Infinite Talk, LTX Lipsync, Wan 2.2, and more — all from a sleek, modern interface you can self-host and customize.
 
 **Why Open Higgsfield AI instead of Higgsfield AI?**

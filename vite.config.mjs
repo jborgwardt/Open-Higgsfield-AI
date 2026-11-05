@@ -8,6 +8,11 @@ export default defineConfig({
     ],
     server: {
         proxy: {
+            // Local engine (npm run engine)
+            '/engine': {
+                target: 'http://127.0.0.1:4848',
+                changeOrigin: false
+            },
             '/api': {
                 target: 'https://api.kie.ai',
                 changeOrigin: true,

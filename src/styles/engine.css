@@ -1,0 +1,96 @@
+/* Engine UI: Providers modal + Long-form studio. Plain CSS on the app's design tokens. */
+.eg { --eg-line: rgba(255,255,255,.08); --eg-line2: rgba(255,255,255,.14); --eg-card: #111113; --eg-card2: #18181b; --eg-ok: #3ddc97; --eg-warn: #ffcf5c; --eg-bad: #ff6b6b; --eg-cool: #6cc4ff; color: #ececf1; font-size: 13px; }
+.eg * { box-sizing: border-box; }
+.eg h2 { font-size: 16px; font-weight: 800; margin: 0; letter-spacing: .01em; }
+.eg h3 { font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--text-secondary); margin: 0 0 8px; }
+.eg p { margin: 0; }
+.eg a { color: var(--eg-cool); }
+.eg .muted { color: var(--text-secondary); }
+.eg .dim { color: var(--text-muted); }
+.eg .row { display: flex; gap: 8px; align-items: center; }
+.eg .col { display: flex; flex-direction: column; gap: 8px; }
+.eg .grow { flex: 1; min-width: 0; }
+.eg .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.eg .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.eg input[type=text], .eg input[type=password], .eg input[type=url], .eg input[type=number], .eg textarea, .eg select {
+  width: 100%; background: #0e0e10; border: 1px solid var(--eg-line2); border-radius: 9px; padding: 8px 10px; color: #ececf1; outline: none; font: inherit; }
+.eg textarea { resize: vertical; line-height: 1.45; }
+.eg input:focus, .eg textarea:focus, .eg select:focus { border-color: rgba(255,45,45,.55); box-shadow: 0 0 0 3px rgba(255,45,45,.12); }
+.eg label.f { display: flex; flex-direction: column; gap: 5px; }
+.eg label.f > span { font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--text-secondary); display: flex; justify-content: space-between; gap: 8px; }
+.eg label.f > span em { font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--text-muted); }
+.eg .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 13px; border-radius: 9px; border: 1px solid var(--eg-line2); background: var(--eg-card2); color: #ececf1; font-weight: 700; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.eg .btn:hover:not(:disabled) { border-color: rgba(255,255,255,.28); background: #202024; }
+.eg .btn:disabled { opacity: .45; cursor: not-allowed; }
+.eg .btn.primary { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.eg .btn.primary:hover:not(:disabled) { background: var(--color-primary-hover); }
+.eg .btn.ghost { background: transparent; border-color: transparent; color: var(--text-secondary); }
+.eg .btn.ghost:hover:not(:disabled) { color: #fff; background: rgba(255,255,255,.05); }
+.eg .btn.sm { padding: 4px 9px; font-size: 11.5px; border-radius: 7px; }
+.eg .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; border: 1px solid var(--eg-line2); color: var(--text-secondary); white-space: nowrap; }
+.eg .chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+.eg .chip.ok { color: #d6ffe9; } .eg .chip.ok i { background: var(--eg-ok); box-shadow: 0 0 8px var(--eg-ok); }
+.eg .chip.warn { color: #ffe9b0; } .eg .chip.warn i { background: var(--eg-warn); }
+.eg .chip.bad { color: #ffd0d0; } .eg .chip.bad i { background: var(--eg-bad); }
+.eg .chip.run i { background: var(--color-primary); animation: egpulse 1s ease-in-out infinite; }
+@keyframes egpulse { 50% { opacity: .25; } }
+.eg .card { background: var(--eg-card); border: 1px solid var(--eg-line); border-radius: 14px; padding: 14px; }
+.eg .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: egspin .8s linear infinite; display: inline-block; }
+@keyframes egspin { to { transform: rotate(360deg); } }
+.eg .bar { height: 4px; border-radius: 4px; background: rgba(255,255,255,.08); overflow: hidden; }
+.eg .bar i { display: block; height: 100%; background: var(--color-primary); border-radius: 4px; transition: width .4s; }
+.eg code, .eg .mono { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; }
+.eg .toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; color: var(--text-secondary); font-size: 12px; }
+.eg .toggle input { accent-color: var(--color-primary); width: 15px; height: 15px; }
+
+/* modal */
+.eg-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,.65); backdrop-filter: blur(6px); display: grid; place-items: center; padding: 20px; }
+.eg-modal { width: min(760px, 100%); max-height: calc(100vh - 40px); overflow: auto; background: #0b0b0d; border: 1px solid rgba(255,255,255,.12); border-radius: 18px; box-shadow: 0 30px 90px rgba(0,0,0,.6); }
+.eg-modal .hd { position: sticky; top: 0; z-index: 2; background: #0b0b0d; display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--eg-line); }
+.eg-modal .bd { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.eg-modal .ft { position: sticky; bottom: 0; background: #0b0b0d; display: flex; gap: 8px; justify-content: flex-end; padding: 12px 20px; border-top: 1px solid var(--eg-line); }
+.eg .prov h4 { margin: 0; font-size: 13.5px; font-weight: 800; display: flex; gap: 10px; align-items: center; }
+.eg .prov h4 .chip { margin-left: auto; }
+.eg .prov p { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.eg .code-box { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 12px; border: 1px dashed rgba(255,45,45,.5); background: rgba(255,45,45,.06); }
+.eg .code-box b { font: 800 22px 'SF Mono', ui-monospace, Menlo, monospace; letter-spacing: .14em; color: #fff; }
+.eg ol.steps { margin: 4px 0 0; padding-left: 18px; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+
+/* long-form studio */
+.lf { display: grid; grid-template-columns: 380px minmax(0, 1fr); height: 100%; min-height: 0; }
+.lf-side { border-right: 1px solid var(--eg-line); overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; background: #08080a; }
+.lf-main { overflow-y: auto; padding: 16px 20px 40px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.lf .prodbar { display: flex; gap: 8px; align-items: center; }
+.lf .prodbar select { flex: 1; }
+.lf .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.lf .stat { background: var(--eg-card); border: 1px solid var(--eg-line); border-radius: 12px; padding: 10px 12px; }
+.lf .stat b { display: block; font: 800 20px 'SF Mono', ui-monospace, Menlo, monospace; }
+.lf .stat span { font-size: 10.5px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .1em; font-weight: 700; }
+.lf .scene { border: 1px solid var(--eg-line); border-radius: 14px; overflow: hidden; background: var(--eg-card); }
+.lf .scene-hd { padding: 10px 14px; display: flex; gap: 10px; align-items: baseline; border-bottom: 1px solid var(--eg-line); background: #0f0f12; }
+.lf .scene-hd b { font-size: 13px; }
+.lf .scene-hd span { color: var(--text-secondary); font-size: 12px; flex: 1; }
+.lf .shot { display: grid; grid-template-columns: 30px 150px minmax(0, 1fr) 150px; gap: 12px; padding: 10px 14px; border-top: 1px solid rgba(255,255,255,.04); align-items: start; }
+.lf .shot:first-of-type { border-top: 0; }
+.lf .shot .n { font: 800 12px 'SF Mono', ui-monospace, Menlo, monospace; color: var(--text-muted); padding-top: 4px; }
+.lf .thumb { position: relative; width: 150px; aspect-ratio: 16/9; border-radius: 8px; overflow: hidden; background: #000; border: 1px solid var(--eg-line); cursor: pointer; }
+.lf .thumb img, .lf .thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lf .thumb .ph { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted); font-size: 11px; }
+.lf .thumb .dur { position: absolute; right: 4px; bottom: 4px; font: 700 10px 'SF Mono', monospace; background: rgba(0,0,0,.7); padding: 1px 5px; border-radius: 4px; }
+.lf .shot .t { font-weight: 800; font-size: 12.5px; margin-bottom: 4px; display: flex; gap: 8px; align-items: center; }
+.lf .shot .p { color: #c9c9d1; font-size: 12px; line-height: 1.45; white-space: pre-wrap; cursor: text; border-radius: 6px; padding: 2px 4px; margin: -2px -4px; }
+.lf .shot .p:hover { background: rgba(255,255,255,.03); }
+.lf .shot textarea { font-size: 12px; min-height: 90px; }
+.lf .shot .msg { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+.lf .shot .msg.err { color: #ffb4b4; }
+.lf .shot .acts { display: flex; flex-direction: column; gap: 5px; align-items: stretch; }
+.lf .cont { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--eg-line2); color: var(--text-secondary); cursor: pointer; background: none; }
+.lf .cont.c { color: var(--eg-cool); border-color: rgba(108,196,255,.4); }
+.lf .handoff { border: 1px dashed rgba(255,207,92,.5); background: rgba(255,207,92,.05); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.lf .master video { width: 100%; border-radius: 12px; background: #000; border: 1px solid var(--eg-line); max-height: 60vh; }
+.lf .log { font: 11px 'SF Mono', ui-monospace, monospace; color: var(--text-secondary); max-height: 140px; overflow: auto; background: #0b0b0d; border: 1px solid var(--eg-line); border-radius: 10px; padding: 8px 10px; }
+.lf .chars .ch { display: grid; grid-template-columns: 56px 1fr 22px; gap: 8px; align-items: start; }
+.lf .chars .ref { width: 56px; height: 56px; border-radius: 8px; border: 1px dashed var(--eg-line2); display: grid; place-items: center; color: var(--text-muted); font-size: 10px; cursor: pointer; overflow: hidden; text-align: center; }
+.lf .chars .ref img { width: 100%; height: 100%; object-fit: cover; }
+.lf .empty { padding: 40px; text-align: center; color: var(--text-secondary); border: 1px dashed var(--eg-line2); border-radius: 14px; }
+@media (max-width: 1100px) { .lf { grid-template-columns: 1fr; } .lf-side { border-right: 0; border-bottom: 1px solid var(--eg-line); } .lf .shot { grid-template-columns: 26px 120px 1fr; } .lf .shot .acts { grid-column: 3; flex-direction: row; flex-wrap: wrap; } .lf .thumb { width: 120px; } }
