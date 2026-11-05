@@ -18,6 +18,7 @@ import { oidcConfig, loginRedirect, finishLogin, sessionFor, endSession, session
 import { fetchJSON } from './lib/http.js';
 import { apimartModels, APIMART_LLMS } from './lib/providers/apimart.js';
 import { elevenSubscription, elevenVoices, elevenAvailable, ELEVEN_TTS_MODELS } from './lib/providers/eleven.js';
+import * as post from './lib/post.js';
 
 const PORT = Number(process.env.ENGINE_PORT) || 4848;
 const HOST = process.env.ENGINE_HOST || '127.0.0.1';
@@ -220,6 +221,9 @@ route('PATCH', '/productions/:id/shots/:sid', async ({ params, body }) => { awai
 route('DELETE', '/productions/:id/shots/:sid', async ({ params }) => { await lf.deleteShot(params.id, params.sid); return lf.hydrate(prod(params.id)); });
 route('POST', '/productions/:id/shots/:sid/voice-swap', async ({ params, body }) => { await lf.voiceSwap(params.id, params.sid, body); return lf.hydrate(prod(params.id)); });
 route('POST', '/productions/:id/shots/:sid/import', async ({ params, body }) => lf.hydrate(await lf.importClip(params.id, params.sid, body.assetId)));
+
+// Post-production: /post/enhance, /post/transcribe, /post/jobs/:id, /post/transcripts/:assetId, /post/capabilities
+post.mountRoutes(route, HttpError);
 
 /* ---------------- server ---------------- */
 

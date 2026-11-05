@@ -11,6 +11,7 @@ import * as ff from './ffmpeg.js';
 import { sleep } from './http.js';
 import { makeMusic, makeVoice, pickVoiceProvider } from './sound.js';
 import { elevenVoiceChange } from './providers/eleven.js';
+import * as post from './post.js';
 
 const SEGMENTS = path.join(DATA, 'segments');
 fs.mkdirSync(SEGMENTS, { recursive: true });
@@ -76,6 +77,7 @@ const DEFAULT_BRIEF = {
   voiceProvider: 'auto', // auto | eleven | xai | google | local
   voice: '',
   clipVolume: 1,
+  ...post.POST_BRIEF_DEFAULTS, // subtitles, dialogue cleanup, colour match, smooth motion, upscale
 };
 const briefOf = (p) => ({ ...DEFAULT_BRIEF, ...(p.brief || {}) });
 
@@ -554,6 +556,11 @@ export async function assemble(id) {
     const { W, H } = ff.frameSize(p.brief.aspect, base);
     const shots = p.shots.filter((s) => s.status === 'done' && getAsset(s.videoId));
     if (!shots.length) throw new Error('no rendered shots yet');
+    const status = (m) => mutate(id, (x) => { x.message = m; }).catch(() => {});
+    // Post-production per shot (engine/lib/post.js). Fail soft: any problem there → plain clips, the master still ships.
+    const plain = (s) => ({ file: assetPath(getAsset(s.videoId)), vfx: {}, afx: [], audioFile: null, key: '' });
+    const prep = await post.prepareShots({ shots, brief: briefOf(p), W, H, onStatus: status })
+      .catch(async (e) => { await mutate(id, (x) => log(x, `Post-production skipped: ${e.message}`)); return shots.map(plain); });
     const segs = [];
     const durs = [];
     let i = 0;
@@ -567,12 +574,25 @@ export async function assemble(id) {
         const dur = Math.max(0.5, (info.duration || s.clipDuration || 8) - trim);
         const sceneStart = p.brief.sceneFades && (k === 0 || shots[k - 1].sceneId !== s.sceneId);
         const sceneEnd = p.brief.sceneFades && (k === shots.length - 1 || shots[k + 1].sceneId !== s.sceneId);
-        const key = `${a.id}_${trim.toFixed(2)}_${W}x${H}_${sceneStart ? 1 : 0}${sceneEnd ? 1 : 0}`;
-        const out = path.join(SEGMENTS, `${key}.mp4`);
+        let pp = prep[k];
+        const keyOf = (q) => `${a.id}_${trim.toFixed(2)}_${W}x${H}_${sceneStart ? 1 : 0}${sceneEnd ? 1 : 0}${q.key ? `_${q.key}` : ''}`;
+        let out = path.join(SEGMENTS, `${keyOf(pp)}.mp4`);
         if (!fs.existsSync(out)) {
-          const tmp = `${out}.tmp.mp4`;
-          await ff.conform({ input: assetPath(a), out: tmp, W, H, start: trim, duration: dur, fadeIn: sceneStart ? 0.4 : 0, fadeOut: sceneEnd ? 0.4 : 0, hasAudio: info.hasAudio ?? (await ff.probe(assetPath(a)).catch(() => ({}))).hasAudio });
-          await fsp.rename(tmp, out);
+          const hasAudio = info.hasAudio ?? (await ff.probe(assetPath(a)).catch(() => ({}))).hasAudio;
+          const run = async (q, dest) => {
+            const tmp = `${dest}.tmp.mp4`;
+            await ff.conform({ input: q.file, out: tmp, W, H, start: trim, duration: dur, fadeIn: sceneStart ? 0.4 : 0, fadeOut: sceneEnd ? 0.4 : 0, hasAudio, vfx: q.vfx, afx: q.afx, audioInput: q.audioFile });
+            await fsp.rename(tmp, dest);
+          };
+          try {
+            await run(pp, out);
+          } catch (e) {
+            if (!pp.key) throw e;
+            await mutate(id, (x) => log(x, `Shot ${s.index + 1}: post-production failed (${e.message.slice(0, 160)}), using the plain clip`));
+            pp = plain(s);
+            out = path.join(SEGMENTS, `${keyOf(pp)}.mp4`);
+            if (!fs.existsSync(out)) await run(pp, out);
+          }
         }
         segs[k] = out;
         durs[k] = dur;
@@ -581,10 +601,10 @@ export async function assemble(id) {
       }
     };
     await Promise.all([worker(), worker(), worker()]);
-    let out = newAssetPath('video/mp4');
-    await ff.concat({ segments: segs, out: out.abs });
+    const cut = path.join(SEGMENTS, `cut_${id}_${Date.now()}.mp4`);
+    await ff.concat({ segments: segs, out: cut });
     const b = briefOf(p);
-    let leveled = false;
+    let stage = cut;
     if (b.music !== 'off' || b.narration) {
       const starts = [];
       durs.reduce((t, d, k) => { starts[k] = t; return t + d; }, 0);
@@ -592,25 +612,30 @@ export async function assemble(id) {
       const sound = await buildSoundtrack(id, shots, starts, durs, total);
       if (sound.music.length || sound.voice.length) {
         await mutate(id, (x) => { x.message = 'Mixing music and narration'; });
-        const mixed = newAssetPath('video/mp4');
-        await ff.mixSoundtrack({ video: out.abs, out: mixed.abs, music: sound.music, voice: sound.voice, musicVolume: Number(b.musicVolume) || 0.35, clipVolume: Number(b.clipVolume) || 1 });
-        await fsp.rm(out.abs, { force: true });
-        out = mixed;
-        leveled = true;
+        stage = cut.replace(/\.mp4$/, '.mix.mov'); // float PCM: the master's AAC encode is the only lossy audio step
+        await ff.mixSoundtrack({ video: cut, out: stage, music: sound.music, voice: sound.voice, musicVolume: Number(b.musicVolume) || 0.35, clipVolume: Number(b.clipVolume) || 1, normalize: false });
       }
     }
-    if (!leveled) {
-      // No soundtrack to mix: still level the clips' own audio to the same loudness target.
-      await mutate(id, (x) => { x.message = 'Levelling audio'; });
-      const level = newAssetPath('video/mp4');
-      await ff.normalizeAudio({ video: out.abs, out: level.abs });
-      await fsp.rm(out.abs, { force: true });
-      out = level;
+    // Finish: subtitles (whisper.cpp) + two-pass loudness to −16 LUFS; picture is copied unless captions are burned in.
+    const out = newAssetPath('video/mp4');
+    let fin;
+    try {
+      fin = await post.finishMaster({ input: stage, out: out.abs, brief: b, W, H, onStatus: status }).catch(async (e) => {
+        // Fail soft: the plain one-pass levelled master still ships.
+        await mutate(id, (x) => log(x, `Finishing failed (${e.message.slice(0, 160)}) — shipping the plain master`));
+        await ff.normalizeAudio({ video: stage, out: out.abs });
+        return { transcript: null, loudness: null, timings: null };
+      });
+    } finally {
+      await fsp.rm(cut, { force: true });
+      if (stage !== cut) await fsp.rm(stage, { force: true });
     }
     const info = await ff.probe(out.abs).catch(() => ({}));
     const asset = await addAsset({ ...out, mime: 'video/mp4', meta: { source: 'master', ...info } });
+    const subs = fin.transcript ? await post.saveTranscript(asset, fin.transcript).catch(() => null) : null;
     await mutate(id, (x) => {
-      x.master = { assetId: asset.id, url: asset.url, duration: info.duration, shots: shots.length, createdAt: now() };
+      x.master = { assetId: asset.id, url: asset.url, duration: info.duration, shots: shots.length, createdAt: now(), loudness: fin.loudness, post: fin.timings,
+        subtitles: subs && { mode: b.subtitles, language: subs.language, vttUrl: subs.vttUrl, srtUrl: subs.srtUrl, jsonUrl: subs.jsonUrl, cues: subs.cues } };
       x.assembling = false;
       if (x.status !== 'running' && x.shots.every((s) => TERMINAL.includes(s.status))) x.status = 'done';
       log(x, `Master ready: ${shots.length} shots, ${Math.round(info.duration || 0)}s`);

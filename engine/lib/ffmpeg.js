@@ -80,18 +80,21 @@ export async function animatic({ image, out, duration = 5, aspect, signal }) {
 /**
  * Conform one clip into a uniform segment (size, 24 fps, AAC stereo) so segments can be
  * concatenated losslessly. Optional trim (start/end), scene fades.
+ * Post-production hooks (engine/lib/post.js): vfx.pre / vfx.post filters around the scale step,
+ * afx audio filters, and audioInput to take the sound from another file (e.g. an isolated voice track).
  */
-export async function conform({ input, out, W, H, start = 0, duration, fadeIn = 0, fadeOut = 0, hasAudio, signal }) {
-  const vf = [`scale=${W}:${H}:force_original_aspect_ratio=decrease:flags=lanczos`, `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`, 'fps=24', 'setsar=1', 'format=yuv420p'];
-  const af = ['aresample=48000', 'aformat=sample_fmts=fltp:channel_layouts=stereo'];
+export async function conform({ input, out, W, H, start = 0, duration, fadeIn = 0, fadeOut = 0, hasAudio, signal, vfx = {}, afx = [], audioInput = null }) {
+  const vf = [...(vfx.pre || []), `scale=${W}:${H}:force_original_aspect_ratio=decrease:flags=lanczos`, `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`, 'fps=24', 'setsar=1', 'format=yuv420p', ...(vfx.post || [])];
+  const af = ['aresample=48000', 'aformat=sample_fmts=fltp:channel_layouts=stereo', ...afx];
   if (fadeIn) { vf.push(`fade=t=in:st=0:d=${fadeIn}`); af.push(`afade=t=in:st=0:d=${fadeIn}`); }
   if (fadeOut && duration) { vf.push(`fade=t=out:st=${Math.max(0, duration - fadeOut).toFixed(3)}:d=${fadeOut}`); af.push(`afade=t=out:st=${Math.max(0, duration - fadeOut).toFixed(3)}:d=${fadeOut}`); }
   const args = ['-y', '-v', 'error'];
   if (start) args.push('-ss', start.toFixed(3));
   args.push('-i', input);
-  if (!hasAudio) args.push('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo');
+  if (audioInput) { if (start) args.push('-ss', start.toFixed(3)); args.push('-i', audioInput); }
+  else if (!hasAudio) args.push('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo');
   if (duration) args.push('-t', duration.toFixed(3));
-  args.push('-map', '0:v:0', '-map', hasAudio ? '0:a:0' : '1:a:0', '-vf', vf.join(','), '-af', af.join(','),
+  args.push('-map', '0:v:0', '-map', hasAudio && !audioInput ? '0:a:0' : '1:a:0', '-vf', vf.join(','), '-af', af.join(','),
     '-c:v', 'libx264', '-preset', process.env.ENGINE_X264_PRESET || 'slow', '-crf', '17', '-r', '24', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-shortest', '-movflags', '+faststart', out);
   await run(FFMPEG, args, { signal });
 }
@@ -139,8 +142,10 @@ export async function toM4a(input, out, { signal } = {}) {
  * music: [{ file, start, duration }] (looped/trimmed to fit, faded at both ends)
  * voice: [{ file, start }]
  * Music is ducked automatically while the narrator speaks.
+ * normalize: false skips the one-pass loudnorm (post.finishMaster levels the master in two passes);
+ * an .mkv `out` keeps the mix as 32-bit float PCM so the master's AAC encode is the only lossy step.
  */
-export async function mixSoundtrack({ video, out, music = [], voice = [], musicVolume = 0.35, clipVolume = 1, voiceVolume = 1, signal }) {
+export async function mixSoundtrack({ video, out, music = [], voice = [], musicVolume = 0.35, clipVolume = 1, voiceVolume = 1, signal, normalize = true }) {
   const args = ['-y', '-v', 'error', '-i', video];
   const parts = [];
   let n = 1;
@@ -175,7 +180,8 @@ export async function mixSoundtrack({ video, out, music = [], voice = [], musicV
       mixIn.push('[mduck]');
     } else mixIn.push('[mbus]');
   }
-  parts.push(`${mixIn.join('')}amix=inputs=${mixIn.length}:normalize=0:dropout_transition=0,${LOUDNORM}[aout]`);
-  args.push('-filter_complex', parts.join(';'), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', '-shortest', '-movflags', '+faststart', out);
+  parts.push(`${mixIn.join('')}amix=inputs=${mixIn.length}:normalize=0:dropout_transition=0,${normalize ? LOUDNORM : 'aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo'}[aout]`);
+  const pcm = /\.(mkv|mov)$/.test(out);
+  args.push('-filter_complex', parts.join(';'), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy', ...(pcm ? ['-c:a', 'pcm_f32le'] : ['-c:a', 'aac', '-b:a', '256k']), '-ar', '48000', '-shortest', ...(pcm ? [] : ['-movflags', '+faststart']), out);
   await run(FFMPEG, args, { signal });
 }

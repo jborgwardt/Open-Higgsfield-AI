@@ -81,6 +81,7 @@ When the engine is running, the app boots straight into the studios without the 
 | `engine/lib/catalog.js` | model catalog + one `generate()` for every provider |
 | `engine/lib/longform.js` | productions: plan → render with continuity → hand-off import → assemble |
 | `engine/lib/director.js` | script → scenes → shots (LLM, with an offline fallback splitter) |
+| `engine/lib/post.js`, `engine/lib/subtitles.js` | post-production: whisper.cpp subtitles (soft track / burned in), dialogue cleanup, two-pass loudness mastering, denoise / deflicker / frame interpolation / colour matching, Topaz upscale (fal) and ElevenLabs voice isolation; benchmarks and API in [`docs/post-production.md`](docs/post-production.md) |
 | `engine/lib/providers/` | xai (incl. SuperGrok OAuth), google, apimart, eleven, fal, replicate, muapi, kie, comfy, openai-compatible, localaudio |
 | `src/components/LongFormStudio.js`, `ProvidersModal.js`, `src/lib/engine.js` | UI |
 
