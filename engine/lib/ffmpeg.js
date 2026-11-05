@@ -170,7 +170,8 @@ export async function mixSoundtrack({ video, out, music = [], voice = [], musicV
   // The narrator ducks both the clip's own sound and the score, so dialogue keeps full level elsewhere.
   if (voiceLabels.length) {
     const keys = ['[vkey0]', ...(musicLabels.length ? ['[vkey1]'] : [])];
-    parts.push(`${voiceLabels.join('')}amix=inputs=${voiceLabels.length}:normalize=0:dropout_transition=0,volume=${voiceVolume},asplit=${keys.length + 1}[vmix]${keys.join('')}`);
+    parts.push(`${voiceLabels.join('')}amix=inputs=${voiceLabels.length}:normalize=0:dropout_transition=0,volume=${voiceVolume},apad,asplit=${keys.length + 1}[vmix]${keys.join('')}`);
+    // apad: the narration bus outlives its last line, so the sidechained clip/music (and the film) never end with it.
     parts.push('[clip0][vkey0]sidechaincompress=threshold=0.03:ratio=4:attack=20:release=500[clip]');
     mixIn.push('[clip]', '[vmix]');
   } else mixIn.push('[clip0]');
