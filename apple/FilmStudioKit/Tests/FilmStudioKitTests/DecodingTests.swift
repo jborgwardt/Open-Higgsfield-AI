@@ -84,6 +84,13 @@ private func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
         #expect(b.json["directorProvider"] == nil) // the studio-wide director is never written from a brief save
     }
 
+    @Test func briefReadsPerFilmDirectorWithoutSendingIt() {
+        let b = Brief(json: .object(["directorProvider": .string("google"), "directorModel": .string("gemini-3.8-flash"), "characters": .array([.object(["characterId": .string("ch_1"), "resolvedName": .string("Justin")])])]))
+        #expect(b.directorProvider == "google" && b.directorModel == "gemini-3.8-flash")
+        #expect(b.characterNames == ["Justin"])
+        #expect(b.json["directorProvider"] == nil) // the film's director is never overwritten by a brief save
+    }
+
     @Test func briefSendsOnlyChanges() {
         var a = Brief()
         a.videoModel = "local/animatic"
