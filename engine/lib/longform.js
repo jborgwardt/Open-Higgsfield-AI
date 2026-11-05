@@ -509,7 +509,7 @@ async function buildSoundtrack(id, shots, starts, durs, total) {
           continue;
         }
       }
-      voice.push({ file: assetPath(a), start: starts[k] + 0.3 });
+      voice.push({ file: assetPath(a), start: starts[k] + 0.3, duration: Number(a.duration) || 0 });
     }
   }
   if (b.music === 'upload' && getAsset(b.musicAssetId)) {
@@ -590,6 +590,14 @@ export async function assemble(id) {
       durs.reduce((t, d, k) => { starts[k] = t; return t + d; }, 0);
       const total = durs.reduce((t, d) => t + d, 0);
       const sound = await buildSoundtrack(id, shots, starts, durs, total);
+      // A closing narration line that outruns the picture finishes over black instead of being cut off.
+      const tail = Math.max(0, ...sound.voice.map((v) => v.start + v.duration + 0.8 - total));
+      if (tail > 0.05) {
+        const longer = newAssetPath('video/mp4');
+        await ff.extendTail({ video: out.abs, out: longer.abs, seconds: tail });
+        await fsp.rm(out.abs, { force: true });
+        out = longer;
+      }
       if (sound.music.length || sound.voice.length) {
         await mutate(id, (x) => { x.message = 'Mixing music and narration'; });
         const mixed = newAssetPath('video/mp4');
