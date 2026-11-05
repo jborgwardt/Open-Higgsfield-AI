@@ -1,0 +1,222 @@
+{
+  "minVersion": "1.0.0",
+  "latestVersion": "1.0.0",
+  "updateUrl": "https://ota.heil.haus:8443/film-studio.html",
+  "notice": null,
+  "tabs": [
+    {
+      "id": "explore",
+      "title": "Explore",
+      "sfSymbol": "sparkles",
+      "kind": "native",
+      "path": "/#image"
+    },
+    {
+      "id": "characters",
+      "title": "Characters",
+      "sfSymbol": "person.crop.rectangle.stack",
+      "kind": "native",
+      "path": "/#characters"
+    },
+    {
+      "id": "library",
+      "title": "Library",
+      "sfSymbol": "photo.on.rectangle.angled",
+      "kind": "native",
+      "path": "/#library"
+    },
+    {
+      "id": "films",
+      "title": "Films",
+      "sfSymbol": "film.stack",
+      "kind": "native",
+      "path": "/#longform"
+    },
+    {
+      "id": "settings",
+      "title": "Settings",
+      "sfSymbol": "gearshape",
+      "kind": "native",
+      "path": "/"
+    }
+  ],
+  "screens": {},
+  "explore": {
+    "title": "What will you make?",
+    "subtitle": "Images, video, effects and films — rendered on your own studio.",
+    "sections": [
+      "create",
+      "tools",
+      "characters",
+      "models",
+      "recent",
+      "films"
+    ],
+    "createCards": [
+      {
+        "id": "image",
+        "title": "Image",
+        "subtitle": "Stills, keyframes and edits",
+        "sfSymbol": "photo.artframe",
+        "mode": "image"
+      },
+      {
+        "id": "video",
+        "title": "Video",
+        "subtitle": "From text or a start frame",
+        "sfSymbol": "film",
+        "mode": "video"
+      }
+    ]
+  },
+  "features": {
+    "explore": true,
+    "create": true,
+    "films": true,
+    "characters": true,
+    "tools": true,
+    "shareMedia": true,
+    "saveToPhotos": true,
+    "deleteMedia": true,
+    "startEndFrames": true,
+    "characterPicker": true,
+    "editShotPrompt": true,
+    "narration": true,
+    "music": true,
+    "guidedCapture": true,
+    "cameraCapture": true,
+    "videoRefImport": true,
+    "characterSheet": true,
+    "openOnWeb": true,
+    "diagnostics": true
+  },
+  "defaults": {
+    "imageModels": [
+      "google/gemini-nano-banana-2.1",
+      "xai/grok-imagine-image-2.0",
+      "google/gemini-3-pro-image",
+      "fal/flux-dev",
+      "kie/nano-banana-2",
+      "replicate/flux-schnell",
+      "local/plate"
+    ],
+    "videoModels": [
+      "xai/grok-imagine-video-1.5",
+      "google/gemini-omni-1.1-flash",
+      "apimart/veo3.1-fast",
+      "fal/wan22-a14b",
+      "kie/veo3_fast",
+      "replicate/wan22-fast",
+      "local/animatic"
+    ],
+    "aspect": "16:9",
+    "videoDuration": 8,
+    "film": {
+      "targetMinutes": 5,
+      "clipSeconds": 8,
+      "aspect": "16:9",
+      "resolution": "720p",
+      "continuity": "extend",
+      "keyframes": true,
+      "narration": false,
+      "music": "off",
+      "autoAssemble": true
+    },
+    "hiddenProviders": [
+      "handoff"
+    ]
+  },
+  "polling": {
+    "jobMs": 1500,
+    "productionMs": 2000,
+    "productionIdleMs": 15000,
+    "characterMs": 3000,
+    "configMs": 300000
+  },
+  "limits": {
+    "promptMaxChars": 6000,
+    "scriptMaxChars": 60000,
+    "uploadMaxMB": 1024,
+    "refVideoMaxSeconds": 20,
+    "filmMaxMinutes": 30
+  },
+  "web": {
+    "baseUrl": ""
+  },
+  "capture": {
+    "title": "Reference capture",
+    "intro": "Nine sharp photos from these angles give the models a reliable likeness. Or import a slow 10–15 s head turn and the studio picks the sharpest frames.",
+    "checklist": [
+      {
+        "id": "front",
+        "title": "Front",
+        "instruction": "Look straight into the lens, relaxed and neutral.",
+        "sfSymbol": "person.fill"
+      },
+      {
+        "id": "threeQuarterLeft",
+        "title": "¾ left",
+        "instruction": "Turn your head about 45° to your left, eyes following the nose.",
+        "sfSymbol": "arrow.turn.up.left"
+      },
+      {
+        "id": "threeQuarterRight",
+        "title": "¾ right",
+        "instruction": "Turn your head about 45° to your right.",
+        "sfSymbol": "arrow.turn.up.right"
+      },
+      {
+        "id": "profileLeft",
+        "title": "Profile left",
+        "instruction": "Full side view facing left — one ear, one eye visible.",
+        "sfSymbol": "arrow.left"
+      },
+      {
+        "id": "profileRight",
+        "title": "Profile right",
+        "instruction": "Full side view facing right.",
+        "sfSymbol": "arrow.right"
+      },
+      {
+        "id": "smile",
+        "title": "Smile",
+        "instruction": "Front view with a natural, open smile.",
+        "sfSymbol": "face.smiling"
+      },
+      {
+        "id": "expression",
+        "title": "Expression",
+        "instruction": "Any strong expression: surprise, anger, laughing.",
+        "sfSymbol": "theatermasks"
+      },
+      {
+        "id": "lowAngle",
+        "title": "Slightly below",
+        "instruction": "Camera a little below eye level, looking up at the face.",
+        "sfSymbol": "arrow.up.circle"
+      },
+      {
+        "id": "fullBody",
+        "title": "Full body",
+        "instruction": "Head to toe, standing naturally, in the usual wardrobe.",
+        "sfSymbol": "figure.stand"
+      }
+    ],
+    "tips": [
+      "Use the back camera, 1.5–2 m away, with the 2× lens — no wide-angle distortion.",
+      "No filters, no Portrait mode, no beauty or face smoothing.",
+      "Sharp, even light: face a window or shoot outside in shade. Avoid hard shadows and backlight.",
+      "Hair away from the face; no sunglasses or hats unless they are part of the look.",
+      "Keep the same look in every photo: same hair, beard and makeup."
+    ],
+    "video": {
+      "minSeconds": 10,
+      "maxSeconds": 15,
+      "instruction": "Film a slow head turn from one profile to the other and back, 10–15 s, in even light."
+    },
+    "camera": {
+      "position": "back",
+      "zoom": 2
+    }
+  }
+}

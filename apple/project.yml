@@ -1,0 +1,137 @@
+# Film Studio — native iPhone / iPad / Mac client for the self-hosted studio engine.
+# Generate the Xcode project with:  cd apple && xcodegen
+name: FilmStudio
+options:
+  bundleIdPrefix: com.borgwardt
+  deploymentTarget:
+    iOS: "18.0"
+    macOS: "15.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+settings:
+  base:
+    DEVELOPMENT_TEAM: F2M8XJL997
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "6.0"
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    DEAD_CODE_STRIPPING: YES
+packages:
+  FilmStudioKit:
+    path: FilmStudioKit
+
+targets:
+  FilmStudio:
+    type: application
+    platform: iOS
+    sources:
+      - path: FilmStudio
+    dependencies:
+      - package: FilmStudioKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.borgwardt.filmstudio
+        PRODUCT_NAME: FilmStudio
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    info:
+      path: Support/Info-iOS.plist
+      properties:
+        CFBundleDisplayName: Film Studio
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        ITSAppUsesNonExemptEncryption: false
+        LSApplicationCategoryType: public.app-category.video
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIApplicationSupportsIndirectInputEvents: true
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UIRequiresFullScreen: false
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            localhost:
+              NSExceptionAllowsInsecureHTTPLoads: true
+        NSCameraUsageDescription: Film Studio uses the camera to capture reference photos of your characters.
+        NSPhotoLibraryAddUsageDescription: Film Studio saves your images and films to Photos.
+        NSPhotoLibraryUsageDescription: Film Studio lets you pick photos and videos as references and start frames.
+
+  FilmStudioMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: FilmStudio
+    dependencies:
+      - package: FilmStudioKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.borgwardt.filmstudio
+        PRODUCT_NAME: Film Studio
+        PRODUCT_MODULE_NAME: FilmStudio
+        CODE_SIGN_ENTITLEMENTS: Support/FilmStudio-mac.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        COMBINE_HIDPI_IMAGES: YES
+    info:
+      path: Support/Info-mac.plist
+      properties:
+        CFBundleDisplayName: Film Studio
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSApplicationCategoryType: public.app-category.video
+        NSHumanReadableCopyright: Self-hosted film studio for Justin Borgwardt
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            localhost:
+              NSExceptionAllowsInsecureHTTPLoads: true
+        NSPhotoLibraryUsageDescription: Film Studio lets you pick photos and videos as references and start frames.
+
+  FilmStudioUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: FilmStudioUITests
+    dependencies:
+      - target: FilmStudio
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.borgwardt.filmstudio.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: FilmStudio
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+
+schemes:
+  FilmStudio:
+    build:
+      targets:
+        FilmStudio: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - FilmStudioUITests
+    archive:
+      config: Release
+  FilmStudioMac:
+    build:
+      targets:
+        FilmStudioMac: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - package: FilmStudioKit/FilmStudioKitTests
+    archive:
+      config: Release
