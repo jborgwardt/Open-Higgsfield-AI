@@ -23,6 +23,23 @@ export async function falUpload({ key, buffer, mime, filename = 'upload.bin', si
   return url;
 }
 
+/**
+ * Wan 3.0 on fal (alibaba/wan-3.0/*): start frame → image-to-video (+ end frame), reference images / clips / voices →
+ * reference-to-video (identity; the prompt names them "Image 1", "Video 1", "Audio 1"), otherwise text-to-video.
+ * Returns { endpoint, input }.
+ */
+export function wan3Request({ prompt, image, endImage, refs = [], videos = [], audios = [], aspect, resolution, duration, seed }) {
+  const ar = ['16:9', '9:16', '1:1', '4:3', '3:4'].includes(aspect) ? aspect : 'adaptive';
+  const common = { resolution: ['480p', '720p', '1080p'].includes(resolution) ? resolution : '1080p', duration: Math.min(15, Math.max(2, Math.round(Number(duration) || 5))), audio: true, enable_prompt_expansion: true, ...(Number.isInteger(seed) && { seed }) };
+  if (image) return { endpoint: 'alibaba/wan-3.0/image-to-video', input: { ...common, prompt, start_image_url: image, ...(endImage && { end_image_url: endImage }), aspect_ratio: 'adaptive' } };
+  if (refs.length || videos.length) {
+    const names = [...refs.slice(0, 10).map((_, i) => `Image ${i + 1}`), ...videos.slice(0, 5).map((_, i) => `Video ${i + 1}`)];
+    const text = /\b(Image|Video) \d/.test(prompt || '') ? prompt : `${names.join(', ')}: ${prompt || ''}`;
+    return { endpoint: 'alibaba/wan-3.0/reference-to-video', input: { ...common, prompt: text, aspect_ratio: ar, reference_image_urls: refs.slice(0, 10), reference_video_urls: videos.slice(0, 5), reference_audio_urls: audios.slice(0, 5) } };
+  }
+  return { endpoint: 'alibaba/wan-3.0/text-to-video', input: { ...common, prompt, aspect_ratio: ar === 'adaptive' ? '16:9' : ar } };
+}
+
 /** First media URL in a fal result, preferring `kind` ('video' | 'image' | 'audio'). */
 export function falMedia(out, kind) {
   const pick = (v) => (Array.isArray(v) ? pick(v[0]) : typeof v === 'string' ? v : v?.url || null);

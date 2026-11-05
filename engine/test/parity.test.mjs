@@ -152,6 +152,22 @@ test('Qwen Token Plan bodies: HappyHorse routes to t2v / i2v / r2v, images use t
   assert.equal(im.parameters.size, '1664*928');
 });
 
+test('fal Wan 3.0 routes text / image / reference-to-video with the documented fields', async () => {
+  const { wan3Request } = await import('../lib/providers/fal.js');
+  const t = wan3Request({ prompt: 'p', aspect: '9:16', resolution: '480p', duration: 2 });
+  assert.equal(t.endpoint, 'alibaba/wan-3.0/text-to-video');
+  assert.deepEqual([t.input.aspect_ratio, t.input.resolution, t.input.duration, t.input.audio], ['9:16', '480p', 2, true]);
+  const i = wan3Request({ prompt: 'p', image: 'https://i/1', endImage: 'https://i/2', duration: 40 });
+  assert.equal(i.endpoint, 'alibaba/wan-3.0/image-to-video');
+  assert.equal(i.input.start_image_url, 'https://i/1');
+  assert.equal(i.input.end_image_url, 'https://i/2');
+  assert.equal(i.input.duration, 15);
+  const r = wan3Request({ prompt: 'walks in', refs: ['https://i/1', 'https://i/2'] });
+  assert.equal(r.endpoint, 'alibaba/wan-3.0/reference-to-video');
+  assert.deepEqual(r.input.reference_image_urls, ['https://i/1', 'https://i/2']);
+  assert.match(r.input.prompt, /^Image 1, Image 2: walks in$/);
+});
+
 /* ---------------- Cinema ---------------- */
 
 test('cinema prompt stacks camera moves in order and adds look + genre', () => {

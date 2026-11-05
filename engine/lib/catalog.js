@@ -13,7 +13,7 @@ import { comfyRun, listTemplates } from './providers/comfy.js';
 import { apimartVideo, apimartUpload, apimartAvailable } from './providers/apimart.js';
 // Higgsfield-parity (tools agent): extra image/video models + tool-only models.
 import { apimartImage, apimartVeoExtend } from './providers/apimart.js';
-import { falUpload } from './providers/fal.js';
+import { falUpload, wan3Request } from './providers/fal.js';
 import { elevenAvailable } from './providers/eleven.js';
 import { TOOL_MODELS } from './toolmodels.js';
 import { qwenImage, qwenVideo, qwenAvailable } from './providers/qwen.js';
@@ -100,6 +100,8 @@ const PARITY_VIDEO = [
   { id: 'apimart/kling-3.0-turbo', provider: 'apimart', label: 'Kling 3.0 Turbo (ApiMart)', blurb: 'Fast Kling 3.0, 3–15 s.', caps: { t2v: true, i2v: true }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1'], resolutions: ['720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
   { id: 'apimart/seedance-2.0-fast', provider: 'apimart', label: 'Seedance 2.0 Fast (ApiMart)', blurb: 'Cheaper Seedance 2.0 with audio, up to 720p.', caps: { t2v: true, i2v: true, end: true }, refs: 6, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['480p', '720p'], resolutionDefault: '720p', maxClip: 15 },
 ];
+// Wan 3.0 on fal: one entry, routed to text / image (first+last frame) / reference-to-video (up to 10 identity images).
+PARITY_VIDEO.push({ id: 'fal/wan-3.0', provider: 'fal', label: 'Wan 3.0 (fal)', blurb: 'Wan 3.0 with audio: start + end frame, or up to 10 reference images for identity. $0.05/s.', caps: { t2v: true, i2v: true, end: true }, refs: 10, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '1080p', maxClip: 15 });
 // Qwen Token Plan (subscription credits). HappyHorse routes to t2v / i2v / r2v (identity-preserving references).
 PARITY_VIDEO.push({ id: 'qwen/happyhorse-1.1', provider: 'qwen', label: 'HappyHorse 1.1 (Qwen plan)', blurb: 'Alibaba’s top video model on your Qwen subscription; up to 9 identity references.', caps: { t2v: true, i2v: true }, refs: 9, durations: [3, 5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 });
 PARITY_IMAGE.push(
@@ -331,7 +333,11 @@ export async function generate(job, { onStatus, signal } = {}) {
     case 'qwen': r = await qwenVideo({ prompt: job.prompt, image: img, refs, aspect: job.aspect, resolution: job.resolution || m.resolutionDefault, duration: dur, seed }, ctx); break;
     case 'fal': {
       const vAspect = ['16:9', '9:16', '1:1'].includes(job.aspect) ? job.aspect : '16:9';
-      if (slug === 'wan22-a14b') {
+      if (slug === 'wan-3.0') {
+        const pub = async (list) => Promise.all((list || []).slice(0, 5).map(async (x) => asInput('public', await materialize(x, signal), signal)));
+        const { endpoint, input } = wan3Request({ prompt: job.prompt, image: img, endImage: end, refs, videos: await pub(job.videos), audios: await pub(job.audios), aspect: job.aspect, resolution: job.resolution || m.resolutionDefault, duration: dur, seed });
+        r = { url: (await falRun({ key: getSettings().falKey, endpoint, input, onStatus, signal })).video?.url };
+      } else if (slug === 'wan22-a14b') {
         const input = { prompt: job.prompt, num_frames: clamp(Math.round(dur * 16) + 1, 17, 161), frames_per_second: 16, resolution: job.resolution === '480p' ? '480p' : '720p', aspect_ratio: img ? 'auto' : vAspect, seed, enable_prompt_expansion: false, ...(img && { image_url: img }), ...(img && end && { end_image_url: end }) };
         r = { url: (await falRun({ key: getSettings().falKey, endpoint: img ? 'fal-ai/wan/v2.2-a14b/image-to-video' : 'fal-ai/wan/v2.2-a14b/text-to-video', input, onStatus, signal })).video?.url };
       } else {
