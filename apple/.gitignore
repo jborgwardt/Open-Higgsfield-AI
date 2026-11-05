@@ -6,3 +6,4 @@ FilmStudioKit/.swiftpm/
 build/
 DerivedData/
 screenshots/*.tmp.png
+screenshots/

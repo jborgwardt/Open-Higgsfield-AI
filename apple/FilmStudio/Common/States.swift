@@ -129,7 +129,7 @@ struct BannerView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(tint.opacity(0.35)))
         .padding(.horizontal)
-        .padding(.top, 6)
+        .padding(.vertical, 6)
     }
 }
 

@@ -95,6 +95,20 @@ targets:
               NSExceptionAllowsInsecureHTTPLoads: true
         NSPhotoLibraryUsageDescription: Film Studio lets you pick photos and videos as references and start frames.
 
+  FilmStudioUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: FilmStudioUITests
+    dependencies:
+      - target: FilmStudio
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.borgwardt.filmstudio.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: FilmStudio
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+
 schemes:
   FilmStudio:
     build:
@@ -102,6 +116,10 @@ schemes:
         FilmStudio: all
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - FilmStudioUITests
     archive:
       config: Release
   FilmStudioMac:

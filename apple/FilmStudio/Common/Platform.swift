@@ -45,6 +45,13 @@ enum Platform {
     }
 }
 
+#if os(iOS)
+/// Ends editing in whatever field has focus.
+func hideKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
+#endif
+
 extension Color {
     static var groupedBackground: Color {
         #if os(iOS)

@@ -120,7 +120,7 @@ struct ServerSection: View {
 
     var body: some View {
         Section {
-            TextField("https://films.heil.haus", text: $text)
+            TextField("Address", text: $text, prompt: Text("https://films.heil.haus"))
                 .urlField()
                 .onSubmit { Task { await apply() } }
             HStack {

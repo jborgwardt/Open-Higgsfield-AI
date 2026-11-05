@@ -163,8 +163,17 @@ struct ToolRunView: View {
                 RunsSection(source: "tool:\(tool.id)", open: $open)
             }
             .studioForm()
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(tool.title)
             .inlineTitle()
+            #if os(iOS)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { hideKeyboard() }
+                }
+            }
+            #endif
             .navigationDestination(item: $open) { MediaViewer(item: $0) }
             .onAppear {
                 if !started { values = tool.initialValues; started = true }
@@ -194,7 +203,10 @@ struct ToolRunView: View {
         let body = values.filter { !$0.value.isNull }
         let client = app.client
         let tool = tool
-        app.generations.start(title: tool.title, subtitle: tool.description, kind: tool.output, source: "tool:\(tool.id)", app: app) {
+        // The first text the user typed describes the run best (a prompt or a line); else the tool's description.
+        let typed = tool.inputs.first { ($0.kind == .text || $0.kind == .longtext) && (body[$0.key]?.string?.isEmpty == false) }
+        let subtitle = typed.flatMap { body[$0.key]?.string } ?? tool.description
+        app.generations.start(title: tool.title, subtitle: subtitle, kind: tool.output, source: "tool:\(tool.id)", app: app) {
             try await client.runTool(tool, values: body)
         }
     }

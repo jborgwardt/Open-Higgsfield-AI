@@ -5,6 +5,12 @@ import FilmStudioKit
 struct FilmStudioApp: App {
     @State private var app = AppModel()
 
+    init() {
+        #if DEBUG && os(macOS)
+        DebugSnapshot.scheduleIfRequested()
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()

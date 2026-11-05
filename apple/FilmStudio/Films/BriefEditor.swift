@@ -46,7 +46,7 @@ struct BriefEditor: View {
 
                     Section {
                         Stepper(value: $brief.targetMinutes, in: 0.5...maxMinutes, step: brief.targetMinutes < 2 ? 0.5 : 1) {
-                            LabeledContent("Length", value: brief.targetMinutes < 1 ? "\(Int(brief.targetMinutes * 60)) s" : "\(brief.targetMinutes.formatted()) min")
+                            LabeledContent("Length", value: brief.lengthText)
                         }
                         Picker("Clip length", selection: $brief.clipSeconds) {
                             ForEach(clipChoices, id: \.self) { Text("\(Int($0)) s").tag($0) }
@@ -88,6 +88,7 @@ struct BriefEditor: View {
                     if let error { Section { Text(error).foregroundStyle(.red) } }
                 }
                 .studioForm()
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle(isNew ? "New Film" : "Brief")
             .inlineTitle()

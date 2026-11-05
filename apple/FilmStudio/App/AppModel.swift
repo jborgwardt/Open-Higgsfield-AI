@@ -119,11 +119,10 @@ final class AppModel {
         await loadCharacters()
     }
 
-    /// On launch, on foreground and every `polling.configMs`.
+    /// On launch and every time the app comes to the foreground (debounced for several windows).
     func refreshConfig(force: Bool = false) async {
         guard phase == .ready else { return }
-        let every = Double(config.polling["configMs"] ?? 300_000) / 1000
-        guard force || Date().timeIntervalSince(lastConfigFetch) > every else { return }
+        guard force || Date().timeIntervalSince(lastConfigFetch) > 1.5 else { return }
         lastConfigFetch = Date()
         if let (cfg, data) = try? await client.appConfig() {
             config = cfg

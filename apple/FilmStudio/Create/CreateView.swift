@@ -89,8 +89,15 @@ struct CreateView: View {
                 RunsSection(source: "create", open: $open)
             }
             .studioForm()
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(mode == .image ? "Create Image" : "Create Video")
             .toolbar {
+                #if os(iOS)
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { promptFocused = false }
+                }
+                #endif
                 ToolbarItem(placement: .trailing) {
                     Menu {
                         Button("Reload Models", systemImage: "arrow.clockwise") { Task { await app.reloadCatalog() } }

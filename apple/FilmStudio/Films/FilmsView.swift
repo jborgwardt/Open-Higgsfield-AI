@@ -117,6 +117,10 @@ private struct FilmRow: View {
 }
 
 /// One production: plan, render, assemble, watch.
+extension Brief {
+    var lengthText: String { targetMinutes < 1 ? "\(Int((targetMinutes * 60).rounded())) s" : "\(targetMinutes.formatted()) min" }
+}
+
 struct FilmDetailView: View {
     let id: String
     @Environment(AppModel.self) private var app
@@ -188,7 +192,10 @@ struct FilmDetailView: View {
                         Button { shot = s } label: { ShotRow(shot: s) }.buttonStyle(.plain)
                     }
                 } header: {
-                    Text(g.scene.map { "Scene \(i + 1) · \($0.title)" } ?? "Shots")
+                    Text(g.scene.map { sc in
+                        let t = sc.title.trimmingCharacters(in: .whitespaces)
+                        return t.isEmpty || t.lowercased().hasPrefix("scene") ? "Scene \(i + 1)" : "Scene \(i + 1) · \(t)"
+                    } ?? "Shots")
                 } footer: {
                     if let summary = g.scene?.summary.nonEmpty { Text(summary) }
                 }
@@ -231,7 +238,7 @@ struct FilmDetailView: View {
                 StatusBadge(text: p.assembling ? "Assembling" : p.status.label, tint: p.assembling ? .purple : p.status.tint, spinning: p.isLive)
                 if !p.shots.isEmpty { Text("\(p.doneCount)/\(p.shots.count) shots").font(.subheadline).foregroundStyle(.secondary).monospacedDigit() }
                 Spacer()
-                Text("\(Int(p.brief.targetMinutes)) min · \(Int(p.brief.clipSeconds)) s clips").font(.caption).foregroundStyle(.secondary)
+                Text("\(p.brief.lengthText) · \(Int(p.brief.clipSeconds)) s clips").font(.caption).foregroundStyle(.secondary)
             }
             if !p.shots.isEmpty { ProgressView(value: Double(p.doneCount), total: Double(max(p.shots.count, 1))) }
             if let plan = p.plan, !plan.logline.isEmpty { Text(plan.logline).font(.callout).italic() }
@@ -255,11 +262,11 @@ struct FilmDetailView: View {
                 .disabled(!canPlan || busy != nil || p.brief.script.trimmingCharacters(in: .whitespaces).isEmpty)
             } else if p.status == .running || p.running {
                 actionButton("Pause", "pause.fill", prominent: false) { try await app.client.productionAction(id, "pause") }
-            } else {
-                actionButton(p.doneCount > 0 ? "Resume Rendering" : "Start Rendering", "play.fill", prominent: true, disabled: p.shots.allSatisfy { $0.status == .done || $0.status == .skipped }) { try await app.client.productionAction(id, "start") }
+            } else if !p.shots.allSatisfy({ $0.status == .done || $0.status == .skipped }) {
+                actionButton(p.doneCount > 0 ? "Resume Rendering" : "Start Rendering", "play.fill", prominent: true) { try await app.client.productionAction(id, "start") }
             }
             if p.doneCount > 0 {
-                actionButton(p.master == nil ? "Assemble" : "Re-assemble", "film.stack", prominent: false, disabled: !p.canAssemble) { try await app.client.productionAction(id, "assemble") }
+                actionButton(p.master == nil ? "Assemble" : "Re-assemble", "film.stack", prominent: p.master == nil && p.shots.allSatisfy { $0.status == .done || $0.status == .skipped }, disabled: !p.canAssemble) { try await app.client.productionAction(id, "assemble") }
             }
         }
         .listRowBackground(Color.clear)

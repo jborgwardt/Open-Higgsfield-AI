@@ -68,7 +68,7 @@ struct MediaViewer: View {
                 Text(item.prompt).font(.body).textSelection(.enabled)
             }
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
-                if !item.model.isEmpty { row("Model", item.model) }
+                if !item.model.isEmpty { row("Model", app.catalog?.model(item.model)?.label ?? item.model) }
                 if let d = item.date { row("Created", d.formatted(date: .abbreviated, time: .shortened)) }
                 if !item.resolution.isEmpty { row("Size", item.resolution) }
             }

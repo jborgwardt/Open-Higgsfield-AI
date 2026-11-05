@@ -60,7 +60,6 @@ struct MainView: View {
 
     var body: some View {
         content
-            .safeAreaInset(edge: .top, spacing: 0) { BannerStack() }
             .focusedSceneValue(\.tabSelection, $tab)
             .onChange(of: app.requestedTab, initial: true) { _, t in
                 guard let t else { return }
@@ -69,6 +68,10 @@ struct MainView: View {
             }
             .onChange(of: tabs.map(\.id), initial: true) { _, ids in
                 if !ids.contains(tab), let first = ids.first { tab = first }
+            }
+            .onAppear {
+                // `-startTab films` (launch argument) opens a section directly — used for screenshots.
+                if let t = UserDefaults.standard.string(forKey: "startTab"), tabs.contains(where: { $0.id == t }) { tab = t }
             }
     }
 
@@ -145,6 +148,11 @@ struct TabRoot: View {
     @Environment(AppModel.self) private var app
 
     var body: some View {
+        // The server notice / update offer sits under the navigation bar of every tab.
+        screen.safeAreaInset(edge: .top, spacing: 0) { BannerStack() }
+    }
+
+    @ViewBuilder private var screen: some View {
         let p = app.config.presentation(for: tab.id)
         if p.web {
             WebScreen(path: p.path ?? tab.path, title: tab.title).onAppear { app.breadcrumb("web:\(tab.id)") }
