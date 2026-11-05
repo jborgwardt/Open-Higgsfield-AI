@@ -4,11 +4,20 @@ Owner: integration session. Updated 2026-11-05.
 
 ## Milestone 1: usable build for feedback
 
-**Delivered build:** app commit `256a958` (branch `multi-provider-longform`).
+**Delivered build (current):** app commit `c70102a`, published 18:21 EST. It includes:
+- the Save-to-Photos crash fix and playback audio session (`256a958`)
+- the Mac sign-in fix: app activation, waiting text, Cancel (`f21a119`)
+- the per-film director fix (`f721105`, test `ccedab5`)
+
 **Installers:**
-- Built 17:41–17:42 from the clean `256a958` tree.
-- Install page: https://ota.heil.haus:8443/film-studio.html. The page, IPA, manifest and Mac zip all return 200.
-- Both the IPA and the Mac binary contain post-QA strings ("Showing your last Home", "Wrong access code").
+- https://ota.heil.haus:8443/film-studio.html: page, IPA, manifest and Mac zip all return 200. The Mac app's signature verifies.
+- Built in an isolated staging folder, `~/OTA/build/filmstudio-stage-20261105-182120`. Earlier builds are kept.
+- Version is 1.0.0 (1) on every build so far. The build number isn't bumped, so the version can't tell builds apart: identify builds by publish time and commit.
+
+**Installed on physical devices** (via devicectl, over the existing copy, so app data is kept):
+- waldgeist, iPhone 15 Pro Max (iPhone16,2), UDID 00008130-00094C1A2661001C: Film Studio 1.0.0 (1) installed from the c70102a IPA.
+- Endbahnhof, iPad Pro 13" M4 (iPad16,6), UDID 00008132-001621A83C21801C: Film Studio 1.0.0 (1) installed from the c70102a IPA.
+- Not yet verified on the devices: passkey sign-in, and an audio check by ear. Justin has to do both.
 
 **Backend:** live engine redeployed by the ship pass. Its engine tests passed 98/98, and films.heil.haus returned 200.
 
@@ -38,8 +47,7 @@ Test engine: `studio-test-qa`, a throwaway container on the VPS reached through 
 ### Mac sign-in (reported frozen)
 - Cause: the passkey window only appears once Film Studio is the active app. Launched in the background, the first attempt waited about 90 s with only a spinner.
 - Logs: the second attempt worked (passkey 17:47:16, signed in 17:47:19).
-- Fix (`f21a119`, source only): activate the app before sign-in, show "Waiting for the Pocket ID passkey window…" and add a Cancel button.
-- Not yet in the installer: the user is in the live Mac session, which runs from the OTA build folder.
+- Fix (`f21a119`): activate the app before sign-in, show "Waiting for the Pocket ID passkey window…" and add a Cancel button. It's in the published installers (since the 17:54 build, and in the current c70102a build).
 
 ### Ship pass (UI suites on the 5db5290 build, before the app-only fixes)
 - Live engine is on 5db5290: 98/98 engine tests passed, the site returns 200, /feed has previews. The backend is identical to HEAD.
@@ -51,7 +59,7 @@ Test engine: `studio-test-qa`, a throwaway container on the VPS reached through 
 
 ### Open / needs a human
 - **Audio audibility:** the file has an AAC track, but the simulator's player shows muted and I can't hear it. Check by ear on the phone.
-- **Mac:** the build launches and the dark sign-in screen renders. Signed-in Mac screens are not verified, because automation can't type into the access-code field (a password field). Needs one manual sign-in.
+- **Mac:** Justin signed in with his passkey and used the app (17:47). The long-form trial was then created from the signed-in Mac app.
 - **Passkey sign-in to films.heil.haus on the physical phone:** only you can do this.
 - **Polish:**
   - The progress pill disappears on completion with no "ready" toast.
