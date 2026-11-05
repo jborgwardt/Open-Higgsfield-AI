@@ -13,6 +13,8 @@ ONLY=${4:-}
 mkdir -p screenshots
 [ -d FilmStudio.xcodeproj ] || xcodegen -q
 export TEST_RUNNER_FS_SERVER=$SERVER TEST_RUNNER_FS_SHOTS=$PWD/screenshots TEST_RUNNER_FS_PREFIX=$PREFIX
+# [code-file]: access code for code-mode engines (e.g. a VPS test container), read from a file.
+[ -n "${5:-}" ] && export TEST_RUNNER_FS_CODE="$(cat "$5")"
 xcrun simctl status_bar "$SIM" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 2>/dev/null || true
 # [test] may be a comma-separated list, e.g. test1_CreateAndLibrary,test2_FilmsCharactersSettings
 FILTERS=()

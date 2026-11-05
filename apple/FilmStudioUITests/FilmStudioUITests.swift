@@ -16,6 +16,20 @@ final class FilmStudioUITests: XCTestCase {
         continueAfterFailure = false
         app.launchArguments = ["-serverURL", server]
         app.launch()
+        // Access-code engines (e.g. the VPS test container): sign in once; the Keychain keeps it.
+        let field = app.secureTextFields["Access code"]
+        if let code = env["FS_CODE"], !code.isEmpty, field.waitForExistence(timeout: 6) {
+            field.tap()
+            field.typeText(code)
+            app.buttons["Sign In"].tap()
+        }
+    }
+
+    /// Never spend money in tests: generation only proceeds when the free offline model is selected.
+    private func requireFreeModel(_ label: String) {
+        // Inside the form only (Explore's model tiles carry the same names); rows merge their texts into one label.
+        let inForm = app.collectionViews.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", label)).firstMatch
+        XCTAssertTrue(inForm.waitForExistence(timeout: 5), "refusing to generate: \(label) is not the selected model")
     }
 
     // MARK: Helpers
@@ -90,6 +104,7 @@ final class FilmStudioUITests: XCTestCase {
         type(into: prompt, "A lighthouse on a cliff at dawn, mist over the sea")
         dismissKeyboard()
         shot("02-create-image")
+        requireFreeModel("Previs plate (offline)")
         button(containing: "Generate Image").tap()
         wait(app.navigationBars["Image"], 60, "image result viewer")
         sleep(2)
@@ -103,6 +118,7 @@ final class FilmStudioUITests: XCTestCase {
         type(into: vprompt, "Slow push-in on a quiet harbour at night")
         dismissKeyboard()
         shot("04-create-video")
+        requireFreeModel("Animatic (offline previs)")
         button(containing: "Generate Video").tap()
         wait(app.navigationBars["Video"], 120, "video result viewer")
         sleep(3)
@@ -137,6 +153,8 @@ final class FilmStudioUITests: XCTestCase {
         let dec = app.steppers.firstMatch.buttons.element(boundBy: 0)
         for _ in 0..<5 { if dec.isEnabled { dec.tap() } }
         shot("09-new-film")
+        requireFreeModel("Animatic (offline previs)")
+        requireFreeModel("Previs plate (offline)")
         app.buttons["Create"].tap()
 
         // Plan → asks for a director first (there is no default).
@@ -296,6 +314,7 @@ final class FilmStudioUITests: XCTestCase {
         var r = URLRequest(url: URL(string: "\(server)/engine/api/app/config")!)
         r.httpMethod = "PATCH"
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let code = env["FS_CODE"], !code.isEmpty { r.setValue("Bearer \(code)", forHTTPHeaderField: "Authorization") }
         r.httpBody = try JSONSerialization.data(withJSONObject: body)
         final class Status: @unchecked Sendable { var code = 0 }
         let status = Status()
