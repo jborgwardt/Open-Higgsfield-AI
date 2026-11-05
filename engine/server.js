@@ -18,6 +18,7 @@ import { oidcConfig, loginRedirect, finishLogin, sessionFor, endSession, session
 import { fetchJSON } from './lib/http.js';
 import { apimartModels, APIMART_LLMS } from './lib/providers/apimart.js';
 import { elevenSubscription, elevenVoices, elevenAvailable, ELEVEN_TTS_MODELS } from './lib/providers/eleven.js';
+import * as tools from './lib/tools.js'; // Higgsfield-parity one-click tools (server-driven registry)
 
 const PORT = Number(process.env.ENGINE_PORT) || 4848;
 const HOST = process.env.ENGINE_HOST || '127.0.0.1';
@@ -200,6 +201,12 @@ route('POST', '/generate', ({ body }) => {
   });
 });
 route('GET', '/jobs/:id', ({ params }) => jobs.getJob(params.id) || Promise.reject(new HttpError(404, 'job not found')));
+
+// ---- Tools (Higgsfield-parity apps): server-driven registry rendered by the web Tools page and the Apple app ----
+route('GET', '/tools', () => tools.listTools());
+route('GET', '/tools/:id', async ({ params }) => (await tools.listTools()).find((t) => t.id === params.id) || Promise.reject(new HttpError(404, 'no such tool')));
+route('POST', '/tools/:id/run', ({ params, body }) => { const job = tools.runTool(params.id, body.inputs || body); return { jobId: job.id, job }; });
+route('GET', '/cinema/presets', () => tools.cinemaPresets());
 route('POST', '/jobs/:id/cancel', ({ params }) => jobs.cancelJob(params.id) || Promise.reject(new HttpError(404, 'job not found')));
 
 // Long-form productions

@@ -168,3 +168,6 @@ export function fallbackPlan(brief, total) {
   }
   return { title: brief.title || 'Untitled film', logline: '', style: brief.style || '', scenes };
 }
+
+// Tools (UGC ad scripts, What's-next ideas) reuse whichever director LLM is connected.
+export { chat as directorChat, chatJSON as directorJSON };
