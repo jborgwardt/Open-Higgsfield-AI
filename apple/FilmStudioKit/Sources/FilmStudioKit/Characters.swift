@@ -18,6 +18,10 @@ public struct StudioCharacter: Decodable, Sendable, Identifiable, Hashable {
         public var kind: String // photo | video-frame | sheet
         public var angle: String?
         public var quality: Quality?
+        /// "analyzing" while the engine grades the photo in the background; "ready" after.
+        public var status: String = "ready"
+        public var error: String?
+        public var isAnalyzing: Bool { status == "analyzing" || status == "processing" }
     }
     public struct Sheet: Sendable, Hashable { public var assetId: String; public var url: String; public var approved: Bool }
 
@@ -46,17 +50,22 @@ public struct StudioCharacter: Decodable, Sendable, Identifiable, Hashable {
             if let qo = r["quality"]?.object {
                 q = Quality(score: qo["score"]?.double, sharp: qo["sharp"], issues: (qo["issues"]?.array ?? []).compactMap(\.string))
             }
-            return Ref(assetId: aid, url: r["url"]?.string ?? "", kind: r["kind"]?.string ?? "photo", angle: r["angle"]?.string, quality: q)
+            return Ref(assetId: aid, url: r["url"]?.string ?? "", kind: r["kind"]?.string ?? "photo", angle: r["angle"]?.string, quality: q,
+                       status: r["status"]?.string ?? "ready", error: r["error"]?.string)
         }
         if let s = c.json("sheet")?.object, let url = s["url"]?.string {
             sheet = Sheet(assetId: s["assetId"]?.string ?? "", url: url, approved: s["approved"]?.isTruthy ?? false)
         }
         coverUrl = c.string("coverUrl")
+        processing = !(c.json("processing")?.array?.isEmpty ?? true)
         createdAt = c.string("createdAt", default: "")
         updatedAt = c.string("updatedAt", default: "")
     }
 
     public var coverImageURL: String? { coverUrl ?? sheet?.url ?? refs.first?.url }
+    /// Work still running on the server (grading photos, cutting a video, drawing a sheet).
+    public var isProcessing: Bool { refs.contains(where: \.isAnalyzing) || processing }
+    public var processing = false
 }
 
 /// GET /characters/:id/coverage — which reference angles exist, what is missing, and tips.

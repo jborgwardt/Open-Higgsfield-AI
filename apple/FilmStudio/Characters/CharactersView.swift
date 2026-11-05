@@ -173,7 +173,14 @@ struct CharacterDetailView: View {
                     } label: { Label("More", systemImage: "ellipsis.circle") }
                 }
             }
-            .task(id: app.refreshTick) { await refresh() }
+            .task(id: app.refreshTick) {
+                await refresh()
+                // Photos are graded (and videos cut) in the background: keep refreshing until that's done.
+                while !Task.isCancelled, character?.isProcessing == true {
+                    try? await Task.sleep(for: app.config.interval("characterMs", default: 3000))
+                    await refresh()
+                }
+            }
             .refreshable { await refresh() }
             .onChange(of: addPhotos) { _, items in
                 guard !items.isEmpty else { return }
@@ -406,7 +413,11 @@ private struct RefTile: View {
                     if ref.kind == "video-frame" { Image(systemName: "video.fill").font(.caption2).padding(4).background(.black.opacity(0.5), in: Circle()).foregroundStyle(.white).padding(4) }
                 }
             Text(angleTitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-            if let issue = ref.quality?.issues.first { Text(issue).font(.caption2).foregroundStyle(.orange).lineLimit(1) }
+            if ref.isAnalyzing {
+                HStack(spacing: 3) { ProgressView().controlSize(.mini); Text("Checking…") }.font(.caption2).foregroundStyle(.secondary)
+            } else if let issue = ref.error ?? ref.quality?.issues.first {
+                Text(issue).font(.caption2).foregroundStyle(.orange).lineLimit(2)
+            }
         }
         .frame(width: 96)
         .contextMenu {
@@ -418,7 +429,8 @@ private struct RefTile: View {
     }
 
     private var angleTitle: String {
-        guard let a = ref.angle else { return ref.kind == "sheet" ? "Sheet" : "Photo" }
+        if ref.kind == "sheet" || ref.angle == "turnaround" { return "Sheet" }
+        guard let a = ref.angle, a != "unknown" else { return ref.kind == "video-frame" ? "Video frame" : "Photo" }
         return app.config.capture.checklist.first { $0.id == a }?.title ?? a
     }
 }
