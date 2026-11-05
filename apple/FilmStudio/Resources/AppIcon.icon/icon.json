@@ -1,0 +1,45 @@
+{
+  "color-space-for-untagged-svg-colors" : "display-p3",
+  "fill" : {
+    "linear-gradient" : [
+      "display-p3:0.96000,0.33000,0.36000,1.00000",
+      "display-p3:0.17000,0.05500,0.40000,1.00000"
+    ],
+    "orientation" : {
+      "start" : { "x" : 0.2, "y" : 0 },
+      "stop" : { "x" : 0.8, "y" : 1 }
+    }
+  },
+  "groups" : [
+    {
+      "name" : "Spark",
+      "layers" : [
+        {
+          "image-name" : "spark.png",
+          "name" : "spark",
+          "glass" : true
+        }
+      ],
+      "shadow" : { "kind" : "layer-color", "opacity" : 0.6 },
+      "specular" : true,
+      "translucency" : { "enabled" : false, "value" : 0.5 }
+    },
+    {
+      "name" : "Aperture",
+      "layers" : [
+        {
+          "image-name" : "aperture.png",
+          "name" : "aperture",
+          "glass" : true
+        }
+      ],
+      "shadow" : { "kind" : "neutral", "opacity" : 0.5 },
+      "specular" : true,
+      "translucency" : { "enabled" : true, "value" : 0.35 }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [ "watchOS" ],
+    "squares" : "shared"
+  }
+}
