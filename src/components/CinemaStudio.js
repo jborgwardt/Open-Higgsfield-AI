@@ -131,7 +131,7 @@ export function CinemaStudio() {
 
         const rect = trigger.getBoundingClientRect();
         const menu = document.createElement('div');
-        menu.className = 'custom-dropdown fixed bg-[#1a1a1a] border border-white/10 rounded-xl py-1 shadow-2xl z-50 flex flex-col min-w-[100px] animate-fade-in';
+        menu.className = 'custom-dropdown fixed bg-[#1a1a1a] border border-white/10 rounded-xl py-1 shadow-2xl z-50 flex flex-col min-w-[100px] max-h-[55vh] overflow-y-auto animate-fade-in';
         menu.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
         menu.style.left = rect.left + 'px';
 
@@ -191,6 +191,57 @@ export function CinemaStudio() {
     cameraBuilderBtn.setAttribute('data-tooltip', 'Quick camera builder');
     cameraBuilderBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg> Builder`;
     settingsToolbar.appendChild(cameraBuilderBtn);
+
+    // ---- Engine mode: Higgsfield Cinema Studio controls, compiled server-side by the `cinema-shot` tool ----
+    const useEngine = () => engine.online && !localStorage.getItem('kie_key') && !localStorage.getItem('cf_backend');
+    const cine = { mode: 'video', moves: ['Dolly In'], genre: 'General', duration: '8', model: '', start: null, presets: null };
+    const chipBtn = (onClick) => {
+        const b = document.createElement('button');
+        b.className = arBtn.className;
+        b.onclick = (e) => { e.stopPropagation(); onClick(b); };
+        settingsToolbar.appendChild(b);
+        return b;
+    };
+    const engineBtns = {};
+    function refreshEngineBtns() {
+        if (!engineBtns.mode) return;
+        engineBtns.mode.textContent = cine.mode === 'video' ? '🎥 Video' : '📷 Photo';
+        engineBtns.moves.textContent = `Moves: ${cine.moves.length ? cine.moves.join(' → ') : 'none'}`;
+        engineBtns.moves.style.display = engineBtns.duration.style.display = cine.mode === 'video' ? '' : 'none';
+        engineBtns.genre.textContent = `Genre: ${cine.genre}`;
+        engineBtns.duration.textContent = `${cine.duration}s`;
+        const m = engine.catalog.find((x) => x.id === cine.model);
+        engineBtns.model.textContent = m ? m.label.replace(/ \(.*\)$/, '') : 'Model: auto';
+        engineBtns.start.textContent = cine.start ? '🖼 Start frame ✓' : '🖼 Start frame';
+        resBtn.style.display = cine.mode === 'video' ? 'none' : '';
+    }
+    if (useEngine()) {
+        engine.get('/cinema/presets').then((p) => { cine.presets = p; }).catch(() => {});
+        engineBtns.mode = chipBtn(() => { cine.mode = cine.mode === 'video' ? 'photo' : 'video'; cine.model = ''; refreshEngineBtns(); });
+        engineBtns.moves = chipBtn((b) => {
+            const moves = (cine.presets?.moves || []).map((m) => m.value);
+            createDropdown(['— Clear moves —', ...moves], null, (val) => {
+                if (val.startsWith('—')) cine.moves = [];
+                else cine.moves = [...cine.moves.filter((m) => m !== val), val].slice(-3); // up to 3 stacked moves, in order
+                refreshEngineBtns();
+            }, b);
+        });
+        engineBtns.genre = chipBtn((b) => createDropdown((cine.presets?.genres || []).map((g) => g.value), cine.genre, (val) => { cine.genre = val; refreshEngineBtns(); }, b));
+        engineBtns.duration = chipBtn((b) => createDropdown(['5', '8', '10', '15'], cine.duration, (val) => { cine.duration = val; refreshEngineBtns(); }, b));
+        engineBtns.model = chipBtn((b) => {
+            const list = engine.catalog.filter((m) => m.available && m.kind === (cine.mode === 'video' ? 'video' : 'image') && !['local', 'handoff'].includes(m.provider));
+            createDropdown(['Auto (best)', ...list.map((m) => m.label)], null, (val) => { cine.model = list.find((m) => m.label === val)?.id || ''; refreshEngineBtns(); }, b);
+        });
+        engineBtns.start = chipBtn(() => {
+            if (cine.start) { cine.start = null; refreshEngineBtns(); return; }
+            const inp = document.createElement('input');
+            inp.type = 'file'; inp.accept = 'image/*';
+            inp.onchange = async () => { if (inp.files[0]) { cine.start = await engine.upload(inp.files[0]); refreshEngineBtns(); } };
+            inp.click();
+        });
+        settingsToolbar.classList.add('flex-wrap');
+        refreshEngineBtns();
+    }
 
     leftColumn.appendChild(settingsToolbar);
     promptBar.appendChild(leftColumn);
@@ -387,6 +438,11 @@ export function CinemaStudio() {
     const resultImg = document.createElement('img');
     resultImg.className = 'max-h-[60vh] max-w-[90vw] rounded-2xl shadow-2xl border border-white/10 object-contain';
     imageContainer.appendChild(resultImg);
+    const resultVideo = document.createElement('video');
+    resultVideo.className = resultImg.className;
+    Object.assign(resultVideo, { controls: true, loop: true, playsInline: true });
+    resultVideo.style.display = 'none';
+    imageContainer.appendChild(resultVideo);
     canvas.appendChild(imageContainer);
 
     // Canvas Controls
@@ -421,7 +477,7 @@ export function CinemaStudio() {
             thumb.className = `relative group/thumb cursor-pointer rounded-lg overflow-hidden border-2 transition-all duration-300 aspect-square ${idx === 0 ? 'border-[#ff2d2d] shadow-glow-sm' : 'border-white/10 hover:border-white/30'}`;
 
             thumb.innerHTML = `
-                <img src="${entry.url}" class="w-full h-full object-cover opacity-80 group-hover/thumb:opacity-100 transition-opacity">
+                ${entry.kind === 'video' ? `<video src="${entry.url}" muted preload="metadata" class="w-full h-full object-cover opacity-80"></video>` : `<img src="${entry.url}" class="w-full h-full object-cover opacity-80 group-hover/thumb:opacity-100 transition-opacity">`}
                 <div class="absolute inset-0 bg-black/50 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center">
                     <span class="text-[8px] font-bold text-white uppercase">Load</span>
                 </div>
@@ -454,7 +510,7 @@ export function CinemaStudio() {
             updateResBtn(entry.settings.resolution || '2K');
         }
 
-        showCanvas(entry.url);
+        showCanvas(entry.url, entry.kind);
 
         // Highlight active history item
         if (thumbElement) {
@@ -467,8 +523,11 @@ export function CinemaStudio() {
         }
     };
 
-    const showCanvas = (url) => {
-        resultImg.src = url;
+    const showCanvas = (url, kind = 'image') => {
+        const isVideo = kind === 'video';
+        resultImg.style.display = isVideo ? 'none' : '';
+        resultVideo.style.display = isVideo ? '' : 'none';
+        if (isVideo) { resultVideo.src = url; resultVideo.play().catch(() => {}); } else { resultVideo.pause(); resultImg.src = url; }
 
         // Hide Input UI
         heroSection.classList.add('opacity-0', 'pointer-events-none', 'scale-95');
@@ -516,12 +575,13 @@ export function CinemaStudio() {
 
     downloadBtn.onclick = async () => {
         try {
-            const response = await fetch(resultImg.src);
+            const isVideo = resultVideo.style.display !== 'none';
+            const response = await fetch(isVideo ? resultVideo.src : resultImg.src);
             const blob = await response.blob();
             const blobUrl = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = blobUrl;
-            a.download = `cinema-shot-${Date.now()}.jpg`;
+            a.download = `cinema-shot-${Date.now()}.${isVideo ? 'mp4' : 'jpg'}`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -547,6 +607,26 @@ export function CinemaStudio() {
 
         generateBtn.disabled = true;
         generateBtn.innerHTML = "SHOOTING...";
+
+        // Engine: the server compiles camera + lens + moves + genre and picks the best connected model.
+        if (useEngine()) {
+            try {
+                const job = await engine.runTool('cinema-shot', {
+                    prompt: basePrompt, mode: cine.mode, image: cine.start?.id, aspect: ['16:9', '21:9', '9:16', '1:1', '4:3'].includes(currentSettings.aspect_ratio) ? currentSettings.aspect_ratio : '16:9',
+                    camera: currentSettings.camera, lens: currentSettings.lens, focal: String(currentSettings.focal), aperture: currentSettings.aperture,
+                    move1: cine.moves[0] || '', move2: cine.moves[1] || '', move3: cine.moves[2] || '', genre: cine.genre, duration: cine.duration,
+                    ...(cine.model ? { [cine.mode === 'video' ? 'videoModel' : 'imageModel']: cine.model } : {}),
+                }, { onUpdate: (j) => { generateBtn.innerHTML = String(j.message || 'SHOOTING…').slice(0, 28).toUpperCase(); } });
+                addToHistory({ url: job.url, kind: job.kind, timestamp: Date.now(), settings: { prompt: basePrompt, ...currentSettings, resolution: resBtn.dataset.value } });
+                showCanvas(job.url, job.kind);
+            } catch (e) {
+                alert('Generation Failed: ' + e.message);
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = `GENERATE ✨`;
+            }
+            return;
+        }
 
         // Compile Prompt
         const finalPrompt = buildNanoBananaPrompt(

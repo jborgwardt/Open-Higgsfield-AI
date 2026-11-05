@@ -31,6 +31,10 @@ function navigate(page) {
     import('./components/LongFormStudio.js').then(({ LongFormStudio }) => {
       contentArea.appendChild(LongFormStudio());
     });
+  } else if (page === 'tools') {
+    import('./components/ToolsPage.js').then(({ ToolsPage }) => {
+      contentArea.appendChild(ToolsPage());
+    });
   } else if (page === 'lipsync') {
     import('./components/LipSyncStudio.js').then(({ LipSyncStudio }) => {
       contentArea.appendChild(LipSyncStudio());
