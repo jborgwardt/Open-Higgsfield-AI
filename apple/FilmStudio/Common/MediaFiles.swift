@@ -34,9 +34,13 @@ enum MediaFiles {
         guard status == .authorized || status == .limited else {
             throw NSError(domain: "FilmStudio", code: 1, userInfo: [NSLocalizedDescriptionKey: "Allow Film Studio to add to Photos in Settings → Privacy → Photos."])
         }
-        try await PHPhotoLibrary.shared().performChanges {
-            PHAssetCreationRequest.forAsset().addResource(with: isVideo ? .video : .photo, fileURL: file, options: nil)
-        }
+        try await PHPhotoLibrary.shared().performChanges(photoChange(file, isVideo: isVideo))
+    }
+
+    /// Photos runs the change block on its own background queue. Built outside the main actor so the
+    /// closure isn't main-isolated (that isolation check trapped: EXC_BREAKPOINT in dispatch_assert_queue).
+    nonisolated private static func photoChange(_ file: URL, isVideo: Bool) -> @Sendable () -> Void {
+        { PHAssetCreationRequest.forAsset().addResource(with: isVideo ? .video : .photo, fileURL: file, options: nil) }
     }
 
     static func share(_ file: URL) {
@@ -84,11 +88,24 @@ struct EngineVideoPlayer: View {
                     options["AVURLAssetHTTPHeaderFieldsKey"] = ["Authorization": "Bearer \(token)"]
                     if let c = WebSession.cookie(token: token, for: u) { options[AVURLAssetHTTPCookiesKey] = [c] }
                 }
+                #if os(iOS)
+                // Full players are deliberate viewing: play sound even with the silent switch on
+                // (the default ambient session silences it). Muted feed tiles never touch the session.
+                try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+                try? AVAudioSession.sharedInstance().setActive(true)
+                #endif
                 let p = AVPlayer(playerItem: AVPlayerItem(asset: AVURLAsset(url: u, options: options)))
                 player = p
                 if autoplay { p.play() }
             }
-            .onDisappear { player?.pause() }
+            .onDisappear {
+                player?.pause()
+                #if os(iOS)
+                // Hand audio back so other apps' music resumes.
+                try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+                try? AVAudioSession.sharedInstance().setCategory(.ambient)
+                #endif
+            }
     }
 }
 
