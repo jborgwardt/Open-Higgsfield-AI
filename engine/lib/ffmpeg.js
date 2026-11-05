@@ -153,8 +153,11 @@ export async function mixSoundtrack({ video, out, music = [], voice = [], musicV
   const musicLabels = [];
   for (const m of music) {
     args.push('-stream_loop', '-1', '-i', m.file);
+    // Cues may set their own fades (a cue that enters on a cut comes in almost hard).
     const fade = Math.min(2, m.duration / 4);
-    parts.push(`[${n}:a]atrim=0:${m.duration.toFixed(3)},asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,afade=t=in:st=0:d=${fade.toFixed(2)},afade=t=out:st=${Math.max(0, m.duration - fade).toFixed(3)}:d=${fade.toFixed(2)},adelay=${Math.round(m.start * 1000)}:all=1[m${n}]`);
+    const fi = Math.max(0.01, Math.min(m.fadeIn ?? fade, m.duration / 2));
+    const fo = Math.max(0.01, Math.min(m.fadeOut ?? fade, m.duration / 2));
+    parts.push(`[${n}:a]atrim=0:${m.duration.toFixed(3)},asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,afade=t=in:st=0:d=${fi.toFixed(2)},afade=t=out:st=${Math.max(0, m.duration - fo).toFixed(3)}:d=${fo.toFixed(2)},adelay=${Math.round(m.start * 1000)}:all=1[m${n}]`);
     musicLabels.push(`[m${n}]`);
     n++;
   }

@@ -154,6 +154,17 @@ function newShot(p, sh = {}) {
     prompt: sh.prompt || [sh.action, sh.camera && `Camera: ${sh.camera}`].filter(Boolean).join('. '),
     continuity: sh.continuity === 'continue' ? 'continue' : 'cut',
     narration: sh.narration || '',
+    // writers' room fields: coverage + performance, on-screen dialogue, what lands on the cut
+    coverage: sh.coverage || '',
+    performance: sh.performance || '',
+    dialogue: Array.isArray(sh.dialogue) ? sh.dialogue : [],
+    sound: sh.sound || '',
+    hit: sh.hit || '',
+    score: typeof sh.score === 'boolean' ? sh.score : null, // music under this shot (null = legacy per-scene bed)
+    // editing: keep editLength seconds starting editIn seconds into the render (null = whole clip)
+    editIn: Number.isFinite(sh.editIn) ? sh.editIn : null,
+    editLength: Number.isFinite(sh.editLength) ? sh.editLength : null,
+    omit: false,
     voiceId: null,
     voiceKey: null,
     duration: sh.duration || null,
@@ -186,7 +197,9 @@ export async function updateShot(id, sid, patch) {
   return mutate(id, (p) => {
     const s = p.shots.find((x) => x.id === sid);
     if (!s) throw Object.assign(new Error('shot not found'), { status: 404 });
-    for (const k of ['title', 'prompt', 'action', 'camera', 'continuity', 'duration', 'model', 'narration']) if (k in patch) s[k] = patch[k];
+    for (const k of ['title', 'prompt', 'action', 'camera', 'continuity', 'duration', 'model', 'narration', 'dialogue', 'performance', 'coverage', 'hit', 'score', 'sound']) if (k in patch) s[k] = patch[k];
+    for (const k of ['editIn', 'editLength']) if (k in patch) s[k] = patch[k] === null || patch[k] === '' ? null : Math.max(0, Number(patch[k]) || 0);
+    if ('omit' in patch) s.omit = !!patch.omit;
     // Pin an approved still (an engine asset) as this shot's keyframe, or clear it with null.
     if ('keyframeId' in patch) {
       if (patch.keyframeId && !getAsset(patch.keyframeId)) throw Object.assign(new Error('keyframe asset not found'), { status: 400 });
@@ -495,6 +508,7 @@ async function buildSoundtrack(id, shots, starts, durs, total) {
     // Key on the resolved provider so one film never mixes narrators when "auto" changes its pick.
     const key = `${pickVoiceProvider(b.voiceProvider)}|${b.voice}|${b.narratorStyle}`;
     let n = 0;
+    let free = 0; // with fast cutting a line can outlast its shot: never let two narration lines overlap
     for (const [k, s] of shots.entries()) {
       const text = (s.narration || '').trim();
       if (!text) continue;
@@ -509,13 +523,41 @@ async function buildSoundtrack(id, shots, starts, durs, total) {
           continue;
         }
       }
-      voice.push({ file: assetPath(a), start: starts[k] + 0.3, duration: Number(a.duration) || 0 });
+      const at = Math.max(starts[k] + 0.3, free);
+      voice.push({ file: assetPath(a), start: at, duration: Number(a.duration) || 0 });
+      free = at + (Number(a.duration) || 0) + 0.15;
     }
   }
   if (b.music === 'upload' && getAsset(b.musicAssetId)) {
     music.push({ file: assetPath(getAsset(b.musicAssetId)), start: 0, duration: total });
+  } else if (b.music === 'ai' && shots.some((s) => typeof s.score === 'boolean')) {
+    // The director cues the score per shot: each run of scored shots is one cue that enters and exits on
+    // cuts. Unscored shots play with no music at all (silence / room tone is often funnier).
+    const runs = [];
+    shots.forEach((s, k) => {
+      if (!s.score) return;
+      const last = runs.at(-1);
+      if (last && last.next === k && last.sceneId === s.sceneId) { last.duration += durs[k]; last.next = k + 1; } else runs.push({ sceneId: s.sceneId, shot: s, start: starts[k], duration: durs[k], next: k + 1 });
+    });
+    for (const r of runs) {
+      const scene = p.scenes.find((x) => x.id === r.sceneId);
+      const prompt = [scene?.music || b.musicPrompt || 'Understated cinematic instrumental score', b.style && `Film look: ${b.style}`].filter(Boolean).join('. ');
+      const mkey = `${prompt}|${Math.round(r.duration)}`;
+      let a = r.shot.musicKey === mkey ? getAsset(r.shot.musicId) : null;
+      if (!a) {
+        await mutate(id, (x) => { x.message = `Composing a ${Math.round(r.duration)} s cue for “${scene?.title || 'scene'}”`; });
+        try {
+          a = await makeMusic({ model: b.musicModel, prompt, seconds: r.duration });
+          await mutate(id, (x) => { const t = x.shots.find((y) => y.id === r.shot.id); if (t) { t.musicId = a.id; t.musicKey = mkey; } });
+        } catch (e) {
+          await mutate(id, (x) => log(x, `Music cue for “${scene?.title || 'scene'}” failed: ${e.message}`));
+          continue;
+        }
+      }
+      music.push({ file: assetPath(a), start: r.start, duration: r.duration, fadeIn: 0.05, fadeOut: 0.3 });
+    }
   } else if (b.music === 'ai') {
-    // One cue per scene, sized to the scene's cut length.
+    // Legacy plans (no per-shot cues): one cue per scene, sized to the scene's cut length.
     const scenes = [];
     shots.forEach((s, k) => {
       const last = scenes.at(-1);
@@ -544,6 +586,17 @@ async function buildSoundtrack(id, shots, starts, durs, total) {
 
 const assembling = new Set();
 
+/**
+ * The part of a rendered clip that makes the cut: editLength seconds starting editIn seconds into the
+ * render (after any provider trim). Models render their minimum durations; the edit decides the rhythm.
+ */
+export function editWindow(s, trim, total) {
+  const avail = Math.max(0.5, total - trim);
+  const len = Number(s.editLength) > 0 ? Math.min(Number(s.editLength), avail) : avail;
+  const inn = s.editIn == null || s.editIn === '' ? 0 : Math.max(0, Math.min(Number(s.editIn) || 0, avail - len));
+  return { start: trim + inn, duration: Math.max(0.5, len) };
+}
+
 export async function assemble(id) {
   if (assembling.has(id)) return getProduction(id);
   assembling.add(id);
@@ -552,7 +605,7 @@ export async function assemble(id) {
     const p = getProduction(id);
     const base = { '1080p': 1920, '4k': 1920, '480p': 854, '360p': 640 }[p.brief.resolution] || 1280;
     const { W, H } = ff.frameSize(p.brief.aspect, base);
-    const shots = p.shots.filter((s) => s.status === 'done' && getAsset(s.videoId));
+    const shots = p.shots.filter((s) => s.status === 'done' && !s.omit && getAsset(s.videoId));
     if (!shots.length) throw new Error('no rendered shots yet');
     const segs = [];
     const durs = [];
@@ -563,15 +616,15 @@ export async function assemble(id) {
         const { s, k } = work.shift();
         const a = getAsset(s.videoId);
         const info = a.duration ? a : { ...a, ...(await ff.probe(assetPath(a)).catch(() => ({}))) };
-        const trim = s.trimStart || 0;
-        const dur = Math.max(0.5, (info.duration || s.clipDuration || 8) - trim);
+        const { start: trim, duration: dur } = editWindow(s, s.trimStart || 0, info.duration || s.clipDuration || 8);
         const sceneStart = p.brief.sceneFades && (k === 0 || shots[k - 1].sceneId !== s.sceneId);
         const sceneEnd = p.brief.sceneFades && (k === shots.length - 1 || shots[k + 1].sceneId !== s.sceneId);
-        const key = `${a.id}_${trim.toFixed(2)}_${W}x${H}_${sceneStart ? 1 : 0}${sceneEnd ? 1 : 0}`;
+        const fade = Math.min(0.4, dur / 4);
+        const key = `${a.id}_${trim.toFixed(2)}_${dur.toFixed(2)}_${W}x${H}_${sceneStart ? 1 : 0}${sceneEnd ? 1 : 0}`;
         const out = path.join(SEGMENTS, `${key}.mp4`);
         if (!fs.existsSync(out)) {
           const tmp = `${out}.tmp.mp4`;
-          await ff.conform({ input: assetPath(a), out: tmp, W, H, start: trim, duration: dur, fadeIn: sceneStart ? 0.4 : 0, fadeOut: sceneEnd ? 0.4 : 0, hasAudio: info.hasAudio ?? (await ff.probe(assetPath(a)).catch(() => ({}))).hasAudio });
+          await ff.conform({ input: assetPath(a), out: tmp, W, H, start: trim, duration: dur, fadeIn: sceneStart ? fade : 0, fadeOut: sceneEnd ? fade : 0, hasAudio: info.hasAudio ?? (await ff.probe(assetPath(a)).catch(() => ({}))).hasAudio });
           await fsp.rename(tmp, out);
         }
         segs[k] = out;
@@ -584,6 +637,8 @@ export async function assemble(id) {
     let out = newAssetPath('video/mp4');
     await ff.concat({ segments: segs, out: out.abs });
     const b = briefOf(p);
+    const cuts = [];
+    durs.reduce((t, d, k) => { cuts.push({ shotId: shots[k].id, index: shots[k].index, start: Math.round(t * 100) / 100, end: Math.round((t + d) * 100) / 100 }); return t + d; }, 0);
     let leveled = false;
     if (b.music !== 'off' || b.narration) {
       const starts = [];
@@ -618,7 +673,7 @@ export async function assemble(id) {
     const info = await ff.probe(out.abs).catch(() => ({}));
     const asset = await addAsset({ ...out, mime: 'video/mp4', meta: { source: 'master', ...info } });
     await mutate(id, (x) => {
-      x.master = { assetId: asset.id, url: asset.url, duration: info.duration, shots: shots.length, createdAt: now() };
+      x.master = { assetId: asset.id, url: asset.url, duration: info.duration, shots: shots.length, cuts, createdAt: now() };
       x.assembling = false;
       if (x.status !== 'running' && x.shots.every((s) => TERMINAL.includes(s.status))) x.status = 'done';
       log(x, `Master ready: ${shots.length} shots, ${Math.round(info.duration || 0)}s`);
