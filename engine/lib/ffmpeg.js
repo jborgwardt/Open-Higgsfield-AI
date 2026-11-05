@@ -97,7 +97,8 @@ export async function conform({ input, out, W, H, start = 0, duration, fadeIn = 
 }
 
 // Streaming loudness target (−16 LUFS integrated, −1.5 dBTP) so every master plays at a consistent level.
-const LOUDNORM = 'loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000';
+// The explicit aformat matters: ffmpeg 5.1 (the Docker image) can't pick an output layout after loudnorm otherwise.
+const LOUDNORM = 'loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo';
 
 /** Loudness-normalise a finished video's audio; picture is copied untouched. */
 export async function normalizeAudio({ video, out, signal }) {
