@@ -183,7 +183,7 @@ test('routeFor follows each model\'s inputs', () => {
   assert.equal(r('google/gemini-omni-1.1-flash'), 'keyframe');
   assert.equal(r('xai/grok-imagine-video-1.5-lite'), 'keyframe');
   const refModels = cat.allModels().filter((m) => m.kind === 'video' && m.caps?.refs).map((m) => `${m.id}:${m.caps.refs}`);
-  assert.deepEqual(refModels.sort(), ['apimart/kling-v3-omni:7', 'apimart/kling-v4:10', 'apimart/seedance-2.0:9', 'apimart/seedance-2.5:30', 'apimart/veo3.1-fast:3', 'apimart/wan2.7-r2v:5', 'xai/grok-imagine-video-1.5:14', 'xai/grok-imagine-video:7'].sort());
+  assert.deepEqual(refModels.sort(), ['apimart/MiniMax-H3:9', 'apimart/kling-v3-omni:7', 'apimart/kling-v4:10', 'apimart/seedance-2.0-fast:9', 'apimart/seedance-2.0:9', 'apimart/seedance-2.5:30', 'apimart/veo3.1-fast:3', 'apimart/wan2.7-r2v:5', 'fal/wan-3.0:10', 'qwen/happyhorse-1.1:9', 'xai/grok-imagine-video-1.5:14', 'xai/grok-imagine-video:7'].sort());
 });
 
 test('applyCharacters: image model gets labelled refs (sheet first) ahead of user refs', async () => {

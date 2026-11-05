@@ -106,6 +106,23 @@ export async function directorBackend(brief) {
   return (await availability(id)).available ? id : null;
 }
 
+/**
+ * Chat backend for one-click tools (Storyboard beats, UGC hooks…) — tools are not the film director.
+ * The user's chosen director if it can chat right now; otherwise the first available chat backend
+ * (fallback: true so the caller can say so in the job). null when nothing can chat.
+ */
+const TOOL_FALLBACK = ['google', 'qwen', 'xai', 'claude', 'openai', 'apimart'];
+export async function toolDirector() {
+  const chosen = chosenDirector();
+  if (chosen.id && chosen.id !== 'split' && (await availability(chosen.id)).available && (chosen.id !== 'venice' || chosen.model)) return { ...chosen, fallback: false };
+  for (const id of TOOL_FALLBACK) {
+    if (id === chosen.id) continue;
+    if (!(await availability(id)).available) continue;
+    return { id, model: DIRECTORS.find((x) => x.id === id).defaultModel || '', source: 'fallback', fallback: true, wanted: chosen.id };
+  }
+  return null;
+}
+
 async function chat(d, messages, signal) {
   const model = d.model || undefined;
   switch (d.id) {

@@ -1,7 +1,8 @@
 # Studio server: web app + engine (providers, long-form films, media, post-production) in one container.
 # Build:  docker build -t studio .
 # Run:    docker run -d -p 4848:4848 -v studio-data:/data --name studio studio
-# Then open http://<server>:4848 and sign in with the access code from `docker logs studio`.
+# Then open http://<server>:4848 and sign in with the access code (set ENGINE_TOKEN, or read accessToken from /data/settings.json;
+# the log only shows its first 4 characters).
 # Post-production (subtitles, dialogue cleanup, mastering, picture) runs on the CPU: see docs/post-production.md.
 
 FROM node:22-bookworm-slim AS web

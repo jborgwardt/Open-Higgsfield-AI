@@ -362,7 +362,9 @@ server.listen(PORT, HOST, () => {
   console.log(`\n  Open Higgsfield engine → http://${HOST}:${PORT}${fs.existsSync(DIST) ? '  (serving the app)' : ''}`);
   const cfg = oidcConfig();
   if (cfg) console.log(`  Sign-in: ${cfg.label} only (${cfg.issuer})`);
-  else if (REMOTE) console.log(`  Remote mode: devices must sign in with the access code: ${accessToken()}`);
+  // Never print the access code itself: an ENGINE_TOKEN from the environment is already known to the operator, a
+  // generated one is shown masked (the full code is in Settings on this machine / engine-data/settings.json).
+  else if (REMOTE) console.log(`  Remote mode: devices must sign in with the access code${process.env.ENGINE_TOKEN ? ' (ENGINE_TOKEN)' : `: ${accessToken().slice(0, 4)}… (full code: accessToken in the engine data folder’s settings.json)`}`);
   console.log('');
   lf.resumeAll();
 });

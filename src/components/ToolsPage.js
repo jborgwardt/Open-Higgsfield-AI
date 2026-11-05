@@ -264,7 +264,7 @@ export function ToolsPage() {
                     if (bar && j.progress != null) bar.style.width = `${Math.round(j.progress * 100)}%`;
                 },
             });
-            const entry = { tool: t.id, url: job.url, kind: job.kind, assets: job.assets, text: job.text, at: Date.now() };
+            const entry = { tool: t.id, url: job.url, kind: job.kind, assets: job.assets, text: job.text, note: job.note, at: Date.now() };
             S.runs.unshift(entry);
             S.runs = S.runs.slice(0, 60);
             localStorage.setItem('tools_runs', JSON.stringify(S.runs));
@@ -284,6 +284,7 @@ export function ToolsPage() {
         const list = r.assets?.length ? r.assets : [{ url: r.url, kind: r.kind }];
         box.innerHTML = `
           <div class="tl-res ${list.length > 1 ? 'multi' : ''}">${list.map((a) => `<figure>${one(a)}<figcaption><a href="${esc(a.url)}" download>Download</a></figcaption></figure>`).join('')}</div>
+          ${r.note ? `<p class="muted tl-note">⚠ ${esc(r.note)}</p>` : ''}
           ${r.text ? `<p class="muted tl-text">${esc(r.text)}</p>` : ''}`;
     }
 

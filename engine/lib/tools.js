@@ -130,7 +130,7 @@ export const TOOLS = [
       const c = await op.characterInfo(v.character, ctx.signal);
       const refs = [v.ref1, v.ref2, v.ref3, ...(c?.refs || [])].filter(Boolean).slice(0, 4);
       const n = v.frames;
-      const plan = await op.llmJSON('You are a storyboard artist. Split the story into exactly N sequential frames. Reply JSON {"frames":[{"prompt":"self-contained visual description: shot size, subject action, setting, light"}]}.', `N=${n}\nLook: ${v.style || 'cinematic'}\nStory: ${v.prompt}`, ctx.signal);
+      const plan = await op.llmJSON('You are a storyboard artist. Split the story into exactly N sequential frames. Reply JSON {"frames":[{"prompt":"self-contained visual description: shot size, subject action, setting, light"}]}.', `N=${n}\nLook: ${v.style || 'cinematic'}\nStory: ${v.prompt}`, ctx);
       const beats = (plan?.frames || []).map((f) => f.prompt || f).filter((x) => typeof x === 'string');
       while (beats.length < n) beats.push(`${v.prompt} — beat ${beats.length + 1} of ${n}, a new camera angle as the story moves forward`);
       const assets = [];
@@ -224,7 +224,7 @@ export const TOOLS = [
         lifestyle: ['a person using the product in a real everyday setting that fits it, golden light', 'natural in-use moment, then a look to camera'],
       }[v.style];
       ctx.onStatus?.({ message: 'Writing the hook' });
-      const script = v.line ? { line: v.line } : await op.llmJSON('You write scroll-stopping short-form video ads. Reply JSON {"line":"one spoken sentence, max 22 words, first person, natural, no hashtags","scene":"one short sentence describing the setting"}', `Product: ${about}\nStyle: ${v.style}`, ctx.signal);
+      const script = v.line ? { line: v.line } : await op.llmJSON('You write scroll-stopping short-form video ads. Reply JSON {"line":"one spoken sentence, max 22 words, first person, natural, no hashtags","scene":"one short sentence describing the setting"}', `Product: ${about}\nStyle: ${v.style}`, ctx);
       const line = String(script?.line || `Okay, I have to show you this — ${about.split(/[.—-]/)[0].trim()}. Honestly, it changed my routine.`).replace(/"/g, "'");
       ctx.onStatus?.({ message: 'Composing the keyframe' });
       const keyframe = await editImage(`${STYLE[0]}${script?.scene ? `, ${script.scene}` : ''}. The product is exactly the one in the product photo — same shape, colours, label and logo, clearly visible.${presenter ? ` The presenter is the person in the presenter photo. ${KEEP_ID}` : ''} ${PHOTO_QUALITY}`, product, presenter ? [presenter] : [], ctx, v.aspect);

@@ -708,7 +708,7 @@ export async function assemble(id) {
         const sceneEnd = p.brief.sceneFades && (k === shots.length - 1 || shots[k + 1].sceneId !== s.sceneId);
         const fade = Math.min(0.4, dur / 4);
         let pp = prep[k];
-        const keyOf = (q) => `${a.id}_${trim.toFixed(2)}_${dur.toFixed(2)}_${W}x${H}_${sceneStart ? 1 : 0}${sceneEnd ? 1 : 0}${q.key ? `_${q.key}` : ''}`;
+        const keyOf = (q) => `v2_${a.id}_${trim.toFixed(2)}_${dur.toFixed(2)}_${W}x${H}_${sceneStart ? 1 : 0}${sceneEnd ? 1 : 0}${q.key ? `_${q.key}` : ''}`;
         let out = path.join(SEGMENTS, `${keyOf(pp)}.mp4`);
         if (!fs.existsSync(out)) {
           const hasAudio = info.hasAudio ?? (await ff.probe(assetPath(a)).catch(() => ({}))).hasAudio;
@@ -728,7 +728,7 @@ export async function assemble(id) {
           }
         }
         segs[k] = out;
-        durs[k] = dur;
+        durs[k] = ff.segmentLength(dur); // conform renders whole frames, audio locked to the picture
         i++;
         await mutate(id, (x) => { x.message = `Conformed ${i}/${shots.length} clips`; });
       }

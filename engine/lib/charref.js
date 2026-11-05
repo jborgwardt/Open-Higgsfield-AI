@@ -304,6 +304,7 @@ export const TAG = {
   kling: (n) => `@Image${n + 1}`,
   omni: (n) => `<<<image_${n + 1}>>>`,
   bracket: (n) => `[Image ${n + 1}]`, // HappyHorse r2v
+  wan: (n) => `Image ${n + 1}`, // fal Wan 3.0 reference-to-video
 };
 /** Prompt tag style for a model: its catalog caps.refTag, else by family. */
 export const tagFor = (m) => m?.caps?.refTag || (/happyhorse/.test(m?.id || '') ? 'bracket' : 'plain');

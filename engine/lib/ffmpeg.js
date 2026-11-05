@@ -26,7 +26,7 @@ export async function hasFfmpeg() {
 export async function probe(file) {
   const j = JSON.parse(await run(FFPROBE, ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', file]));
   const v = j.streams?.find((s) => s.codec_type === 'video');
-  return { width: v?.width, height: v?.height, duration: Number(j.format?.duration) || undefined, hasAudio: !!j.streams?.some((s) => s.codec_type === 'audio') };
+  return { width: v?.width, height: v?.height, duration: Number(j.format?.duration) || undefined, videoDuration: Number(v?.duration) || undefined, hasAudio: !!j.streams?.some((s) => s.codec_type === 'audio') };
 }
 
 export const poster = (video, out, at = 0) => run(FFMPEG, ['-y', '-v', 'error', '-ss', String(at), '-i', video, '-frames:v', '1', '-q:v', '3', out]);
@@ -83,20 +83,33 @@ export async function animatic({ image, out, duration = 5, aspect, signal }) {
  * Post-production hooks (engine/lib/post.js): vfx.pre / vfx.post filters around the scale step,
  * afx audio filters, and audioInput to take the sound from another file (e.g. an isolated voice track).
  */
+/** A segment's real length: conform() renders whole 24 fps frames. */
+export const segmentLength = (seconds) => Math.max(1, Math.round(seconds * 24)) / 24;
+
 export async function conform({ input, out, W, H, start = 0, duration, fadeIn = 0, fadeOut = 0, hasAudio, signal, vfx = {}, afx = [], audioInput = null }) {
-  const vf = [...(vfx.pre || []), `scale=${W}:${H}:force_original_aspect_ratio=decrease:flags=lanczos`, `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`, 'fps=24', 'setsar=1', 'format=yuv420p', ...(vfx.post || [])];
+  // The picture sets the segment length, in whole 24 fps frames; the audio is padded with silence / trimmed to
+  // exactly that, so concatenated segments have no gaps at the cuts and the master stays at a true 24 fps.
+  let len = duration;
+  if (!len) { const info = await probe(input).catch(() => ({})); len = Math.max(0, (info.videoDuration || info.duration || 0) - start); }
+  const N = len ? Math.round(segmentLength(len) * 24) : 0;
+  const T = (N / 24).toFixed(6);
+  const vf = [...(vfx.pre || []), `scale=${W}:${H}:force_original_aspect_ratio=decrease:flags=lanczos`, `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`, 'fps=24',
+    ...(N ? [`tpad=stop_mode=clone:stop_duration=${T}`] : []), 'setsar=1', 'format=yuv420p', ...(vfx.post || [])];
   const af = ['aresample=48000', 'aformat=sample_fmts=fltp:channel_layouts=stereo', ...afx];
   if (fadeIn) { vf.push(`fade=t=in:st=0:d=${fadeIn}`); af.push(`afade=t=in:st=0:d=${fadeIn}`); }
   if (fadeOut && duration) { vf.push(`fade=t=out:st=${Math.max(0, duration - fadeOut).toFixed(3)}:d=${fadeOut}`); af.push(`afade=t=out:st=${Math.max(0, duration - fadeOut).toFixed(3)}:d=${fadeOut}`); }
+  if (N) af.push(`apad=whole_dur=${T}`, `atrim=end=${T}`);
   const args = ['-y', '-v', 'error'];
   if (start) args.push('-ss', start.toFixed(3));
   args.push('-i', input);
   if (audioInput) { if (start) args.push('-ss', start.toFixed(3)); args.push('-i', audioInput); }
   else if (!hasAudio) args.push('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo');
-  if (duration) args.push('-t', duration.toFixed(3));
+  if (N) args.push('-t', T); // not -frames:v: on ffmpeg 5.1 that closes the whole file, cutting the padded audio short
   args.push('-map', '0:v:0', '-map', hasAudio && !audioInput ? '0:a:0' : '1:a:0', '-vf', vf.join(','), '-af', af.join(','),
-    '-c:v', 'libx264', '-preset', process.env.ENGINE_X264_PRESET || 'slow', '-crf', '17', '-r', '24', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-shortest', '-movflags', '+faststart', out);
+    '-c:v', 'libx264', '-preset', process.env.ENGINE_X264_PRESET || 'slow', '-crf', '17', '-r', '24', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
+    ...(N ? [] : ['-shortest']), '-movflags', '+faststart', out);
   await run(FFMPEG, args, { signal });
+  return { frames: N, duration: N / 24 };
 }
 
 // Streaming loudness target (−16 LUFS integrated, −1.5 dBTP) so every master plays at a consistent level.
@@ -126,10 +139,15 @@ export async function extendTail({ video, out, seconds, signal }) {
     '-c:v', 'libx264', '-preset', process.env.ENGINE_X264_PRESET || 'slow', '-crf', '17', '-pix_fmt', 'yuv420p', '-r', '24', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-movflags', '+faststart', out], { signal });
 }
 
-/** Concatenate conformed segments without re-encoding. */
+/**
+ * Concatenate conformed segments without re-encoding. Each entry carries its picture length (`duration`), so the
+ * next segment starts exactly where this one's last frame ends — ffmpeg 5.1 otherwise offsets by the container
+ * length, which the AAC frame grid rounds up, and the master drifts off 24 fps.
+ */
 export async function concat({ segments, out, signal }) {
   const list = `${out}.txt`;
-  await fsp.writeFile(list, segments.map((s) => `file '${s.replace(/'/g, "'\\''")}'`).join('\n'));
+  const lens = await Promise.all(segments.map((s) => probe(s).then((i) => i.videoDuration).catch(() => null)));
+  await fsp.writeFile(list, segments.map((s, k) => `file '${s.replace(/'/g, "'\\''")}'${lens[k] ? `\nduration ${lens[k].toFixed(6)}` : ''}`).join('\n'));
   try {
     await run(FFMPEG, ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', '-movflags', '+faststart', out], { signal });
   } finally {

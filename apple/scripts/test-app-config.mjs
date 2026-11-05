@@ -72,6 +72,17 @@ test('flip one tab to web, disable a feature, change a default, set a notice —
 
 test('bad patches are rejected', async () => {
   assert.equal((await call(local.base, 'PATCH', '/app/config', { tabs: 'nope' })).status, 400);
+  // minVersion may never be above latestVersion (numeric compare, not string: 1.10.0 > 1.9.0).
+  const bad = await call(local.base, 'PATCH', '/app/config', { minVersion: '1.10.0', latestVersion: '1.9.0' });
+  assert.equal(bad.status, 400);
+  assert.match(bad.body.error, /minVersion 1\.10\.0 is above latestVersion 1\.9\.0/);
+  assert.equal((await call(local.base, 'PATCH', '/app/config', { minVersion: '2.0.0' })).status, 400, 'above the default latestVersion');
+  assert.equal((await call(local.base, 'PATCH', '/app/config', { latestVersion: 'soon' })).status, 400);
+  let ok = await call(local.base, 'PATCH', '/app/config', { minVersion: '1.9.0', latestVersion: '1.10.0' });
+  assert.equal(ok.status, 200);
+  assert.deepEqual([ok.body.minVersion, ok.body.latestVersion], ['1.9.0', '1.10.0']);
+  ok = await call(local.base, 'PATCH', '/app/config', { minVersion: null, latestVersion: null });
+  assert.equal(ok.body.minVersion, '1.0.0');
 });
 
 test('version is public, config and log need a session on a signed-in server', async () => {

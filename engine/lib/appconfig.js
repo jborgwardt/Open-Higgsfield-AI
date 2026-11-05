@@ -143,11 +143,26 @@ export async function patchAppConfig(patch = {}) {
     p.tabs = tabs;
   }
   if (p.tabs !== undefined && p.tabs !== null && !Array.isArray(p.tabs)) throw Object.assign(new Error('tabs must be an array or an object keyed by tab id'), { status: 400 });
-  if (p.reset === true) { overrides = {}; delete p.reset; }
-  overrides = mergePatch(overrides, p);
+  const reset = p.reset === true;
+  delete p.reset;
+  const next = mergePatch(reset ? {} : overrides, p);
+  const { minVersion, latestVersion } = applyOverrides(APP_DEFAULTS, next);
+  for (const [k, v] of Object.entries({ minVersion, latestVersion })) if (!SEMVER.test(String(v))) throw Object.assign(new Error(`${k} must be a version like 1.2.3`), { status: 400 });
+  if (compareVersions(minVersion, latestVersion) > 0) throw Object.assign(new Error(`minVersion ${minVersion} is above latestVersion ${latestVersion}`), { status: 400 });
+  overrides = next;
   overrides.updatedAt = now();
   await writeJSON(CONFIG_FILE, overrides);
   return appConfig();
+}
+
+const SEMVER = /^\d+(\.\d+){0,2}(?:[-+][0-9A-Za-z.-]+)?$/;
+/** Numeric semver compare on major.minor.patch ("1.10.0" > "1.9.2"); missing parts count as 0. */
+export function compareVersions(a, b) {
+  const core = (v) => String(v).split(/[-+]/)[0].split('.').map(Number);
+  const x = core(a);
+  const y = core(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return Math.sign(d); }
+  return 0;
 }
 
 /** Unauthenticated: just enough for the app to know it must update, even when sign-in is broken. */

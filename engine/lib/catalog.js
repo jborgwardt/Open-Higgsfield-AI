@@ -5,15 +5,13 @@ import { download, ProviderError } from './http.js';
 import * as ff from './ffmpeg.js';
 import { xaiVideo, xaiExtend, xaiImage, xaiAvailable } from './providers/xai.js';
 import { googleVideo, googleImage, googleAvailable } from './providers/google.js';
-import { falRun } from './providers/fal.js';
+import { falRun, falUpload, wan3Request } from './providers/fal.js';
 import { replicateRun, replicateUpload } from './providers/replicate.js';
 import { muapiRun, muapiUpload, muapiUrl } from './providers/muapi.js';
 import { kieJob, kieVeo, kieUpload } from './providers/kie.js';
 import { comfyRun, listTemplates } from './providers/comfy.js';
-import { apimartVideo, apimartUpload, apimartAvailable, apimartAvatarAsset } from './providers/apimart.js';
+import { apimartVideo, apimartUpload, apimartAvailable, apimartAvatarAsset, apimartImage, apimartVeoExtend } from './providers/apimart.js';
 // Higgsfield-parity (tools agent): extra image/video models + tool-only models.
-import { apimartImage, apimartVeoExtend } from './providers/apimart.js';
-import { falUpload, wan3Request } from './providers/fal.js';
 import { elevenAvailable } from './providers/eleven.js';
 import { TOOL_MODELS } from './toolmodels.js';
 import { qwenImage, qwenVideo, qwenAvailable } from './providers/qwen.js';
@@ -84,7 +82,9 @@ const IMAGE = [
 
 /* ------------------------------------------------------------------ Higgsfield-parity models */
 // Higgsfield's model hub carries GPT Image 2.x, Seedream 5, FLUX.2, Kling 3 Omni, Hailuo, MiniMax and Veo Lite;
-// these run on ApiMart with the request shapes in providers/apimart.js. `refs` on a video model = reference images.
+// these run on ApiMart with the request shapes in providers/apimart.js.
+// On a video model, caps.refs = its reference-to-video mode (character identity: the router in characters.js sends
+// up to caps.refs character refs with refMode); top-level `refs` = plain reference images any job may pass.
 
 const PARITY_IMAGE = [
   { id: 'apimart/gpt-image-2.6-flare', provider: 'apimart', label: 'GPT Image 2.6 (ApiMart)', blurb: 'OpenAI’s newest: precise edits, text, up to 16 references.', refs: 8, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
@@ -96,15 +96,15 @@ const PARITY_IMAGE = [
 
 const PARITY_VIDEO = [
   { id: 'apimart/veo3.1-lite', provider: 'apimart', label: 'Veo 3.1 Lite (ApiMart)', blurb: 'Cheapest Veo 3.1 with audio. 8 s clips.', caps: { t2v: true, i2v: true, end: true }, durations: [8], aspects: ['16:9', '9:16'], resolutions: ['720p', '1080p'], resolutionDefault: '720p', maxClip: 8 },
-  { id: 'apimart/MiniMax-H3', provider: 'apimart', label: 'MiniMax H3 (ApiMart)', blurb: '2K with audio, start + end frame, reference images.', caps: { t2v: true, i2v: true, end: true }, refs: 6, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['768p', '2k'], resolutionDefault: '2k', maxClip: 15 },
+  { id: 'apimart/MiniMax-H3', provider: 'apimart', label: 'MiniMax H3 (ApiMart)', blurb: '2K with audio, start + end frame, reference images.', caps: { t2v: true, i2v: true, end: true, refs: 9, refTag: 'plain' }, refs: 6, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['768p', '2k'], resolutionDefault: '2k', maxClip: 15 },
   { id: 'apimart/MiniMax-Hailuo-2.3', provider: 'apimart', label: 'Hailuo 2.3 (ApiMart)', blurb: 'Strong physics and camera moves; 6 / 10 s.', caps: { t2v: true, i2v: true }, durations: [6, 10], aspects: ['16:9'], resolutions: ['768p', '1080p'], resolutionDefault: '768p', maxClip: 10 },
   { id: 'apimart/kling-3.0-turbo', provider: 'apimart', label: 'Kling 3.0 Turbo (ApiMart)', blurb: 'Fast Kling 3.0, 3–15 s.', caps: { t2v: true, i2v: true }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1'], resolutions: ['720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
-  { id: 'apimart/seedance-2.0-fast', provider: 'apimart', label: 'Seedance 2.0 Fast (ApiMart)', blurb: 'Cheaper Seedance 2.0 with audio, up to 720p.', caps: { t2v: true, i2v: true, end: true }, refs: 6, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['480p', '720p'], resolutionDefault: '720p', maxClip: 15 },
+  { id: 'apimart/seedance-2.0-fast', provider: 'apimart', label: 'Seedance 2.0 Fast (ApiMart)', blurb: 'Cheaper Seedance 2.0 with audio, up to 720p; references for fictional characters.', caps: { t2v: true, i2v: true, end: true, refs: 9, refTag: 'plain', refsRealPeople: false }, refs: 6, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['480p', '720p'], resolutionDefault: '720p', maxClip: 15 },
 ];
 // Wan 3.0 on fal: one entry, routed to text / image (first+last frame) / reference-to-video (up to 10 identity images).
-PARITY_VIDEO.push({ id: 'fal/wan-3.0', provider: 'fal', label: 'Wan 3.0 (fal)', blurb: 'Wan 3.0 with audio: start + end frame, or up to 10 reference images for identity. $0.05/s.', caps: { t2v: true, i2v: true, end: true }, refs: 10, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '1080p', maxClip: 15 });
+PARITY_VIDEO.push({ id: 'fal/wan-3.0', provider: 'fal', label: 'Wan 3.0 (fal)', blurb: 'Wan 3.0 with audio: start + end frame, or up to 10 reference images for identity. $0.05/s.', caps: { t2v: true, i2v: true, end: true, refs: 10, refTag: 'wan' }, refs: 10, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '1080p', maxClip: 15 });
 // Qwen Token Plan (subscription credits). HappyHorse routes to t2v / i2v / r2v (identity-preserving references).
-PARITY_VIDEO.push({ id: 'qwen/happyhorse-1.1', provider: 'qwen', label: 'HappyHorse 1.1 (Qwen plan)', blurb: 'Alibaba’s top video model on your Qwen subscription; up to 9 identity references.', caps: { t2v: true, i2v: true }, refs: 9, durations: [3, 5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 });
+PARITY_VIDEO.push({ id: 'qwen/happyhorse-1.1', provider: 'qwen', label: 'HappyHorse 1.1 (Qwen plan)', blurb: 'Alibaba’s top video model on your Qwen subscription; up to 9 identity references.', caps: { t2v: true, i2v: true, refs: 9, refTag: 'bracket' }, refs: 9, durations: [3, 5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 });
 PARITY_IMAGE.push(
   { id: 'qwen/qwen-image-3.0-pro', provider: 'qwen', label: 'Qwen-Image 3.0 Pro (Qwen plan)', blurb: 'Strong text rendering and layout.', refs: 3, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
   { id: 'qwen/wan2.7-image-pro', provider: 'qwen', label: 'Wan 2.7 Image Pro (Qwen plan)', blurb: 'Edits with up to 4 references.', refs: 4, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },

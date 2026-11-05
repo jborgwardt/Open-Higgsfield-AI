@@ -39,7 +39,8 @@ export function startRun({ label, tool, run }) {
   if (jobs.size > 500) jobs.delete(jobs.keys().next().value);
   const pub = (a) => ({ id: a.id, url: a.url, kind: a.kind, posterUrl: a.posterUrl || null, duration: a.duration || null, width: a.width || null, height: a.height || null });
   Promise.resolve()
-    .then(() => run({ signal: job.ctrl.signal, onStatus: ({ message, progress }) => Object.assign(job, message ? { message } : {}, progress != null ? { progress } : {}) }))
+    .then(() => run({ signal: job.ctrl.signal, onStatus: ({ message, progress }) => Object.assign(job, message ? { message } : {}, progress != null ? { progress } : {}),
+      note: (msg) => { job.notes = [...(job.notes || []), String(msg)]; job.note = job.notes.join(' · '); } }))
     .then(({ asset, assets, text }) => Object.assign(job, {
       status: 'done', message: 'Done', url: asset.url, assetId: asset.id, kind: asset.kind, posterUrl: asset.posterUrl || null, duration: asset.duration || null,
       assets: (assets?.length ? assets : [asset]).map(pub), ...(text ? { text } : {}),

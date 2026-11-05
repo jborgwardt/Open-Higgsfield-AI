@@ -447,11 +447,12 @@ export function characterVoice(ref) {
 
 // Identity lock. A first-frame-only model (one still → video) has to invent the face whenever the head turns or the
 // take runs on, so a real person drifts into a stranger. For people built from real photos, prefer models that keep
-// the references in view for the whole clip. Any catalog video model with caps.refs qualifies (so new providers light
-// up by themselves); this list only sets the order. Measured on one real-person test shot (profile → turn to camera):
-// Veo 3.1 Fast ref 7.0/10 ($0.13 / 8 s), Kling 3.0 Omni ref 7.0 ($0.32 / 5 s), Kling V4 ref 5.6 ($0.67 / 5 s), while
-// first-frame Veo Fast / Quality drifted into another man (4.4 / 4.0). HappyHorse, Grok and Wan R2V are unmeasured here.
-const IDENTITY_RANK = ['apimart/veo3.1-fast', 'qwen/happyhorse-1.1-r2v', 'apimart/kling-v3-omni', 'apimart/kling-v4', 'xai/grok-imagine-video-1.5', 'fal/wan-3.0-prime-r2v', 'fal/wan-3.0-r2v', 'apimart/wan2.7-r2v', 'xai/grok-imagine-video'];
+// the references in view for the whole clip. Any catalog video model with caps.refs (its reference-to-video mode)
+// qualifies, so new providers light up by themselves; this list only sets the order (catalog ids — HappyHorse and
+// Wan 3.0 are single entries the provider switches to r2v when refs come without a start frame). Measured on one
+// real-person test shot (profile → turn to camera): Veo 3.1 Fast ref 7.0/10 ($0.13 / 8 s), Kling 3.0 Omni ref 7.0
+// ($0.32 / 5 s), Kling V4 ref 5.6 ($0.67 / 5 s), while first-frame Veo Fast / Quality drifted into another man (4.4 / 4.0).
+export const IDENTITY_RANK = ['apimart/veo3.1-fast', 'qwen/happyhorse-1.1', 'apimart/kling-v3-omni', 'apimart/kling-v4', 'xai/grok-imagine-video-1.5', 'fal/wan-3.0', 'apimart/wan2.7-r2v', 'xai/grok-imagine-video'];
 // Gemini Omni refuses real people's likeness outright (INVALID_ARGUMENT); anything else is better than failing.
 const REAL_FACE_FALLBACK = ['apimart/veo3.1-quality', 'apimart/kling-v3', 'apimart/seedance-2.5', 'apimart/seedance-2.0'];
 // Gemini Omni under any provider (Gemini API, Venice, ApiMart…) — refused real likeness on the Gemini API; assume the same.
@@ -487,7 +488,6 @@ export function characterFallback(m, chars, { identityLock = true, hasImage = fa
 }
 
 const names = (chars) => chars.map((c) => c.name).filter(Boolean).join(' and ') || 'the character';
-/** Staging that keeps a first-frame model from inventing a new face mid-shot. */
 // No staging rules are injected into prompts: anything prepended pulls the whole shot toward it. The keyframe already
 // shows the face; identity lock routes real people to reference-mode models so they can move naturally.
 
@@ -496,7 +496,7 @@ const names = (chars) => chars.map((c) => c.name).filter(Boolean).join(' and ') 
  *   identity lock → swap a first-frame-only model for a reference-to-video model when the cast is real;
  *   image models → labelled reference images; video models with a reference mode → reference-to-video
  *   (plus the start frame where the model takes both); first-frame models → a keyframe from the refs, then animate
- *   it with staging guidance; anything else → a description line.
+ *   it; anything else → a description line.
  * The returned job carries qaChars so generate() can run the likeness check on the result.
  */
 export async function applyCharacters(job, m, { onStatus, signal } = {}) {

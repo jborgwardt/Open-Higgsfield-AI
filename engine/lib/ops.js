@@ -9,7 +9,7 @@ import { apimartTask, motionBody, videoEditBody } from './providers/apimart.js';
 import { elevenSpeech, elevenSfx, elevenMusic, elevenAvailable } from './providers/eleven.js';
 import { googleChat, googleAvailable } from './providers/google.js';
 import { makeVoice, makeMusic } from './sound.js';
-import { directorJSON, directorBackend } from './director.js';
+import { directorJSON, toolDirector, DIRECTOR_LABEL } from './director.js';
 import { ProviderError } from './http.js';
 import * as ff from './ffmpeg.js';
 
@@ -155,9 +155,20 @@ export async function characterInfo(id, signal) {
 
 /* ---------------- LLM helpers ---------------- */
 
-export async function llmJSON(system, user, signal) {
-  if (!(await directorBackend())) return null;
-  try { return await directorJSON([{ role: 'system', content: system }, { role: 'user', content: user }], signal); } catch (e) { if (signal?.aborted) throw e; return null; }
+/**
+ * One JSON reply from a chat model, for tools. ctx: { signal, note } — note(msg) records in the job when the
+ * reply came from a fallback backend or could not be had at all (the tool then uses its template text).
+ */
+export async function llmJSON(system, user, ctx = {}) {
+  const { signal, note } = ctx;
+  const d = await toolDirector();
+  if (!d) { note?.('No chat model is available (choose a director in Settings) — used template text instead'); return null; }
+  if (d.fallback) note?.(`${d.wanted ? `${DIRECTOR_LABEL[d.wanted]} is unavailable` : 'No director chosen'} — text written by ${DIRECTOR_LABEL[d.id]}`);
+  try { return await directorJSON(d, [{ role: 'system', content: system }, { role: 'user', content: user }], signal); } catch (e) {
+    if (signal?.aborted) throw e;
+    note?.(`${DIRECTOR_LABEL[d.id]} failed (${String(e.message).slice(0, 160)}) — used template text instead`);
+    return null;
+  }
 }
 
 /** Read hand-drawn arrows / notes on a frame (Draw-to-Video) with Gemini vision. */
