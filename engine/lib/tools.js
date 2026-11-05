@@ -472,6 +472,21 @@ async function voiceOptions() {
 }
 
 /** Public, JSON-safe registry; model / voice options resolved against what is connected right now. `all` includes disabled tools. */
+/**
+ * Either/or inputs the run needs at least one of (clients disable Run until one is filled):
+ * the optional photo right before a saved-character input (personRef), and script-or-audio pairs.
+ */
+export function oneOfGroups(t) {
+  const groups = [];
+  const ci = t.inputs.findIndex((i) => i.type === 'character');
+  const before = ci > 0 ? t.inputs[ci - 1] : null;
+  if (before && before.type === 'image' && !before.required) groups.push([before.key, t.inputs[ci].key]);
+  const text = t.inputs.find((i) => i.key === 'text' && !i.required);
+  const audio = t.inputs.find((i) => i.type === 'audio' && i.key === 'audio' && !i.required);
+  if (text && audio) groups.push([text.key, audio.key]);
+  return groups;
+}
+
 export async function listTools({ all = false } = {}) {
   const list = TOOLS.filter((t) => all || t.enabled !== false);
   const voices = list.some((t) => t.inputs.some((i) => i.type === 'voice')) ? await voiceOptions() : [];
@@ -479,6 +494,7 @@ export async function listTools({ all = false } = {}) {
     id: t.id, title: t.title, sfSymbol: t.sfSymbol, category: t.category, description: t.description, output: t.output,
     ...(all ? { enabled: t.enabled !== false } : {}),
     run: { method: 'POST', path: `/engine/api/tools/${t.id}/run` },
+    ...(oneOfGroups(t).length ? { oneOf: oneOfGroups(t) } : {}),
     inputs: t.inputs.map(({ prefer, ...i }) => {
       if (i.type === 'model') {
         const o = op.modelOptions(i.modelKind).map(({ value, label }) => ({ value, label }));

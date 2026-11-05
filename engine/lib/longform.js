@@ -39,6 +39,28 @@ export function listProductions() {
     .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
 }
 
+/** master asset id -> film title (for Home "Recent" and the library). */
+export function masterTitles() {
+  const m = new Map();
+  for (const f of fs.readdirSync(PRODUCTIONS)) {
+    if (!f.endsWith('.json')) continue;
+    const p = getProduction(f.slice(0, -5));
+    if (p?.master?.assetId) m.set(p.master.assetId, p.title || 'Film');
+  }
+  return m;
+}
+
+/** Asset ids that are parts of a film (shot clips, keyframes, start frames, posters, voices) — not the master. */
+export function productionAssetIds() {
+  const ids = new Set();
+  for (const f of fs.readdirSync(PRODUCTIONS)) {
+    if (!f.endsWith('.json')) continue;
+    const p = getProduction(f.slice(0, -5));
+    for (const s of p?.shots || []) for (const k of ['videoId', 'originalVideoId', 'keyframeId', 'startFrameId', 'posterId', 'voiceId']) if (s[k]) ids.add(s[k]);
+  }
+  return ids;
+}
+
 export async function mutate(id, fn) {
   const prev = locks.get(id) || Promise.resolve();
   let result;

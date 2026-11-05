@@ -211,11 +211,13 @@ route('POST', '/upload', async ({ req, url }) => {
 });
 
 // Library: everything generated or imported locally (posters / extracted frames are hidden).
-route('GET', '/media', () => listAssets()
+// `origin` lets the app keep uploads and film parts out of the main grid: upload | film | master | generated.
+route('GET', '/media', () => { const parts = lf.productionAssetIds(), titles = lf.masterTitles(); return listAssets()
   .filter((a) => !a.hidden && ['image', 'video'].includes(a.kind) && !['poster', 'last-frame', 'continuity'].includes(a.source))
   .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   .slice(0, 1000)
-  .map((a) => ({ id: a.id, engine: true, url: a.url, thumb: a.kind === 'video' ? a.posterUrl || '' : a.url, kind: a.kind === 'video' ? 'videos' : 'images', model: a.model || (a.source === 'master' ? 'Long-form master' : a.source || 'upload'), prompt: a.prompt || a.name || '', createdAt: a.createdAt, resolution: a.width ? `${a.width}×${a.height}` : '' })));
+  .map((a) => ({ id: a.id, engine: true, url: a.url, thumb: a.kind === 'video' ? a.posterUrl || '' : a.url, kind: a.kind === 'video' ? 'videos' : 'images', model: a.model || (a.source === 'master' ? 'Long-form master' : a.source || 'upload'), prompt: a.prompt || titles.get(a.id) || a.name || '', createdAt: a.createdAt, resolution: a.width ? `${a.width}×${a.height}` : '',
+    origin: a.source === 'upload' || a.source === 'handoff' ? 'upload' : a.source === 'master' ? 'master' : parts.has(a.id) ? 'film' : 'generated' })); });
 // Hide from the library (files stay on disk in engine-data/media).
 route('DELETE', '/media/:id', ({ params }) => { if (!getAsset(params.id)) throw new HttpError(404, 'not found'); updateAsset(params.id, { hidden: true }); return { ok: true }; });
 
@@ -240,7 +242,7 @@ route('GET', '/tools', async ({ url }) => (await tools.listTools({ all: url.sear
 route('GET', '/tools/:id', async ({ params }) => { const t = (await tools.listTools()).find((x) => x.id === params.id); if (!t) throw new HttpError(404, 'no such tool'); return feed.withToolPreview(t); });
 
 // ---- Home feed (engine/lib/feed.js): server-defined sections, editable in DATA/feed.json without an app update ----
-route('GET', '/feed', async () => feed.buildFeed({ models: publicCatalog(), tools: await tools.listTools(), characters: characters.list(), media: listAssets() }));
+route('GET', '/feed', async () => feed.buildFeed({ models: publicCatalog(), tools: await tools.listTools(), characters: characters.list(), media: listAssets(), partIds: lf.productionAssetIds(), masterTitles: lf.masterTitles() }));
 route('GET', '/feed/config', () => feed.feedConfig());
 route('PATCH', '/feed', ({ body }) => feed.patchFeed(body));
 route('GET', '/feed/previews', () => feed.previewsMap());

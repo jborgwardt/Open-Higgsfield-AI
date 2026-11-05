@@ -26,6 +26,8 @@ const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 /* ------------------------------------------------------------------ defaults */
 
 export const STUDIOS = [
+  // The Home hero (Justin's film-reel still). Swap it server-side with POST /feed/previews { items: { 'studio:home': { assetId } } }.
+  { id: 'home', title: 'Make a film', subtitle: 'Script to screen: every shot planned, rendered and cut on your studio', aspect: '16:9', action: { type: 'films', params: { new: true } } },
   { id: 'video', title: 'Video Studio', subtitle: 'Text or a start frame → cinematic video', aspect: '16:9', action: { type: 'create', params: { mode: 'video' } } },
   { id: 'cinema', title: 'Cinema Studio', subtitle: 'Camera, lens, moves, genre and grade', aspect: '16:9', action: { type: 'tool', toolId: 'cinema-shot' } },
   { id: 'films', title: 'Films', subtitle: 'Long-form films, scene by scene', aspect: '16:9', action: { type: 'films' } },
@@ -54,15 +56,16 @@ export const FEATURED_IMAGE_MODELS = [
 ];
 
 // source: where items come from. `items` (optional) pins an explicit order of item ids for that source.
+// Higgsfield rhythm: media first (hero, models, a 9:16 effects grid), the text-chip cloud last.
 export const DEFAULT_SECTIONS = [
   { id: 'studios', title: 'Studios', style: 'hero', source: 'studios' },
-  { id: 'quick', title: 'Start something', style: 'chips', source: 'quick' },
   { id: 'video-models', title: 'Video models', subtitle: 'Every top model, on your own studio', style: 'shelf', source: 'videoModels' },
-  { id: 'presets', title: 'Effects & presets', style: 'shelf', source: 'presets' },
+  { id: 'presets', title: 'Effects & presets', style: 'grid', source: 'presets' },
   { id: 'apps', title: 'Apps', subtitle: 'One-tap tools', style: 'grid', source: 'tools' },
   { id: 'image-models', title: 'Image models', style: 'shelf', source: 'imageModels' },
   { id: 'characters', title: 'Your characters', style: 'shelf', source: 'characters', limit: 12 },
   { id: 'recent', title: 'Recent', style: 'grid', source: 'recent', limit: 12 },
+  { id: 'quick', title: 'Explore more AI features', style: 'chips', source: 'quick' },
 ];
 const STYLES = ['hero', 'shelf', 'grid', 'chips'];
 const SOURCES = ['studios', 'quick', 'videoModels', 'imageModels', 'models', 'presets', 'tools', 'characters', 'recent', 'custom'];
@@ -134,8 +137,18 @@ export function feedConfig() {
 /* ------------------------------------------------------------------ previews */
 
 /** Preview fields for an item id: { previewUrl, previewPoster, previewKind } (nulls when none is recorded). */
+/** Built-in preview assets, used until a preview is set for the item (and only if the asset exists). */
+export const DEFAULT_PREVIEWS = { 'studio:home': 'a_c60339c0e153' };
+
+/** Assets that are feed artwork (hero / tile previews and their sources) — never "Recent". */
+function previewAssetIds() {
+  const ids = new Set(Object.values(DEFAULT_PREVIEWS));
+  for (const p of Object.values(state.previews)) for (const k of ['assetId', 'posterId', 'sourceAssetId']) if (p?.[k]) ids.add(p[k]);
+  return ids;
+}
+
 export function previewFor(id) {
-  const p = state.previews[id];
+  const p = state.previews[id] || (DEFAULT_PREVIEWS[id] && { assetId: DEFAULT_PREVIEWS[id] });
   const a = p && getAsset(p.assetId);
   if (!a) return { previewUrl: null, previewPoster: null, previewKind: null };
   const poster = p.posterId && getAsset(p.posterId);
@@ -236,7 +249,7 @@ function presetItem(f) {
 const toolItem = (t) => item(`tool:${t.id}`, 'tool', { title: t.title, subtitle: t.description, action: { type: 'tool', toolId: t.id } }, '1:1');
 const studioItem = (s) => item(`studio:${s.id}`, 'studio', s, s.aspect);
 
-/** ctx: { models: publicCatalog(), tools: listTools(), characters: characters.list(), media: listAssets() } */
+/** ctx: { models: publicCatalog(), tools: listTools(), characters: characters.list(), media: listAssets(), partIds: Set of film-part asset ids } */
 function sourceItems(source, ctx) {
   const avail = (ctx.models || []).filter((m) => m.available && ['image', 'video'].includes(m.kind) && m.provider !== 'handoff' && m.provider !== 'local');
   const byId = (ids, list) => ids.map((id) => list.find((m) => m.id === id)).filter(Boolean);
@@ -249,7 +262,9 @@ function sourceItems(source, ctx) {
       { id: 'quick:film', title: 'New film', action: { type: 'films', params: { new: true } } },
       { id: 'quick:character', title: 'New character', action: { type: 'characters', params: { new: true } } },
       { id: 'quick:library', title: 'Library', action: { type: 'library' } },
-    ].map((q) => item(q.id, 'studio', q, '1:1'));
+    ].map((q) => item(q.id, 'studio', q, '1:1'))
+      // …then every one-tap tool as a chip ("Explore more AI features").
+      .concat((ctx.tools || []).map((t) => item(`quick:tool:${t.id}`, 'tool', { title: t.title, action: { type: 'tool', toolId: t.id } }, '1:1')));
     case 'videoModels': return byId(FEATURED_VIDEO_MODELS, avail.filter((m) => m.kind === 'video')).map(modelItem);
     case 'imageModels': return byId(FEATURED_IMAGE_MODELS, avail.filter((m) => m.kind === 'image')).map(modelItem);
     case 'models': return avail.map(modelItem);
@@ -260,11 +275,12 @@ function sourceItems(source, ctx) {
       previewUrl: c.coverUrl || null, previewPoster: c.coverUrl || null, previewKind: c.coverUrl ? 'image' : null, aspect: '3:4',
       action: { type: 'characters', params: { id: c.id } },
     }));
+    // Real creations only: no uploads (start-frame picks), hand-offs or film parts (shot clips, keyframes) — QA-09.
     case 'recent': return (ctx.media || [])
-      .filter((a) => !a.hidden && ['image', 'video'].includes(a.kind) && !['poster', 'last-frame', 'continuity', 'preview', 'preview-poster'].includes(a.source))
+      .filter((a) => !a.hidden && ['image', 'video'].includes(a.kind) && !NOT_RECENT.has(a.source) && !ctx.partIds?.has(a.id) && !previewAssetIds().has(a.id))
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
       .map((a) => ({
-        id: `media:${a.id}`, kind: 'media', title: a.prompt ? String(a.prompt).slice(0, 80) : a.name || 'Untitled', subtitle: a.model || '',
+        id: `media:${a.id}`, kind: 'media', title: a.prompt ? String(a.prompt).slice(0, 80) : ctx.masterTitles?.get(a.id) || (a.source === 'master' ? 'Film' : a.name || 'Untitled'), subtitle: a.model || '',
         previewUrl: a.url, previewPoster: a.kind === 'video' ? a.posterUrl || null : a.url, previewKind: a.kind, aspect: a.width && a.height ? ratio(a.width, a.height) : '1:1',
         action: { type: 'library', params: { assetId: a.id } },
       }));
@@ -272,6 +288,7 @@ function sourceItems(source, ctx) {
   }
 }
 
+const NOT_RECENT = new Set(['poster', 'last-frame', 'continuity', 'preview', 'preview-poster', 'upload', 'handoff']);
 const ALL_SOURCES = ['studios', 'quick', 'models', 'presets', 'tools'];
 /** Every addressable item (for `custom` sections that pin ids from any source). */
 function allItems(ctx) {

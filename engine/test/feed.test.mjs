@@ -22,6 +22,7 @@ fs.writeFileSync(path.join(DATA, 'assets.json'), JSON.stringify({
   a_srcvid: { id: 'a_srcvid', file: 'a_srcvid.mp4', mime: 'video/mp4', kind: 'video', url: '/engine/media/a_srcvid.mp4', createdAt: t0, model: 'xai/grok-imagine-video-1.5', prompt: 'whale of clouds' },
   a_tallvid: { id: 'a_tallvid', file: 'a_tallvid.mp4', mime: 'video/mp4', kind: 'video', url: '/engine/media/a_tallvid.mp4', createdAt: '2026-01-02T00:00:00.000Z', model: 'xai/grok-imagine-video-1.5-lite', prompt: 'lanterns', width: 720, height: 960 },
   a_srcimg: { id: 'a_srcimg', file: 'a_srcimg.jpg', mime: 'image/jpeg', kind: 'image', url: '/engine/media/a_srcimg.jpg', createdAt: '2026-01-03T00:00:00.000Z', model: 'xai/grok-imagine-image-2.0', prompt: 'galaxy lion', width: 2048, height: 2048 },
+  a_c60339c0e153: { id: 'a_c60339c0e153', file: 'a_srcimg.jpg', mime: 'image/jpeg', kind: 'image', url: '/engine/media/a_c60339c0e153.jpg', createdAt: t0, model: 'google/gemini-3-pro-image', width: 2048, height: 1152 },
   a_poster: { id: 'a_poster', file: 'a_srcimg.jpg', mime: 'image/jpeg', kind: 'image', url: '/engine/media/a_srcimg.jpg', createdAt: '2026-01-04T00:00:00.000Z', source: 'poster' },
 }));
 
@@ -45,7 +46,7 @@ test('default feed: shape, only available models, only enabled tools', async () 
       assert.ok(['create', 'tool', 'films', 'characters', 'library'].includes(i.action.type), i.id);
     }
   }
-  assert.deepEqual(f.sections.map((s) => s.id), ['studios', 'quick', 'video-models', 'presets', 'apps', 'image-models', 'characters', 'recent']);
+  assert.deepEqual(f.sections.map((s) => s.id), ['studios', 'video-models', 'presets', 'apps', 'image-models', 'characters', 'recent', 'quick']);
   const vm = section(f, 'video-models').items.map((i) => i.action.model);
   assert.deepEqual(vm, ['xai/grok-imagine-video-1.5', 'xai/grok-imagine-video-1.5-lite']);
   assert.deepEqual(section(f, 'image-models').items.map((i) => i.id), ['model:xai/grok-imagine-image-2.0']);
@@ -75,6 +76,18 @@ test('characters and recent media come from live data; posters and previews neve
   const recent = section(f, 'recent').items.map((i) => i.id);
   assert.deepEqual(recent, ['media:a_srcimg', 'media:a_tallvid', 'media:a_srcvid']);
   assert.equal(section(f, 'recent').items[1].aspect, '3:4');
+});
+
+test('uploads, hand-offs and film parts never show as recent (QA-09)', async () => {
+  const c = await ctx();
+  const extra = [
+    { id: 'a_upload', kind: 'image', url: '/engine/media/x.jpg', createdAt: '2026-02-01T00:00:00.000Z', source: 'upload', name: 'upload' },
+    { id: 'a_handoff', kind: 'video', url: '/engine/media/y.mp4', createdAt: '2026-02-02T00:00:00.000Z', source: 'handoff' },
+    { id: 'a_shot', kind: 'video', url: '/engine/media/z.mp4', createdAt: '2026-02-03T00:00:00.000Z', prompt: 'A fisherman walks… Camera: slow dolly in' },
+    { id: 'a_master', kind: 'video', url: '/engine/media/m.mp4', createdAt: '2026-02-04T00:00:00.000Z', source: 'master' },
+  ];
+  const f = feed.buildFeed({ ...c, media: [...c.media, ...extra], partIds: new Set(['a_shot']) });
+  assert.deepEqual(section(f, 'recent').items.map((i) => i.id), ['media:a_master', 'media:a_srcimg', 'media:a_tallvid', 'media:a_srcvid']);
 });
 
 test('mobileSize caps at 720p and never upscales', () => {
@@ -161,4 +174,23 @@ test('patchFeed: retitle, hide, reorder, custom sections; validation; reset', as
   assert.equal(f.sections[0].id, 'studios');
   assert.equal(section(f, 'apps').items.find((i) => i.id === 'tool:effects').title, 'Effects');
   assert.ok(feed.previewFor('studio:video').previewUrl, 'reset keeps previews');
+});
+
+test('either/or tool inputs are declared so clients can disable Run (QA-16)', async () => {
+  const all = await tools.listTools({ all: true });
+  const by = (id) => all.find((t) => t.id === id);
+  assert.deepEqual(by('talking-avatar').oneOf, [['image', 'character'], ['text', 'audio']]);
+  assert.deepEqual(by('face-swap').oneOf, [['face', 'character']]);
+  assert.deepEqual(by('lipsync').oneOf, [['text', 'audio']]);
+  assert.equal(by('video-sfx').oneOf, undefined);
+});
+
+test('the Home hero leads with the film-reel still, served as an image (swappable)', async () => {
+  const f = feed.buildFeed(await ctx());
+  const hero = section(f, 'studios').items[0];
+  assert.equal(hero.id, 'studio:home');
+  assert.equal(hero.previewKind, 'image');
+  assert.equal(hero.previewPoster, '/engine/media/a_c60339c0e153.jpg');
+  assert.deepEqual(hero.action, { type: 'films', params: { new: true } });
+  assert.ok(!(section(f, 'recent')?.items || []).some((i) => i.id === 'media:a_c60339c0e153'), 'hero artwork is not "Recent"');
 });
