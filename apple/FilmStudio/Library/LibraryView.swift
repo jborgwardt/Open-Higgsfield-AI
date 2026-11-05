@@ -69,7 +69,7 @@ struct LibraryView: View {
             Text(search.isEmpty ? "Images and videos you generate — and finished films — show up here." : "Try another word.")
         } actions: {
             if search.isEmpty, app.config.isOn("create") {
-                Button("Create Something") { app.requestedTab = "explore" }.buttonStyle(.borderedProminent)
+                Button("Create Something") { app.requestedTab = "explore" }.buttonStyle(.glassProminent)
             }
         }
     }
@@ -88,6 +88,16 @@ struct LibraryView: View {
             }
             .padding(.horizontal, Platform.isMac ? 12 : 0)
             Text("\(items.count) item\(items.count == 1 ? "" : "s")").font(.footnote).foregroundStyle(.secondary).padding(.vertical, 16)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if app.config.isOn("create") {
+                Button { app.requestedTab = app.config.visibleTabs.contains { $0.id == "create" } ? "create" : "explore" } label: {
+                    Label("Create", systemImage: "sparkles").font(.headline).padding(.horizontal, 4).padding(.vertical, 2)
+                }
+                .buttonStyle(.glassProminent)
+                .controlSize(.large)
+                .padding(20)
+            }
         }
     }
 

@@ -63,7 +63,7 @@ struct SignInControls: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .controlSize(.large)
                 .disabled(app.isSigningIn)
                 .keyboardShortcut(.defaultAction)
@@ -80,7 +80,7 @@ struct SignInControls: View {
                 } label: {
                     Text("Sign In").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .controlSize(.large)
                 .disabled(code.isEmpty || app.isSigningIn)
             }

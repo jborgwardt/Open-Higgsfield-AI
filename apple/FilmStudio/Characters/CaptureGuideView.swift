@@ -94,14 +94,14 @@ struct CaptureGuideView: View {
             #if os(iOS)
             if app.config.isOn("cameraCapture"), CameraController.isAvailable {
                 Button { cameraStep = step } label: { Image(systemName: "camera.fill") }
-                    .buttonStyle(.bordered).accessibilityLabel("Take \(step.title) photo")
+                    .buttonStyle(.glass).accessibilityLabel("Take \(step.title) photo")
             }
             #endif
             PhotosPicker(selection: Binding(get: { picks[step.id] }, set: { item in
                 guard let item else { return }
                 Task { await add(item: item, angle: step.id) }
             }), matching: .images) { Image(systemName: "photo.on.rectangle") }
-                .buttonStyle(.bordered)
+                .buttonStyle(.glass)
                 .accessibilityLabel("Choose \(step.title) photo")
         }
         .disabled(busy != nil)

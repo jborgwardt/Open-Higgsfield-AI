@@ -33,7 +33,7 @@ struct ErrorStateView: View {
             Text(message)
         } actions: {
             if let retry {
-                Button("Try Again") { Task { await retry() } }.buttonStyle(.borderedProminent)
+                Button("Try Again") { Task { await retry() } }.buttonStyle(.glassProminent)
             }
         }
     }
@@ -53,7 +53,7 @@ struct NotDeployedView: View {
         } description: {
             Text(message)
         } actions: {
-            Button("Check Again") { Task { await retry() } }.buttonStyle(.borderedProminent)
+            Button("Check Again") { Task { await retry() } }.buttonStyle(.glassProminent)
             if let webPath { OpenOnWebButton(path: webPath, title: title) }
         }
     }
@@ -126,8 +126,7 @@ struct BannerView: View {
             }
         }
         .padding(12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(tint.opacity(0.35)))
+        .studioGlass(RoundedRectangle(cornerRadius: 18, style: .continuous), tint: tint.opacity(0.12))
         .padding(.horizontal)
         .padding(.vertical, 6)
     }

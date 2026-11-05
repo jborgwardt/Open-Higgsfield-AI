@@ -23,7 +23,7 @@ struct FilmsView: View {
                         } description: {
                             Text("Write or paste a script, choose a length, and the director plans every shot. Rendering runs on the studio server — you can close the app.")
                         } actions: {
-                            Button("New Film") { creating = true }.buttonStyle(.borderedProminent)
+                            Button("New Film") { creating = true }.buttonStyle(.glassProminent)
                         }
                     } else {
                         List {
@@ -222,12 +222,10 @@ struct FilmDetailView: View {
                     ZStack {
                         AuthedImage(url: p.shots.first?.stillURL, maxPixelSize: 1200)
                             .aspectRatio(16 / 9, contentMode: .fill)
-                        Rectangle().fill(.black.opacity(0.3))
-                        VStack(spacing: 6) {
-                            Image(systemName: "play.circle.fill").font(.system(size: 54)).symbolRenderingMode(.hierarchical)
-                            Text("Play film · \((m.duration ?? 0).clock)").font(.subheadline.weight(.semibold))
-                        }
-                        .foregroundStyle(.white)
+                        Label("Play film · \((m.duration ?? 0).clock)", systemImage: "play.fill")
+                            .font(.headline)
+                            .padding(.horizontal, 18).padding(.vertical, 12)
+                            .studioGlass(interactive: true)
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
@@ -249,24 +247,27 @@ struct FilmDetailView: View {
 
     @ViewBuilder private func actions(_ p: Production) -> some View {
         let canPlan = p.status != .running && p.status != .planning
-        HStack(spacing: 10) {
-            if p.shots.isEmpty || p.status == .draft {
-                Button { Task { await plan() } } label: {
-                    HStack {
-                        if busy == "Plan" { ProgressView().controlSize(.small) } else { Image(systemName: "wand.and.stars") }
-                        Text("Plan with Director")
+        GlassEffectContainer(spacing: 10) {
+            HStack(spacing: 10) {
+                if p.shots.isEmpty || p.status == .draft {
+                    Button { Task { await plan() } } label: {
+                        HStack {
+                            if busy == "Plan" { ProgressView().controlSize(.small) } else { Image(systemName: "wand.and.stars") }
+                            Text("Plan with Director")
+                        }
+                        .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 4)
                     }
-                    .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 4)
+                    .glassButton(prominent: true)
+                    .controlSize(.large)
+                    .disabled(!canPlan || busy != nil || p.brief.script.trimmingCharacters(in: .whitespaces).isEmpty)
+                } else if p.status == .running || p.running {
+                    actionButton("Pause", "pause.fill", prominent: false) { try await app.client.productionAction(id, "pause") }
+                } else if !p.shots.allSatisfy({ $0.status == .done || $0.status == .skipped }) {
+                    actionButton(p.doneCount > 0 ? "Resume Rendering" : "Start Rendering", "play.fill", prominent: true) { try await app.client.productionAction(id, "start") }
                 }
-                .buttonStyle(ActionStyle(prominent: true))
-                .disabled(!canPlan || busy != nil || p.brief.script.trimmingCharacters(in: .whitespaces).isEmpty)
-            } else if p.status == .running || p.running {
-                actionButton("Pause", "pause.fill", prominent: false) { try await app.client.productionAction(id, "pause") }
-            } else if !p.shots.allSatisfy({ $0.status == .done || $0.status == .skipped }) {
-                actionButton(p.doneCount > 0 ? "Resume Rendering" : "Start Rendering", "play.fill", prominent: true) { try await app.client.productionAction(id, "start") }
-            }
-            if p.doneCount > 0 {
-                actionButton(p.master == nil ? "Assemble" : "Re-assemble", "film.stack", prominent: p.master == nil && p.shots.allSatisfy { $0.status == .done || $0.status == .skipped }, disabled: !p.canAssemble) { try await app.client.productionAction(id, "assemble") }
+                if p.doneCount > 0 {
+                    actionButton(p.master == nil ? "Assemble" : "Re-assemble", "film.stack", prominent: p.master == nil && p.shots.allSatisfy { $0.status == .done || $0.status == .skipped }, disabled: !p.canAssemble) { try await app.client.productionAction(id, "assemble") }
+                }
             }
         }
         .listRowBackground(Color.clear)
@@ -299,7 +300,8 @@ struct FilmDetailView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 4)
         }
-        .buttonStyle(ActionStyle(prominent: prominent))
+        .glassButton(prominent: prominent)
+        .controlSize(.large)
         .disabled(disabled || busy != nil)
     }
 
@@ -336,19 +338,6 @@ struct FilmDetailView: View {
         } catch {
             if production == nil { self.error = error.localizedDescription }
         }
-    }
-}
-
-private struct ActionStyle: ButtonStyle {
-    let prominent: Bool
-    @Environment(\.isEnabled) private var enabled
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.vertical, 8)
-            .padding(.horizontal, 10)
-            .foregroundStyle(prominent ? Color.white : Color.accentColor)
-            .background(prominent ? Color.accentColor : Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .opacity(enabled ? (configuration.isPressed ? 0.75 : 1) : 0.45)
     }
 }
 

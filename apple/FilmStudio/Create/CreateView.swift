@@ -76,7 +76,7 @@ struct CreateView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 4)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
                     .controlSize(.large)
                     .disabled(!canGenerate)
                     .keyboardShortcut(.return, modifiers: .command)

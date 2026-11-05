@@ -103,6 +103,10 @@ struct MainView: View {
                 .tag(t.id)
             }
         }
+        #if os(iOS)
+        .tabBarMinimizeBehavior(.onScrollDown)
+        .modifier(WorkingAccessory(tabs: list.map(\.id), tab: $tab))
+        #endif
         .sheet(isPresented: $showSettings) {
             NavigationStack {
                 SettingsView().toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showSettings = false } } }
@@ -141,6 +145,48 @@ struct MainView: View {
         }
     }
 }
+
+#if os(iOS)
+/// iPhone: generations in flight ride above the tab bar as a glass accessory; tap to jump to where they started.
+private struct WorkingAccessory: ViewModifier {
+    let tabs: [String]
+    @Binding var tab: String
+    @Environment(AppModel.self) private var app
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.1, *) {
+            content.tabViewBottomAccessory(isEnabled: !active.isEmpty) { pill }
+        } else {
+            content
+        }
+    }
+
+    private var active: [GenerationStore.Run] { app.generations.runs.filter { !$0.isFinished } }
+
+    private var pill: some View {
+        let runs = active
+        let lead = runs.first
+        return Button {
+            if let lead, tabs.contains(lead.source) { tab = lead.source } else if tabs.contains("create") { tab = "create" }
+        } label: {
+            HStack(spacing: 10) {
+                ProgressView(value: lead?.job?.fraction ?? 0).progressViewStyle(.circular).controlSize(.small)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(runs.count > 1 ? "\(runs.count) generations running" : "Generating · \(lead?.title ?? "")")
+                        .font(.subheadline.weight(.semibold)).lineLimit(1)
+                    if let lead { Text(lead.statusText).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Shows the screen where it started")
+    }
+}
+#endif
 
 /// One tab's root screen: native, or the web app when the server says so.
 struct TabRoot: View {
@@ -221,7 +267,7 @@ struct UnreachableView: View {
             } description: {
                 Text("\(message)\n\(app.serverURL.host ?? app.serverURL.absoluteString)")
             } actions: {
-                Button("Try Again") { Task { await app.start() } }.buttonStyle(.borderedProminent)
+                Button("Try Again") { Task { await app.start() } }.buttonStyle(.glassProminent)
                 NavigationLink("Server Settings") { Form { ServerSection() }.studioForm().navigationTitle("Server") }
             }
         }
@@ -238,7 +284,7 @@ struct UpdateRequiredView: View {
             Text("This version of Film Studio (\(DeviceFacts.appVersion)) is no longer supported by the studio. Install the new version to continue.")
         } actions: {
             if let s = updateURL ?? app.config.updateUrl, let url = URL(string: s) {
-                Button("Install Update") { Platform.open(url) }.buttonStyle(.borderedProminent)
+                Button("Install Update") { Platform.open(url) }.buttonStyle(.glassProminent)
             }
             Button("Check Again") { Task { await app.start() } }
         }

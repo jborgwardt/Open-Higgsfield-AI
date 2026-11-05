@@ -4,6 +4,7 @@ import FilmStudioKit
 @main
 struct FilmStudioApp: App {
     @State private var app = AppModel()
+    @AppStorage("appearance") private var appearance: Appearance = .dark
 
     init() {
         #if DEBUG && os(macOS)
@@ -15,6 +16,7 @@ struct FilmStudioApp: App {
         WindowGroup {
             RootView()
                 .environment(app)
+                .preferredColorScheme(appearance.scheme)
         }
         #if os(macOS)
         .defaultSize(width: 1240, height: 820)
@@ -29,6 +31,7 @@ struct FilmStudioApp: App {
         Settings {
             NavigationStack { SettingsView() }
                 .environment(app)
+                .preferredColorScheme(appearance.scheme)
                 .frame(minWidth: 520, idealWidth: 560, minHeight: 600)
         }
         #endif

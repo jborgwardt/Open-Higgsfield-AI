@@ -33,11 +33,25 @@ struct MediaViewer: View {
             .inlineTitle()
             .toolbar { toolbar }
             .overlay(alignment: .bottom) {
-                if let message {
-                    Text(message).font(.subheadline.weight(.medium)).padding(.horizontal, 16).padding(.vertical, 10)
-                        .background(.regularMaterial, in: Capsule()).padding(.bottom, 24)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                GlassEffectContainer(spacing: 12) {
+                    VStack(spacing: 12) {
+                        if let message {
+                            Text(message).font(.subheadline.weight(.medium)).padding(.horizontal, 16).padding(.vertical, 10)
+                                .studioGlass()
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                        if scale > 1 {
+                            Button {
+                                withAnimation(.spring) { scale = 1; baseScale = 1 }
+                            } label: {
+                                Label("Fit", systemImage: "arrow.down.right.and.arrow.up.left").font(.subheadline.weight(.semibold))
+                            }
+                            .buttonStyle(.glass)
+                            .transition(.scale.combined(with: .opacity))
+                        }
+                    }
                 }
+                .padding(.bottom, 24)
             }
             .confirmationDialog("Remove from the library?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Remove", role: .destructive) { Task { await onDelete?(); dismiss() } }

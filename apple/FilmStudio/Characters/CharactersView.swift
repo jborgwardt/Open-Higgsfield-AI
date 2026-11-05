@@ -27,7 +27,7 @@ struct CharactersView: View {
                     } description: {
                         Text("Add the people in your films once — a few sharp photos from different angles — and every shot keeps their face.")
                     } actions: {
-                        Button("New Character") { creating = true }.buttonStyle(.borderedProminent)
+                        Button("New Character") { creating = true }.buttonStyle(.glassProminent)
                     }
                 } else {
                     grid

@@ -100,8 +100,8 @@ struct CameraCaptureView: View {
                     Text("\(zoom.formatted())× · back camera · 1.5–2 m").font(.caption).foregroundStyle(.white.opacity(0.7))
                 }
                 .padding(12)
-                .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .foregroundStyle(.white)
+                .studioGlass(RoundedRectangle(cornerRadius: 18, style: .continuous), tint: .black.opacity(0.35))
                 .padding(.top, 12)
                 if let error { Text(error).font(.callout).foregroundStyle(.white).padding(10).background(.red.opacity(0.8), in: Capsule()) }
                 Spacer()
@@ -134,8 +134,8 @@ struct CameraCaptureView: View {
             Button(shot == nil ? "Cancel" : "Retake") {
                 if shot == nil { dismiss() } else { shot = nil }
             }
-            .foregroundStyle(.white)
-            .frame(width: 90)
+            .buttonStyle(.glass)
+            .frame(width: 110)
             Spacer()
             if shot == nil {
                 Button {
@@ -157,8 +157,8 @@ struct CameraCaptureView: View {
                 dismiss()
             }
             .fontWeight(.semibold)
-            .foregroundStyle(.white)
-            .frame(width: 90)
+            .buttonStyle(.glassProminent)
+            .frame(width: 110)
             .opacity(shot == nil ? 0 : 1)
             .disabled(shot == nil)
         }

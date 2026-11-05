@@ -151,7 +151,7 @@ struct ToolRunView: View {
                         Label("Run \(tool.title)", systemImage: tool.sfSymbol)
                             .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
                     .controlSize(.large)
                     .disabled(!missing.isEmpty)
                     .keyboardShortcut(.return, modifiers: .command)

@@ -4,8 +4,8 @@ name: FilmStudio
 options:
   bundleIdPrefix: com.borgwardt
   deploymentTarget:
-    iOS: "18.0"
-    macOS: "15.0"
+    iOS: "26.0"
+    macOS: "26.0"
   createIntermediateGroups: true
   groupSortPosition: top
 settings:
@@ -57,7 +57,6 @@ targets:
           UIApplicationSupportsMultipleScenes: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
-        UIRequiresFullScreen: false
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSExceptionDomains:
