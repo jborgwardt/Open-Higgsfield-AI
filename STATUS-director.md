@@ -30,27 +30,32 @@ Branch `worktree-agent-ac5f0664b252af2fb` (based on `multi-provider-longform` @ 
   ApiMart 191 chat models; planning without a director returns 400 "Choose a director first"; the Gemini
   writers' room planned the bipolar trial (11 shots, 50.4 s cut from 66 s of renders, 7/7 lines kept).
 
-## In progress / not verified
-- VPS: animatic render → assemble → screen → apply in the test container (running).
+  Then in the same container: animatic render → trimmed assembly (master 50.52 s for a 50.40 s cut list) →
+  auto-screen (gemini-3.8-flash). The test container, volume, image and /opt/studio-test/director are removed.
+- **Delete fix** (10999d9): deleted productions no longer come back (deleteProduction now awaits pause).
+
+## Not verified
+- The Claude CLI inside the container with a real CLAUDE_CODE_OAUTH_TOKEN (the token is not set yet). Locally
+  the same backend ran 3 Opus plans on the signed-in Mac CLI.
 - The Claude CLI in the container needs `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`); not set yet.
 - The Qwen director run was interrupted by the move to VPS testing (concept + shot passes had completed).
 - Grok director: untested (no xAI login locally).
 
-## Next steps
-1. VPS: `rsync` the worktree to `/opt/studio-test/director/`, then `docker build -t studio:director .`, then run
-   `studio-test-director` on 127.0.0.1:4963 with `--env-file /opt/studio/.env` and volume
-   `studio-test-director:/data`. Check `/status` (claude: installed, not signed in), `/directors`, a Gemini
-   plan, an animatic render + assemble + screen.
-2. Remove the test container, volume and `/opt/studio-test/director` when done.
+## Next steps (for the integrator)
+1. Run `claude setup-token` once and add `CLAUDE_CODE_OAUTH_TOKEN=…` to /opt/studio/.env, then pick
+   "Claude (your subscription)" as the director.
+2. Merge and deploy. The image grows by about 323 MB (the Claude Code native binary).
 
-## How to resume
-- Test container: `ssh root@100.64.0.4 'docker exec studio-test-director node -e "..."'` against
-  http://127.0.0.1:4848 inside the container (loopback needs no auth).
-- Remove: `ssh root@100.64.0.4 'docker rm -f studio-test-director; docker volume rm studio-test-director; docker rmi studio:director; rm -rf /opt/studio-test/director'`
+## How to re-test on the VPS
+- `rsync -az --exclude node_modules --exclude .git --exclude engine-data --exclude dist --exclude .claude ./ root@100.64.0.4:/opt/studio-test/director/`
+- `docker build -t studio:director . && docker run -d --name studio-test-director -p 127.0.0.1:4963:4848 -v studio-test-director:/data --env-file /opt/studio/.env studio:director`
+- Drive it with `docker exec -i studio-test-director node --input-type=module - < script.mjs`, using the bearer
+  token from /data/settings.json (the engine listens on 0.0.0.0, so even loopback needs the access code).
+- Remove: `docker rm -f studio-test-director; docker volume rm studio-test-director; docker rmi studio:director; rm -rf /opt/studio-test/director`
 
 ## Costs so far
 - No video or image generation. Narration in tests used the free Mac voice; Lyria was never called.
-- Gemini API: 2 director plans (gemini-3.8-flash) and 5 screenings (about 11–12k input tokens each). Well
+- Gemini API: 3 director plans (gemini-3.8-flash, one on the VPS) and 6 screenings (about 11–12k input tokens each). Well
   under $0.50 in total.
 - Claude: 3 Opus plans + about 4 tiny CLI probes, on the Claude subscription (no API billing).
 - Qwen Token Plan: 1 partial plan. Model-list calls (free) for Gemini/Qwen/Venice.
