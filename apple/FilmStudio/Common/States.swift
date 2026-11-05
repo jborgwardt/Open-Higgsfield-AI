@@ -33,7 +33,7 @@ struct ErrorStateView: View {
             Text(message)
         } actions: {
             if let retry {
-                Button("Try Again") { Task { await retry() } }.buttonStyle(.lime)
+                Button("Try Again") { Task { await retry() } }.buttonStyle(.ember)
             }
         }
     }
@@ -53,7 +53,7 @@ struct NotDeployedView: View {
         } description: {
             Text(message)
         } actions: {
-            Button("Check Again") { Task { await retry() } }.buttonStyle(.lime)
+            Button("Check Again") { Task { await retry() } }.buttonStyle(.ember)
             if let webPath { OpenOnWebButton(path: webPath, title: title) }
         }
     }

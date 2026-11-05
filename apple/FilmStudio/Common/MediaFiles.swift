@@ -124,8 +124,11 @@ enum MediaUpload {
         return CGImageDestinationFinalize(dest) ? out as Data : nil
     }
 
-    static func image(_ data: Data, name: String = "photo.jpg", app: AppModel) async throws -> UploadedAsset {
-        let jpeg = await Task.detached { MediaUpload.jpeg(data) }.value
+    /// `maxPixel` 2560: plenty for start frames and references, and a fraction of the bytes of a 4K JPEG over a
+    /// slow link (QA-19). `local` gets a small thumbnail right away, before the upload finishes.
+    static func image(_ data: Data, name: String = "photo.jpg", app: AppModel, maxPixel: Int = 2560, local: ((CGImage) -> Void)? = nil) async throws -> UploadedAsset {
+        if let local, let thumb = await Task.detached(operation: { MediaUpload.thumbnail(data) }).value { local(thumb) }
+        let jpeg = await Task.detached { MediaUpload.jpeg(data, maxPixel: maxPixel, quality: 0.88) }.value
         guard let jpeg else { throw APIError.decoding("that file is not an image") }
         let base = (name as NSString).deletingPathExtension
         return try await app.client.upload(data: jpeg, name: "\(base.isEmpty ? "photo" : base).jpg", mimeType: "image/jpeg")
@@ -137,15 +140,21 @@ enum MediaUpload {
         return try await app.client.upload(file: url, name: url.lastPathComponent, mimeType: mime)
     }
 
+    nonisolated static func thumbnail(_ data: Data, maxPixel: Int = 300) -> CGImage? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: maxPixel]
+        return CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary)
+    }
+
     /// Loads a Photos picker selection and uploads it.
-    static func upload(_ item: PhotosPickerItem, app: AppModel) async throws -> UploadedAsset {
+    static func upload(_ item: PhotosPickerItem, app: AppModel, local: ((CGImage) -> Void)? = nil) async throws -> UploadedAsset {
         if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
             guard let movie = try await item.loadTransferable(type: ImportedMovie.self) else { throw APIError.decoding("couldn't read that video") }
             defer { try? FileManager.default.removeItem(at: movie.url) }
             return try await file(movie.url, app: app)
         }
         guard let data = try await item.loadTransferable(type: Data.self) else { throw APIError.decoding("couldn't read that photo") }
-        return try await image(data, app: app)
+        return try await image(data, app: app, local: local)
     }
 
     /// A file picked with the Files importer (security-scoped).

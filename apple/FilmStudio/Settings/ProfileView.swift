@@ -11,9 +11,9 @@ struct ProfileView: View {
                 HStack(spacing: 14) {
                     Text(initials)
                         .font(.display(26))
-                        .foregroundStyle(Color.onLime)
+                        .foregroundStyle(Color.onEmber)
                         .frame(width: 64, height: 64)
-                        .background(Color.lime, in: Circle())
+                        .background(Color.ember, in: Circle())
                     VStack(alignment: .leading, spacing: 3) {
                         // Access-code mode has no user: say how you're signed in instead of repeating the host (QA-22).
                         DisplayTitle(app.health?.user?.name.nonEmpty ?? "Your studio", size: 26, lineLimit: 1).foregroundStyle(.white)
@@ -63,7 +63,7 @@ struct ProfileView: View {
 
     private func row(_ title: String, _ subtitle: String, _ symbol: String) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.lime)
+            Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.ember)
                 .frame(width: 36, height: 36).background(Color.surfaceHigh, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.body.weight(.semibold)).foregroundStyle(.white)

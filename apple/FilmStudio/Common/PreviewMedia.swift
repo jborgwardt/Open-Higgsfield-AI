@@ -108,8 +108,8 @@ struct PreviewMediaView: View {
         ZStack {
             if let still = preview?.still {
                 AuthedImage(url: still, maxPixelSize: maxPixelSize, quiet: true)
-            } else if preview?.video == nil {
-                placeholder
+            } else if preview?.video == nil || autoplay == .never {
+                placeholder // stills-only surfaces (Home) never wait on a clip
             } else {
                 Color.surface.shimmer(!shouldPlay)
             }

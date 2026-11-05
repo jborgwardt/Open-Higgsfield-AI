@@ -90,7 +90,7 @@ struct MediaViewer: View {
         }
     }
 
-    /// Share · Save · Remix, and the lime primary next step (Animate for stills, Upscale for clips).
+    /// Share · Save · Remix, and the ember primary next step (Animate for stills, Upscale for clips).
     private var actionBar: some View {
         HStack(spacing: 8) {
             if app.config.isOn("shareMedia") {
@@ -135,10 +135,10 @@ struct MediaViewer: View {
             if !isAudio {
                 if !item.isVideo, app.config.isOn("create") {
                     Button { app.openCreate(startFrame: asset, mode: .video) } label: { Label("Animate", systemImage: "sparkle") }
-                        .buttonStyle(.lime)
+                        .buttonStyle(.ember)
                 } else if let t = upscaleTool {
                     Button { upscale = t } label: { Label("Upscale", systemImage: "sparkle") }
-                        .buttonStyle(.lime)
+                        .buttonStyle(.ember)
                 }
             }
         }

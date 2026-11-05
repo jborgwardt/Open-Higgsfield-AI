@@ -166,10 +166,10 @@ final class FilmStudioUITests: XCTestCase {
             sleep(1)
             app.buttons["Plan Film"].tap()
         }
-        wait(button(containing: "Start Rendering"), 60, "planned film")
+        wait(app.buttons["Render"].firstMatch, 60, "planned film")
         sleep(1)
         shot("11-film-planned")
-        button(containing: "Start Rendering").tap()
+        app.buttons["Render"].firstMatch.tap()
         wait(app.buttons["Play film"], 300, "assembled master")
         sleep(1)
         shot("12-film-done")

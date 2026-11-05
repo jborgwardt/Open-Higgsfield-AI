@@ -134,12 +134,33 @@ struct ToolRunView: View {
     @State private var started = false
 
     private var missing: [String] { tool.missingInputs(in: values) }
+    /// The tool's example media: its Home feed tile (server-generated preview), else the tool's own.
+    private var heroPreview: MediaPreview? {
+        let items = app.feed?.sections.flatMap(\.items) ?? []
+        return items.first { $0.id == "tool:\(tool.id)" }?.preview ?? tool.preview
+    }
 
     var body: some View {
         ScreenGate(id: "tool", params: ["id": tool.id], title: tool.title) {
             Form {
-                if !tool.description.isEmpty {
-                    Section { Text(tool.description).font(.callout).foregroundStyle(.secondary) }
+                // Lead with the tool's own example, Higgsfield-style, instead of a grey description row.
+                Section {
+                    Color.clear
+                        .aspectRatio(heroPreview == nil ? 2.2 : 1.25, contentMode: .fit)
+                        .overlay { PreviewMediaView(preview: heroPreview, seed: tool.id, symbol: tool.sfSymbol, autoplay: .always, maxPixelSize: 1200) }
+                        .bottomScrim(0.9, height: 0.6)
+                        .overlay(alignment: .bottomLeading) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                DisplayTitle(tool.title, size: 34).foregroundStyle(.white)
+                                if !tool.description.isEmpty {
+                                    Text(tool.description).font(.subheadline).foregroundStyle(.white.opacity(0.8)).lineLimit(3)
+                                }
+                            }
+                            .padding(16)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
                 }
                 ForEach(tool.inputs) { input in
                     Section {
@@ -154,7 +175,7 @@ struct ToolRunView: View {
                     Button(action: run) {
                         Label("Run \(tool.title)", systemImage: "sparkle")
                     }
-                    .buttonStyle(.lime(.large, fullWidth: true))
+                    .buttonStyle(.ember(.large, fullWidth: true))
                     .disabled(!missing.isEmpty)
                     .keyboardShortcut(.return, modifiers: .command)
                     .listRowBackground(Color.clear)

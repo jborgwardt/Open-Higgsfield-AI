@@ -33,6 +33,7 @@ struct ComposerView: View {
 
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @AppStorage("create.mode") private var mode: ComposerRequest.Mode = .video
     @AppStorage("create.imageModel") private var imageModelID = ""
     @AppStorage("create.videoModel") private var videoModelID = ""
@@ -53,6 +54,8 @@ struct ComposerView: View {
     @State private var pickTarget = AttachTarget.start
     @State private var showPicker = false
     @State private var uploading = false
+    /// The picked photo, shown at once while it uploads.
+    @State private var uploadThumb: CGImage?
     @State private var uploadError: String?
     @State private var currentRun: UUID?
     @State private var open: MediaItem?
@@ -103,7 +106,7 @@ struct ComposerView: View {
             .onChange(of: pick) { _, item in
                 guard let item else { return }
                 pick = nil
-                attach { try await MediaUpload.upload(item, app: app) }
+                attach { try await MediaUpload.upload(item, app: app) { img in Task { @MainActor in uploadThumb = img } } }
             }
             #if os(iOS)
             .fullScreenCover(item: $open) { item in NavigationStack { MediaViewer(item: item) }.environment(app) }
@@ -141,7 +144,16 @@ struct ComposerView: View {
                     .shimmer()
                 } else if let item = run?.resultItem {
                     PreviewMediaView(preview: item.tilePreview, seed: item.id, autoplay: .always, cacheVideo: false, maxPixelSize: 1600)
+                        .overlay {
+                            // The finished result, clearly marked as such (not the start frame it came from).
+                            Image(systemName: item.isVideo ? "play.fill" : "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 26, weight: .bold)).foregroundStyle(.white)
+                                .frame(width: 68, height: 68).studioGlass(Circle())
+                        }
                         .onTapGesture { open = item }
+                        .transition(.opacity.combined(with: .scale(scale: 1.04)))
+                } else if uploading, let uploadThumb {
+                    Image(decorative: uploadThumb, scale: 1).resizable().scaledToFill().blur(radius: 6).shimmer()
                 } else {
                     PreviewMediaView(preview: displayPreview, seed: model?.id ?? "stage", symbol: mode.symbol, autoplay: .always, maxPixelSize: 1600)
                 }
@@ -153,7 +165,7 @@ struct ComposerView: View {
                                startPoint: .top, endPoint: .bottom)
                 .allowsHitTesting(false)
             }
-            .overlay { if dropTargeted { RoundedRectangle(cornerRadius: 0).strokeBorder(Color.lime, lineWidth: 3) } }
+            .overlay { if dropTargeted { RoundedRectangle(cornerRadius: 0).strokeBorder(Color.ember, lineWidth: 3) } }
         }
         .dropDestination(for: ImportedImage.self) { items, _ in
             guard let first = items.first, app.config.isOn("dragAndDrop") else { return false }
@@ -174,19 +186,21 @@ struct ComposerView: View {
         VStack(alignment: .leading, spacing: 6) {
             if let run, !run.isFinished {
                 HStack(spacing: 8) {
-                    ProgressView().tint(.lime).controlSize(.small)
-                    Text(run.job?.fraction.map { "GENERATING \(Int($0 * 100))%" } ?? "GENERATING").font(.label(13, weight: .heavy)).foregroundStyle(Color.lime)
+                    ProgressView().tint(.ember).controlSize(.small)
+                    Text(run.job?.fraction.map { "GENERATING \(Int($0 * 100))%" } ?? "GENERATING").font(.label(13, weight: .heavy)).foregroundStyle(Color.ember)
                 }
                 Text(run.statusText).font(.footnote).foregroundStyle(Color.textSecondary).lineLimit(1)
             } else if let run, run.isFinished, !run.succeeded {
                 Label(run.statusText, systemImage: "exclamationmark.triangle.fill").font(.footnote.weight(.semibold)).foregroundStyle(.red).lineLimit(2)
             } else if run?.succeeded == true {
-                MediaBadge(text: "Ready · tap to open", lime: true)
+                MediaBadge(text: "Ready · tap to open", ember: true)
             } else {
                 if let badge = model.map({ app.catalog?.providerLabel($0.provider) ?? $0.provider }), stageTitle == nil { MediaBadge(text: badge) }
-                DisplayTitle(stageTitle ?? model?.displayName ?? (app.catalog == nil ? "Loading models" : "No \(kind) models"), size: 40)
+                // Landscape iPhone: a one-line caption so it doesn't run into the stage glyph (QA-14).
+                DisplayTitle(stageTitle ?? model?.displayName ?? (app.catalog == nil ? "Loading models" : "No \(kind) models"), size: verticalSizeClass == .compact ? 24 : 40,
+                             lineLimit: verticalSizeClass == .compact ? 1 : 2)
                     .foregroundStyle(.white)
-                if let sub = (stageSubtitle ?? model?.blurb)?.nonEmpty {
+                if verticalSizeClass != .compact, let sub = (stageSubtitle ?? model?.blurb)?.nonEmpty {
                     Text(sub).font(.subheadline).foregroundStyle(Color.textSecondary).lineLimit(2)
                 }
             }
@@ -255,12 +269,13 @@ struct ComposerView: View {
                 }
                 Button(action: generate) {
                     HStack(spacing: 8) {
-                        Text("Generate")
-                        Image(systemName: "sparkle")
+                        // Say why Generate is waiting instead of just greying it out (QA-19).
+                        if uploading { ProgressView().controlSize(.small).tint(Color.onEmber); Text("Uploading photo…") }
+                        else { Text("Generate"); Image(systemName: "sparkle") }
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.lime(.large, fullWidth: true))
+                .buttonStyle(.ember(.large, fullWidth: true))
                 .disabled(!canGenerate)
                 .keyboardShortcut(.return, modifiers: .command)
                 .accessibilityHint(model?.requiresStartImage == true && startFrame == nil ? "\(model?.displayName ?? "This model") needs a start frame" : "")
@@ -363,7 +378,18 @@ struct ComposerView: View {
                 if let startFrame { thumb(startFrame, label: mode == .video ? "START" : "REF") { self.startFrame = nil } }
                 if let endFrame { thumb(endFrame, label: "END") { self.endFrame = nil } }
                 ForEach(references) { r in thumb(r, label: "REF") { references.removeAll { $0.id == r.id } } }
-                if uploading { ProgressView().tint(.lime).frame(width: 54, height: 54).background(Color.surfaceHigh, in: RoundedRectangle(cornerRadius: 12)) }
+                if uploading {
+                    ZStack {
+                        if let uploadThumb { Image(decorative: uploadThumb, scale: 1).resizable().scaledToFill().opacity(0.55) }
+                        ProgressView().tint(.ember)
+                    }
+                    .frame(width: 54, height: 54)
+                    .background(Color.surfaceHigh)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(alignment: .bottomLeading) { Text("UPLOADING").font(.label(8, weight: .heavy)).foregroundStyle(.white).padding(.horizontal, 4).background(.black.opacity(0.6), in: Capsule()).padding(3) }
+                    .padding(.top, 5)
+                    .accessibilityLabel("Uploading photo")
+                }
                 if let uploadError { Text(uploadError).font(.caption).foregroundStyle(.red).lineLimit(2).frame(maxWidth: 220, alignment: .leading) }
             }
         }
@@ -373,7 +399,7 @@ struct ComposerView: View {
         AuthedImage(url: a.url, maxPixelSize: 200, quiet: true)
             .frame(width: 54, height: 54)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(alignment: .bottomLeading) { Text(label).font(.label(9, weight: .heavy)).foregroundStyle(Color.onLime).padding(.horizontal, 4).background(Color.lime, in: Capsule()).padding(3) }
+            .overlay(alignment: .bottomLeading) { Text(label).font(.label(9, weight: .heavy)).foregroundStyle(Color.onEmber).padding(.horizontal, 4).background(Color.ember, in: Capsule()).padding(3) }
             .overlay(alignment: .topTrailing) {
                 Button(action: { withAnimation { remove() } }) {
                     Image(systemName: "xmark.circle.fill").font(.system(size: 18)).foregroundStyle(.white, .black.opacity(0.7))
@@ -443,6 +469,7 @@ struct ComposerView: View {
                 app.report(error, screen: "create", action: "Upload")
             }
             uploading = false
+            uploadThumb = nil
         }
     }
 
@@ -471,7 +498,7 @@ struct ComposerView: View {
     }
 }
 
-/// Image / Video switch in a glass capsule; the selected side is lime.
+/// Image / Video switch in a glass capsule; the selected side is ember.
 private struct ModeSwitch: View {
     @Binding var mode: ComposerRequest.Mode
     @Namespace private var ns
@@ -482,11 +509,11 @@ private struct ModeSwitch: View {
                     Text(m.title.uppercased())
                         .font(.label(13, weight: .heavy))
                         .tracking(0.6)
-                        .foregroundStyle(mode == m ? Color.onLime : .white)
+                        .foregroundStyle(mode == m ? Color.onEmber : .white)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 9)
                         .background {
-                            if mode == m { Capsule().fill(Color.lime).matchedGeometryEffect(id: "mode", in: ns) }
+                            if mode == m { Capsule().fill(Color.ember).matchedGeometryEffect(id: "mode", in: ns) }
                         }
                         .contentShape(Capsule())
                 }
@@ -572,9 +599,9 @@ private struct ModelCard: View {
                 .aspectRatio(model.isVideo ? 16 / 11 : 4 / 5, contentMode: .fit)
                 .overlay { PreviewMediaView(preview: model.preview, seed: model.id, symbol: model.isVideo ? "film" : "photo") }
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(selected ? Color.lime : Color.hairline, lineWidth: selected ? 2.5 : 1))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(selected ? Color.ember : Color.hairline, lineWidth: selected ? 2.5 : 1))
                 .overlay(alignment: .topTrailing) {
-                    if selected { Image(systemName: "checkmark.circle.fill").font(.title3).foregroundStyle(Color.onLime, Color.lime).padding(7) }
+                    if selected { Image(systemName: "checkmark.circle.fill").font(.title3).foregroundStyle(Color.onEmber, Color.ember).padding(7) }
                 }
             Text(model.displayName.uppercased()).font(.display(19, weight: .heavy)).foregroundStyle(.white).lineLimit(2, reservesSpace: true)
             Text(model.blurb.nonEmpty ?? " ").font(.caption).foregroundStyle(Color.textSecondary).lineLimit(2, reservesSpace: true)
@@ -628,7 +655,7 @@ struct RunsSection: View {
                             Text(run.title).font(.subheadline.weight(.semibold)).lineLimit(1)
                             Text(run.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             HStack(spacing: 6) {
-                                if !run.isFinished, let f = run.job?.fraction { ProgressView(value: f).tint(.lime).frame(maxWidth: 120) }
+                                if !run.isFinished, let f = run.job?.fraction { ProgressView(value: f).tint(.ember).frame(maxWidth: 120) }
                                 Text(run.statusText).font(.caption2).foregroundStyle(run.error != nil || run.job?.status == .error ? .red : .secondary).lineLimit(2)
                             }
                         }

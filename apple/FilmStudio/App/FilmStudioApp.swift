@@ -20,7 +20,7 @@ struct FilmStudioApp: App {
             RootView()
                 .environment(app)
                 .preferredColorScheme(.dark)
-                .tint(.lime)
+                .tint(.ember)
         }
         #if os(macOS)
         .defaultSize(width: 1240, height: 820)

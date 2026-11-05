@@ -2,12 +2,16 @@ import SwiftUI
 import WebKit
 import FilmStudioKit
 
-/// Signs the in-app web view in with the app's session (as the engine_session cookie).
+/// Signs the in-app web view in with the app's session: `engine_session` (Pocket ID sessions) and `engine_token`
+/// (access-code mode, where the code is the token) — the engine ignores whichever doesn't apply (QA-18).
 enum WebSession {
-    static func cookie(token: String, for url: URL) -> HTTPCookie? {
+    static let names = ["engine_session", "engine_token"]
+
+    static func cookie(name: String = "engine_session", token: String, for url: URL) -> HTTPCookie? {
         guard let host = url.host else { return nil }
         var props: [HTTPCookiePropertyKey: Any] = [
-            .name: "engine_session", .value: token, .domain: host, .path: "/",
+            .name: name, .value: name == "engine_token" ? (token.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? token) : token,
+            .domain: host, .path: "/",
             .expires: Date().addingTimeInterval(30 * 86400),
         ]
         if url.scheme == "https" { props[.secure] = "TRUE" }
@@ -15,13 +19,15 @@ enum WebSession {
     }
 
     static func install(token: String?, for url: URL) async {
-        guard let token, let c = cookie(token: token, for: url) else { return }
-        await WKWebsiteDataStore.default().httpCookieStore.setCookie(c)
+        guard let token else { return }
+        for name in names {
+            if let c = cookie(name: name, token: token, for: url) { await WKWebsiteDataStore.default().httpCookieStore.setCookie(c) }
+        }
     }
 
     static func clearCookies(for url: URL) async {
         let store = WKWebsiteDataStore.default().httpCookieStore
-        for c in await store.allCookies() where c.name == "engine_session" && (url.host.map { c.domain.hasSuffix($0) } ?? false) {
+        for c in await store.allCookies() where names.contains(c.name) && (url.host.map { c.domain.hasSuffix($0) } ?? false) {
             await store.deleteCookie(c)
         }
     }

@@ -513,7 +513,8 @@ final class QAWalkthroughTests: XCTestCase {
             if env["FS_DIRECTOR_PICK"] != "0" { pickInForm("Director", "No AI") }
             let p2 = app.buttons["Plan Film"]; if p2.exists { p2.tap() }
         }
-        let render = btn(containing: "Start Rendering")
+        let render = btn("Render").exists ? btn("Render") : btn(containing: "Start Rendering")
+        _ = btn("Render").waitForExistence(timeout: 60)
         guard wait(render, 60, "planned film") else { shot("79c-plan-failed"); return }
         sleep(1)
         shot("7a-film-planned")
@@ -522,7 +523,7 @@ final class QAWalkthroughTests: XCTestCase {
         let pause = btn(prefix: "Pause")
         if pause.waitForExistence(timeout: 10) { sleep(1); shot("7b-rendering"); pause.tap(); sleep(3); shot("7c-paused"); dump("7c-paused") }
         else { note("no Pause button while rendering") }
-        let resume = btn(containing: "Resume Rendering").exists ? btn(containing: "Resume Rendering") : btn(containing: "Start Rendering")
+        let resume = btn("Resume").waitForExistence(timeout: 10) ? btn("Resume") : btn("Render")
         if resume.waitForExistence(timeout: 10) { resume.tap() } else { note("no Resume after pause") }
         let play = app.buttons["Play film"]
         if wait(play, 300, "assembled master") {

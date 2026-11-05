@@ -3,14 +3,19 @@ import SwiftUI
 import UIKit
 #endif
 
-// Film Studio design language (Higgsfield-style): pure black canvas, one electric-lime accent, white text,
+// Film Studio design language (Higgsfield-style): pure black canvas, one ember-gold accent (the coral-gold glow of the
+// app icon and the hero, over violet shadows), white text,
 // muted greys, big bold UPPERCASE condensed display type over media. Liquid Glass only for floating chrome.
 
 extension Color {
     /// The one accent: primary actions, selection, the Create button.
-    static let lime = Color(red: 0.824, green: 1.0, blue: 0.227) // #D2FF3A
-    /// Text and glyphs on lime.
-    static let onLime = Color.black
+    /// #FFB454 — 11.9:1 against black and with black text on it; replaces lime #D2FF3A, which clashed with the
+    /// violet / coral-gold brand art.
+    static let ember = Color(red: 1.0, green: 0.706, blue: 0.329) // #FFB454
+    /// The brand's violet (shadows of the icon and hero) for glows and secondary washes, never text.
+    static let violet = Color(red: 0.49, green: 0.36, blue: 0.95) // #7D5CF2
+    /// Text and glyphs on ember.
+    static let onEmber = Color.black
     static let canvas = Color.black
     /// Raised surfaces on black (cards without media, chips, fields).
     static let surface = Color(white: 0.085)
@@ -87,8 +92,8 @@ struct StudioSectionHeader: View {
 
 // MARK: - Buttons
 
-/// The lime primary button (Generate, Create, Sign in).
-struct LimeButtonStyle: ButtonStyle {
+/// The ember primary button (Generate, Create, Sign in).
+struct EmberButtonStyle: ButtonStyle {
     var size: ControlSize = .large
     var fullWidth = false
     @Environment(\.isEnabled) private var isEnabled
@@ -96,11 +101,11 @@ struct LimeButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: size == .large ? 17 : 14, weight: .heavy))
-            .foregroundStyle(Color.onLime.opacity(isEnabled ? 1 : 0.45))
+            .foregroundStyle(Color.onEmber.opacity(isEnabled ? 1 : 0.45))
             .padding(.horizontal, size == .large ? 22 : 14)
             .padding(.vertical, size == .large ? 15 : 9)
             .frame(maxWidth: fullWidth ? .infinity : nil)
-            .background(Capsule().fill(Color.lime.opacity(isEnabled ? 1 : 0.35)))
+            .background(Capsule().fill(Color.ember.opacity(isEnabled ? 1 : 0.35)))
             .contentShape(Capsule())
             .scaleEffect(configuration.isPressed ? 0.965 : 1)
             .brightness(configuration.isPressed ? -0.06 : 0)
@@ -125,15 +130,15 @@ struct DarkPillButtonStyle: ButtonStyle {
     }
 }
 
-extension ButtonStyle where Self == LimeButtonStyle {
-    static var lime: LimeButtonStyle { LimeButtonStyle() }
-    static func lime(_ size: ControlSize = .large, fullWidth: Bool = false) -> LimeButtonStyle { LimeButtonStyle(size: size, fullWidth: fullWidth) }
+extension ButtonStyle where Self == EmberButtonStyle {
+    static var ember: EmberButtonStyle { EmberButtonStyle() }
+    static func ember(_ size: ControlSize = .large, fullWidth: Bool = false) -> EmberButtonStyle { EmberButtonStyle(size: size, fullWidth: fullWidth) }
 }
 extension ButtonStyle where Self == DarkPillButtonStyle {
     static var darkPill: DarkPillButtonStyle { DarkPillButtonStyle() }
 }
 
-/// A compact filter / option chip. Selected chips are lime.
+/// A compact filter / option chip. Selected chips are ember.
 struct StudioChip: View {
     let title: String
     var systemImage: String?
@@ -146,10 +151,10 @@ struct StudioChip: View {
             if showsChevron { Image(systemName: "chevron.down").font(.system(size: 9, weight: .heavy)).opacity(0.7) }
         }
         .font(.system(size: 13, weight: .semibold))
-        .foregroundStyle(selected ? Color.onLime : .white)
+        .foregroundStyle(selected ? Color.onEmber : .white)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Capsule().fill(selected ? Color.lime : Color.surfaceHigh))
+        .background(Capsule().fill(selected ? Color.ember : Color.surfaceHigh))
         .overlay(Capsule().strokeBorder(selected ? .clear : Color.hairline))
         .contentShape(Capsule())
     }
@@ -158,15 +163,15 @@ struct StudioChip: View {
 /// A small uppercase badge over media ("NEW", provider names).
 struct MediaBadge: View {
     let text: String
-    var lime = false
+    var ember = false
     var body: some View {
         Text(text.uppercased())
             .font(.label(10, weight: .heavy))
             .tracking(0.4)
-            .foregroundStyle(lime ? Color.onLime : .white)
+            .foregroundStyle(ember ? Color.onEmber : .white)
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
-            .background(Capsule().fill(lime ? Color.lime : Color.black.opacity(0.55)))
+            .background(Capsule().fill(ember ? Color.ember : Color.black.opacity(0.55)))
             .lineLimit(1)
     }
 }

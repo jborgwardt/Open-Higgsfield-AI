@@ -15,7 +15,7 @@ struct SignInView: View {
                     Image("BrandMark")
                         .resizable()
                         .frame(width: 104, height: 104)
-                        .shadow(color: Color.lime.opacity(0.22), radius: 28) // on-palette glow (was orange)
+                        .shadow(color: Color.violet.opacity(0.4), radius: 28) // brand violet halo (was off-palette orange)
                         .accessibilityHidden(true)
                     VStack(spacing: 10) {
                         Text("FILM STUDIO")
@@ -50,7 +50,7 @@ struct SignInView: View {
             .background {
                 ZStack {
                     Color.canvas
-                    RadialGradient(colors: [Color.lime.opacity(0.13), .clear], center: .init(x: 0.5, y: 0.18), startRadius: 0, endRadius: 360)
+                    RadialGradient(colors: [Color.ember.opacity(0.13), .clear], center: .init(x: 0.5, y: 0.18), startRadius: 0, endRadius: 360)
                 }
                 .ignoresSafeArea()
             }
@@ -75,7 +75,7 @@ struct SignInControls: View {
                         Text("Sign in with \(app.health?.provider ?? "Pocket ID")")
                     }
                 }
-                .buttonStyle(.lime(.large, fullWidth: true))
+                .buttonStyle(.ember(.large, fullWidth: true))
                 .disabled(app.isSigningIn)
                 .keyboardShortcut(.defaultAction)
                 Text("Uses your passkey. Your session is stored in the Keychain on this device.")
@@ -91,7 +91,7 @@ struct SignInControls: View {
                 } label: {
                     Text("Sign In")
                 }
-                .buttonStyle(.lime(.large, fullWidth: true))
+                .buttonStyle(.ember(.large, fullWidth: true))
                 .disabled(code.isEmpty || app.isSigningIn)
             }
             if let error = app.signInError {
@@ -108,7 +108,7 @@ struct ReauthSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 22) {
-                Image(systemName: "lock.rotation").font(.system(size: 48)).foregroundStyle(Color.lime)
+                Image(systemName: "lock.rotation").font(.system(size: 48)).foregroundStyle(Color.ember)
                 DisplayTitle("Sign in again", size: 32).foregroundStyle(.white)
                 Text("Your studio session has expired. Sign in to pick up where you left off — nothing running on the server was interrupted.")
                     .multilineTextAlignment(.center).foregroundStyle(.secondary)

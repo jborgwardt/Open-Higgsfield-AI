@@ -150,9 +150,13 @@ public struct ModelInfo: Decodable, Sendable, Identifiable, Hashable {
     }
     public var isVideo: Bool { kind == "video" }
     /// The product name without the provider plumbing: "Veo 3.1 Quality (ApiMart)" → "Veo 3.1 Quality" (QA-23).
-    public var displayName: String { ModelInfo.productName(label) }
-    public static func productName(_ label: String) -> String {
+    /// Only provider names are dropped; descriptive suffixes like "(offline previs)" stay.
+    public var displayName: String { ModelInfo.productName(label, provider: provider) }
+    static let providerSuffixes: Set<String> = ["apimart", "gemini", "google", "qwen", "qwen plan", "fal", "kie.ai", "kie", "replicate", "muapi", "xai", "grok", "venice", "comfy", "comfyui"]
+    public static func productName(_ label: String, provider: String = "") -> String {
         guard label.hasSuffix(")"), let open = label.lastIndex(of: "(") else { return label }
+        let inner = label[label.index(after: open)..<label.index(before: label.endIndex)].trimmingCharacters(in: .whitespaces).lowercased()
+        guard providerSuffixes.contains(inner) || (!provider.isEmpty && inner == provider.lowercased()) else { return label }
         let name = label[..<open].trimmingCharacters(in: .whitespaces)
         return name.isEmpty ? label : name
     }

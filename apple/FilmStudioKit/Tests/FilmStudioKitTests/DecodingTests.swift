@@ -134,6 +134,13 @@ private func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
         #expect(Tool.grouped(tools).map(\.category) == ["Enhance", "Characters"])
     }
 
+    @Test func modelDisplayName() {
+        #expect(ModelInfo.productName("Veo 3.1 Quality (ApiMart)") == "Veo 3.1 Quality")
+        #expect(ModelInfo.productName("Nano Banana 2.1 (Gemini)") == "Nano Banana 2.1")
+        #expect(ModelInfo.productName("Animatic (offline previs)", provider: "local") == "Animatic (offline previs)")
+        #expect(ModelInfo.productName("Grok Imagine Video 1.5") == "Grok Imagine Video 1.5")
+    }
+
     /// Talking Avatar: Run stays disabled until a photo or character AND a script or audio are set (QA-16).
     @Test func eitherOrInputs() throws {
         let t = try decode(Tool.self, #"""

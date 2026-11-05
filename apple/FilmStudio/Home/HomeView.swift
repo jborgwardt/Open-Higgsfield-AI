@@ -1,7 +1,7 @@
 import SwiftUI
 import FilmStudioKit
 
-/// Home: a vertically scrolling, media-first feed. Sections, order, featured items, previews and copy all come
+/// Home: a vertically scrolling, media-first feed of STILLS (posters only — motion plays once you tap in). Sections, order, featured items, previews and copy all come
 /// from the engine (GET /feed, or built from the catalog/tools/characters/library on older engines).
 struct HomeView: View {
     enum Route: Hashable {
@@ -66,7 +66,7 @@ struct HomeView: View {
             Spacer()
             if app.config.isOn("create"), sizeClass == .regular || Platform.isMac {
                 Button { app.openComposer() } label: { Label("Create", systemImage: "sparkle") }
-                    .buttonStyle(.lime(.small))
+                    .buttonStyle(.ember(.small))
             }
         }
         .padding(.horizontal, 16)
@@ -203,7 +203,7 @@ private struct HeroCarousel: View {
             if section.items.count > 1 {
                 HStack(spacing: 6) {
                     ForEach(section.items) { item in
-                        Capsule().fill(item.id == (current ?? section.items.first?.id) ? Color.lime : Color.white.opacity(0.25))
+                        Capsule().fill(item.id == (current ?? section.items.first?.id) ? Color.ember : Color.white.opacity(0.25))
                             .frame(width: item.id == (current ?? section.items.first?.id) ? 18 : 6, height: 6)
                     }
                 }
@@ -219,7 +219,7 @@ private struct HeroCard: View {
     var body: some View {
         Color.clear
             .aspectRatio(max(1.2, min(item.aspect ?? 1.6, 2.2)), contentMode: .fit)
-            .overlay { PreviewMediaView(preview: item.preview, seed: item.id, symbol: item.sfSymbol, maxPixelSize: 1400) }
+            .overlay { PreviewMediaView(preview: item.preview, seed: item.id, symbol: item.sfSymbol, autoplay: .never, maxPixelSize: 1400) }
             .bottomScrim(0.9, height: 0.65)
             .overlay(alignment: .bottomLeading) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -232,9 +232,9 @@ private struct HeroCard: View {
                         Spacer(minLength: 0)
                         Text("TRY")
                             .font(.label(13, weight: .heavy))
-                            .foregroundStyle(Color.onLime)
+                            .foregroundStyle(Color.onEmber)
                             .padding(.horizontal, 14).padding(.vertical, 8)
-                            .background(Color.lime, in: Capsule())
+                            .background(Color.ember, in: Capsule())
                     }
                 }
                 .padding(18)
@@ -282,7 +282,7 @@ private struct ShelfTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            PreviewMediaView(preview: item.preview, seed: item.id, symbol: item.sfSymbol, maxPixelSize: 700)
+            PreviewMediaView(preview: item.preview, seed: item.id, symbol: item.sfSymbol, autoplay: .never, maxPixelSize: 700)
                 .frame(width: width, height: height)
                 .overlay(alignment: .topLeading) { if let b = item.badge { MediaBadge(text: b).padding(8) } }
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -358,7 +358,7 @@ private struct PortraitGrid: View {
         Button { open(item) } label: {
             Color.clear
                 .aspectRatio(item.aspect ?? 9 / 16, contentMode: .fit)
-                .overlay { PreviewMediaView(preview: item.preview, seed: item.id, symbol: item.sfSymbol, maxPixelSize: 600) }
+                .overlay { PreviewMediaView(preview: item.preview, seed: item.id, symbol: item.sfSymbol, autoplay: .never, maxPixelSize: 600) }
                 .bottomScrim(0.85, height: 0.5)
                 .overlay(alignment: .bottomLeading) {
                     Text(item.title.uppercased()).font(.display(16, weight: .heavy)).foregroundStyle(.white).lineLimit(2).padding(10)

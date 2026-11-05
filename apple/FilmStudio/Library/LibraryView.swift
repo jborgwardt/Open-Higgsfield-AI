@@ -227,7 +227,7 @@ struct LibraryView: View {
             Text(search.isEmpty ? "Images and videos you generate — and finished films — show up here." : "Try another word.")
                 .font(.subheadline).foregroundStyle(Color.textSecondary).multilineTextAlignment(.center)
             if search.isEmpty, app.config.isOn("create") {
-                Button { app.openComposer() } label: { Label("Create something", systemImage: "sparkle") }.buttonStyle(.lime).padding(.top, 6)
+                Button { app.openComposer() } label: { Label("Create something", systemImage: "sparkle") }.buttonStyle(.ember).padding(.top, 6)
             }
         }
         .padding(32)
@@ -238,7 +238,7 @@ struct LibraryView: View {
         if films.isEmpty {
             VStack(spacing: 14) {
                 DisplayTitle("No films yet", size: 28).foregroundStyle(.white)
-                Button { app.requestNewFilm = true; app.requestedTab = "films" } label: { Label("New film", systemImage: "plus") }.buttonStyle(.lime)
+                Button { app.requestNewFilm = true; app.requestedTab = "films" } label: { Label("New film", systemImage: "plus") }.buttonStyle(.ember)
             }
             .frame(maxWidth: .infinity, minHeight: 360)
         } else {
@@ -343,7 +343,7 @@ private struct RunTile: View {
                     if run.isFinished {
                         Label("Failed", systemImage: "exclamationmark.triangle.fill").font(.label(12, weight: .heavy)).foregroundStyle(.red)
                     } else {
-                        Text(run.job?.fraction.map { "GENERATING \(Int($0 * 100))%" } ?? "GENERATING").font(.label(12, weight: .heavy)).foregroundStyle(Color.lime)
+                        Text(run.job?.fraction.map { "GENERATING \(Int($0 * 100))%" } ?? "GENERATING").font(.label(12, weight: .heavy)).foregroundStyle(Color.ember)
                     }
                     Text(run.isFinished ? run.statusText : run.title).font(.caption2).foregroundStyle(Color.textSecondary).lineLimit(2)
                 }
@@ -371,12 +371,12 @@ struct FilmCard: View {
             .overlay(alignment: .bottomLeading) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
-                        MediaBadge(text: p.status.label, lime: p.status == .done)
+                        MediaBadge(text: p.status.label, ember: p.status == .done)
                         if p.shots > 0 { Text("\(p.done)/\(p.shots) shots").font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.8)).monospacedDigit() }
                     }
                     DisplayTitle(p.title, size: 26).foregroundStyle(.white)
                     if p.shots > 0, p.done < p.shots, p.status.isLive {
-                        ProgressView(value: Double(p.done), total: Double(p.shots)).tint(.lime).frame(maxWidth: 220)
+                        ProgressView(value: Double(p.done), total: Double(p.shots)).tint(.ember).frame(maxWidth: 220)
                     }
                 }
                 .padding(14)
@@ -403,7 +403,7 @@ struct CharacterTile: View {
                 .padding(12)
             }
             .overlay(alignment: .topTrailing) {
-                if c.sheet?.approved == true { MediaBadge(text: "Soul ID", lime: true).padding(8) }
+                if c.sheet?.approved == true { MediaBadge(text: "Soul ID", ember: true).padding(8) }
             }
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.hairline))

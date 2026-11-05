@@ -150,7 +150,7 @@ struct MainView: View {
         NavigationSplitView {
             List(selection: Binding<String?>(get: { tab }, set: { if let v = $0 { tab = v } })) {
                 if app.config.isOn("create") {
-                    Label { Text("Create").font(.headline) } icon: { Image(systemName: "sparkle").foregroundStyle(Color.onLime).padding(5).background(Color.lime, in: Circle()) }
+                    Label { Text("Create").font(.headline) } icon: { Image(systemName: "sparkle").foregroundStyle(Color.onEmber).padding(5).background(Color.ember, in: Circle()) }
                         .tag("create")
                 }
                 Section {
@@ -162,7 +162,7 @@ struct MainView: View {
                     Section("Generating") {
                         ForEach(app.generations.runs.filter { !$0.isFinished }) { r in
                             HStack {
-                                ProgressView(value: r.job?.fraction ?? 0).progressViewStyle(.circular).controlSize(.small).tint(.lime)
+                                ProgressView(value: r.job?.fraction ?? 0).progressViewStyle(.circular).controlSize(.small).tint(.ember)
                                 Text(r.title).lineLimit(1).font(.caption)
                             }
                         }
@@ -171,7 +171,7 @@ struct MainView: View {
             }
             .navigationTitle("Film Studio")
             .scrollContentBackground(.hidden)
-            // Selected row: white on dark grey, not white on lime (unreadable, QA-13).
+            // Selected row: white on dark grey, not white on ember (unreadable, QA-13).
             .tint(Color(white: 0.26))
             #if os(macOS)
             .navigationSplitViewColumnWidth(min: 190, ideal: 220)
@@ -207,7 +207,7 @@ extension AppConfig.Tab {
 }
 
 #if os(iOS)
-/// The floating glass tab bar with the big lime Create button in the middle.
+/// The floating glass tab bar with the big ember Create button in the middle.
 struct StudioTabBar: View {
     static let height: CGFloat = 66
     let tabs: [AppConfig.Tab]
@@ -263,10 +263,10 @@ struct StudioTabBar: View {
         } label: {
             Image(systemName: "sparkle")
                 .font(.system(size: 24, weight: .heavy))
-                .foregroundStyle(Color.onLime)
+                .foregroundStyle(Color.onEmber)
                 .frame(width: 64, height: slim ? 40 : 50)
-                .background(Capsule().fill(Color.lime))
-                .shadow(color: Color.lime.opacity(0.35), radius: 12)
+                .background(Capsule().fill(Color.ember))
+                .shadow(color: Color.ember.opacity(0.35), radius: 12)
         }
         .buttonStyle(PressScale())
         .zoomSource("create-button", in: ns)
@@ -288,9 +288,9 @@ private struct WorkingPill: View {
                 if tabs.contains("library") { withAnimation(.snappy) { tab = "library" } }
             } label: {
                 HStack(spacing: 10) {
-                    ProgressView(value: lead.job?.fraction ?? 0).progressViewStyle(.circular).controlSize(.small).tint(.lime)
+                    ProgressView(value: lead.job?.fraction ?? 0).progressViewStyle(.circular).controlSize(.small).tint(.ember)
                     Text(runs.count > 1 ? "\(runs.count) generating" : "Generating · \(lead.title)").font(.subheadline.weight(.semibold)).lineLimit(1)
-                    if let f = lead.job?.fraction { Text("\(Int(f * 100))%").font(.subheadline.monospacedDigit()).foregroundStyle(Color.lime) }
+                    if let f = lead.job?.fraction { Text("\(Int(f * 100))%").font(.subheadline.monospacedDigit()).foregroundStyle(Color.ember) }
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
@@ -372,7 +372,7 @@ struct SplashView: View {
     var body: some View {
         VStack(spacing: 18) {
             Image("BrandMark").resizable().frame(width: 96, height: 96)
-            ProgressView().tint(.lime)
+            ProgressView().tint(.ember)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color("LaunchBackground"))
@@ -391,7 +391,7 @@ struct UnreachableView: View {
                 let detail = message.localizedCaseInsensitiveContains("reach the studio") ? "The server didn't answer. Check your connection or the server address." : message
                 Text("\(detail)\n\(app.serverURL.host ?? app.serverURL.absoluteString)")
             } actions: {
-                Button("Try Again") { Task { await app.start() } }.buttonStyle(.lime)
+                Button("Try Again") { Task { await app.start() } }.buttonStyle(.ember)
                 NavigationLink("Server Settings") { Form { ServerSection() }.studioForm().navigationTitle("Server") }
             }
         }
@@ -408,7 +408,7 @@ struct UpdateRequiredView: View {
             Text("This version of Film Studio (\(DeviceFacts.appVersion)) is no longer supported by the studio. Install the new version to continue.")
         } actions: {
             if let s = updateURL ?? app.config.updateUrl, let url = URL(string: s) {
-                Button("Install Update") { Platform.open(url) }.buttonStyle(.lime)
+                Button("Install Update") { Platform.open(url) }.buttonStyle(.ember)
             }
             Button("Check Again") { Task { await app.start() } }
         }

@@ -45,7 +45,7 @@ struct CharactersView: View {
         }
     }
 
-    /// Soul-ID style: big uppercase header, a lime "new" tile, then portrait character cards.
+    /// Soul-ID style: big uppercase header, a ember "new" tile, then portrait character cards.
     private var grid: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -69,7 +69,7 @@ struct CharactersView: View {
                 DisplayTitle("Characters", size: 34, lineLimit: 1).foregroundStyle(.white)
                 Spacer()
                 if app.charactersAvailable == true {
-                    Button { creating = true } label: { Label("New", systemImage: "plus") }.buttonStyle(.lime(.small))
+                    Button { creating = true } label: { Label("New", systemImage: "plus") }.buttonStyle(.ember(.small))
                 }
             }
             Text("Train a face once — every shot keeps it.").font(.subheadline).foregroundStyle(Color.textSecondary)
@@ -84,14 +84,14 @@ struct CharactersView: View {
             .background(Color.surface)
             .overlay {
                 VStack(spacing: 10) {
-                    Image(systemName: "plus").font(.system(size: 26, weight: .heavy)).foregroundStyle(Color.onLime)
-                        .frame(width: 58, height: 58).background(Color.lime, in: Circle())
+                    Image(systemName: "plus").font(.system(size: 26, weight: .heavy)).foregroundStyle(Color.onEmber)
+                        .frame(width: 58, height: 58).background(Color.ember, in: Circle())
                     Text("NEW CHARACTER").font(.label(14, weight: .heavy)).foregroundStyle(.white)
                     Text("A few sharp photos").font(.caption).foregroundStyle(Color.textSecondary)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.lime.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.ember.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))
             .contentShape(Rectangle())
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("New Character")
@@ -103,7 +103,7 @@ struct CharactersView: View {
             DisplayTitle("Your cast lives here", size: 28).foregroundStyle(.white)
             Text("Add the people in your films once — a few sharp photos from different angles — and every shot keeps their face.")
                 .font(.subheadline).foregroundStyle(Color.textSecondary)
-            Button { creating = true } label: { Label("New Character", systemImage: "plus") }.buttonStyle(.lime)
+            Button { creating = true } label: { Label("New Character", systemImage: "plus") }.buttonStyle(.ember)
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -243,16 +243,34 @@ struct CharacterDetailView: View {
     @ViewBuilder private func content(_ c: StudioCharacter) -> some View {
         List {
             Section {
-                HStack(alignment: .top, spacing: 14) {
-                    AuthedImage(url: c.coverImageURL, maxPixelSize: 400)
-                        .frame(width: 88, height: 110)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(c.name).font(.title3.weight(.semibold))
-                        if !c.description.isEmpty { Text(c.description).font(.callout).foregroundStyle(.secondary) }
-                        if !c.lookNotes.isEmpty { Text(c.lookNotes).font(.caption).foregroundStyle(.secondary) }
+                // Media-forward header: the character's face, big, with the name over a scrim (QA-20).
+                Color.clear
+                    .frame(height: 340)
+                    .overlay {
+                        if c.coverImageURL?.nonEmpty != nil {
+                            AuthedImage(url: c.coverImageURL, maxPixelSize: 1200, quiet: true)
+                        } else {
+                            SeededGradient(seed: c.id).overlay {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "person.crop.square.badge.camera").font(.system(size: 46, weight: .semibold))
+                                    Text("Add reference photos").font(.label(13, weight: .heavy))
+                                }
+                                .foregroundStyle(.white.opacity(0.9))
+                            }
+                        }
                     }
-                }
+                    .bottomScrim(0.9, height: 0.55)
+                    .overlay(alignment: .bottomLeading) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            DisplayTitle(c.name, size: 40).foregroundStyle(.white)
+                            if !c.description.isEmpty { Text(c.description).font(.callout).foregroundStyle(.white.opacity(0.8)).lineLimit(3) }
+                            if !c.lookNotes.isEmpty { Text(c.lookNotes).font(.caption).foregroundStyle(Color.textSecondary).lineLimit(2) }
+                        }
+                        .padding(16)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
             }
 
             coverageSection(c)
@@ -294,12 +312,12 @@ struct CharacterDetailView: View {
     @ViewBuilder private func coverageSection(_ c: StudioCharacter) -> some View {
         let steps = app.config.capture.checklist
         Section {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
                 ForEach(steps) { s in
                     let have = coverage?.has(s.id) ?? c.refs.contains { $0.angle == s.id }
                     HStack(spacing: 6) {
                         Image(systemName: have ? "checkmark.circle.fill" : "circle").foregroundStyle(have ? .green : .secondary)
-                        Text(s.title).font(.caption).lineLimit(1)
+                        Text(s.title).font(.caption).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 0)
                     }
                     .padding(.vertical, 6).padding(.horizontal, 8)

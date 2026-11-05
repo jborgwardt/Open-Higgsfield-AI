@@ -25,7 +25,7 @@ struct FilmsView: View {
                                     DisplayTitle("Script to screen", size: 28).foregroundStyle(.white)
                                     Text("Write or paste a script, choose a length, and the director plans every shot. Rendering runs on the studio server — you can close the app.")
                                         .font(.subheadline).foregroundStyle(Color.textSecondary)
-                                    Button { creating = true } label: { Label("New Film", systemImage: "plus") }.buttonStyle(.lime)
+                                    Button { creating = true } label: { Label("New Film", systemImage: "plus") }.buttonStyle(.ember)
                                 }
                                 .padding(20)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -56,12 +56,12 @@ struct FilmsView: View {
             .navigationDestination(item: $opened) { id in FilmDetailView(id: id) }
             .toolbar {
                 #if os(iOS)
-                // The big FILMS header is the title; the lime "New film" is the create action.
+                // The big FILMS header is the title; the ember "New film" is the create action.
                 ToolbarItem(placement: .principal) { Text("") }
                 #else
                 ToolbarItem(placement: .trailing) {
                     Button("New Film", systemImage: "plus") { creating = true }.keyboardShortcut("n", modifiers: [.command, .shift])
-                        .tint(.lime)
+                        .tint(.ember)
                 }
                 #endif
                 ToolbarItem(placement: .trailing) {
@@ -119,7 +119,7 @@ extension FilmsView {
             HStack {
                 DisplayTitle("Films", size: 34, lineLimit: 1).foregroundStyle(.white)
                 Spacer()
-                Button { creating = true } label: { Label("New film", systemImage: "plus") }.buttonStyle(.lime(.small))
+                Button { creating = true } label: { Label("New film", systemImage: "plus") }.buttonStyle(.ember(.small))
             }
             Text("Long-form: every shot planned, rendered and cut on the server.").font(.subheadline).foregroundStyle(Color.textSecondary)
         }
