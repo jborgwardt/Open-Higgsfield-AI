@@ -62,3 +62,24 @@ Test engine: `studio-test-qa`, a throwaway container on the VPS reached through 
 
 ## Milestone 2: long-form 5–10 min
 Not started in this pass.
+
+## Milestone 2: long-form capability (scope corrected 2026-11-05)
+
+Justin's correction: the 5–10 minute requirement means the app must be *capable* of long-form films. About 5 minutes is the first target and 10 can come later. It does **not** mean producing a full film now, and it does not block delivery.
+
+**Paused trial production:** `prod_73c31fc2ebf8` "The Great Pancake Heist", on the live server.
+- Created from the Mac app with Gemini as director for this film only, Grok Imagine Video 1.5 for every shot (free), and ElevenLabs narration.
+- Paused through the API at about 23:25Z: 4 shots done, 74 pending. Plan, keyframes and assets are kept. Don't resume it unless Justin asks.
+
+**Bounded capability checks (these are not a completed real 5-minute film):**
+
+| Capability | Evidence | Status |
+|---|---|---|
+| Long duration planning | The director planned 78 shots, 551.5 s (about 9.2 min) of edit length, from a short premise | pass |
+| Per-film director from the app | Fixed in f721105, tested in ccedab5. Before the fix, the app forced a studio-wide director choice | fixed |
+| Model routing at scale | All 78 shots resolve to xai/grok-imagine-video-1.5, so the run spends nothing | pass |
+| Pause/resume mid-render | Through the Mac app on live: paused and resumed, no shot lost or submitted twice; the paused state was kept | pass |
+| Multi-clip sequencing and assembly | QA film: 4 shots rendered, assembled into a 32 s master and played in the app (UI test07, test engine) | pass (short) |
+| Export | A single clip was exported (Photos + share sheet) on 3 devices | pass |
+| Exporting a full film master | Not exercised | open |
+| Real 5-minute master: audio continuity, loudness over its length | Not produced, by design | open (optional later) |
