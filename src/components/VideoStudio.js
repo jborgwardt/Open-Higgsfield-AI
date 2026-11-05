@@ -2,6 +2,8 @@ import { kie } from '../lib/kie.js';
 import { t2vModels, getAspectRatiosForVideoModel, getDurationsForModel, getResolutionsForVideoModel, i2vModels, getAspectRatiosForI2VModel, getDurationsForI2VModel, getResolutionsForI2VModel, v2vModels, getModesForModel } from '../lib/models.js';
 import { AuthModal } from './AuthModal.js';
 import { createUploadPicker } from './UploadPicker.js';
+import { CharacterPicker } from './CharacterPicker.js';
+import { isEngineModel } from '../lib/engine.js';
 import { savePendingJob, removePendingJob, getPendingJobs } from '../lib/pendingJobs.js';
 import { sortByPriceDesc, loadPricing, modelPrice } from '../lib/modelSort.js';
 
@@ -230,6 +232,9 @@ export function VideoStudio() {
     };
 
     topRow.appendChild(videoPickerBtn);
+    // Saved characters (engine): reference-to-video where the model has it, otherwise a keyframe from the refs.
+    const charPicker = CharacterPicker();
+    topRow.appendChild(charPicker.el);
 
     const textarea = document.createElement('textarea');
     textarea.placeholder = 'Describe the video you want to create';
@@ -951,6 +956,11 @@ export function VideoStudio() {
             AuthModal(() => generateBtn.click());
             return;
         }
+        const characters = v2vMode ? [] : charPicker.ids();
+        if (characters.length && !isEngineModel(selectedModel)) {
+            alert('Characters work with the engine models (the ones marked “via …”). Pick one of those, or clear the character.');
+            return;
+        }
 
         hero.classList.add('opacity-0', 'scale-95', '-translate-y-10', 'pointer-events-none');
         generateBtn.disabled = true;
@@ -988,6 +998,7 @@ export function VideoStudio() {
                 const i2vParams = {
                     model: selectedModel,
                     image_url: uploadedImageUrl,
+                    characters,
                     onRequestId,
                 };
                 if (prompt) i2vParams.prompt = prompt;
@@ -1022,7 +1033,7 @@ export function VideoStudio() {
                 return;
             }
 
-            const params = { model: selectedModel, onRequestId };
+            const params = { model: selectedModel, characters, onRequestId };
 
             if (prompt) params.prompt = prompt;
 

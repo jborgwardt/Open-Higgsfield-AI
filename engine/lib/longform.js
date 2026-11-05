@@ -12,6 +12,9 @@ import { sleep } from './http.js';
 import { makeMusic, makeVoice, pickVoiceProvider } from './sound.js';
 import { elevenVoiceChange } from './providers/eleven.js';
 import * as post from './post.js';
+import { resolveBriefCharacters, characterVoice, characterFallback, identityModels, isRealCast, refsOk, stagingLine } from './characters.js';
+import { checkLikeness } from './likeness.js';
+import { planRefs } from './charref.js';
 
 const SEGMENTS = path.join(DATA, 'segments');
 fs.mkdirSync(SEGMENTS, { recursive: true });
@@ -63,7 +66,10 @@ const DEFAULT_BRIEF = {
   imageModel: 'google/gemini-nano-banana-2.1',
   continuity: 'extend', // extend | lastframe | cut
   keyframes: true, // generate a keyframe for every "cut" shot
-  characters: [], // { name, description, refAssetId, refAssetIds: [] } — several photos per character sharpen likeness
+  identityLock: true, // real people: reference-to-video models first, never a lone still that must invent the face
+  likenessQA: true, // score every character shot against the references (advisory: shot.likeness)
+  likenessRetry: false, // opt-in: re-render once with the next identity model when the score drops below threshold
+  characters: [], // { characterId } from the Characters page, or inline { name, description, refAssetId, refAssetIds: [] }
   sceneFades: true,
   autoAssemble: true,
   // sound
@@ -126,7 +132,7 @@ export async function plan(id) {
   await mutate(id, (x) => { x.status = 'planning'; log(x, `Planning ${shotCountFor(x.brief)} shots`); });
   (async () => {
     try {
-      const result = await planProduction(briefOf(p), { onStatus: ({ message }) => mutate(id, (x) => { x.message = message; }).catch(() => {}) });
+      const result = await planProduction({ ...briefOf(p), characters: resolveBriefCharacters(p.brief.characters) }, { onStatus: ({ message }) => mutate(id, (x) => { x.message = message; }).catch(() => {}) });
       await mutate(id, (x) => {
         x.plan = { title: result.title, logline: result.logline, style: result.style, director: result.director };
         if (result.title && x.title === DEFAULT_BRIEF.title) x.title = result.title;
@@ -193,8 +199,9 @@ export async function updateShot(id, sid, patch) {
     if ('keyframeId' in patch) {
       if (patch.keyframeId && !getAsset(patch.keyframeId)) throw Object.assign(new Error('keyframe asset not found'), { status: 400 });
       s.keyframeId = patch.keyframeId || null;
+      s.keyframeAuto = false;
     }
-    if (patch.reset) Object.assign(s, { status: 'pending', attempts: 0, error: null, videoId: null, posterId: null, ref: null, trimStart: 0, clipDuration: null, keyframeId: patch.keepKeyframe ? s.keyframeId : null, startFrameId: null, message: '' });
+    if (patch.reset) Object.assign(s, { status: 'pending', attempts: 0, error: null, videoId: null, originalVideoId: null, voiceSwap: null, posterId: null, ref: null, trimStart: 0, clipDuration: null, keyframeId: patch.keepKeyframe ? s.keyframeId : null, startFrameId: null, message: '', likeness: null, identity: null, identityAttempt: 0, identityTries: [] });
     if (patch.skip) s.status = 'skipped';
   });
 }
@@ -203,7 +210,13 @@ export async function updateShot(id, sid, patch) {
  * Re-voice a rendered shot's dialogue in an ElevenLabs voice (e.g. your clone) — or pass voice: null
  * to go back to the model's original audio. Re-assemble the master afterwards.
  */
-export async function voiceSwap(id, sid, { voice, keepBed = 0 } = {}) {
+export async function voiceSwap(id, sid, { voice, characterId, keepBed = 0 } = {}) {
+  // A character's ElevenLabs voice: { characterId } or voice: 'char:<id>'.
+  if (characterId || /^char:/.test(voice || '')) {
+    const cv = characterVoice(characterId ? { characterId } : voice);
+    if (!cv) throw Object.assign(new Error('that character has no ElevenLabs voice yet — pick one on the Characters page'), { status: 400 });
+    voice = cv.voiceId;
+  }
   const p = getProduction(id);
   const s = p?.shots.find((x) => x.id === sid);
   if (!s) throw Object.assign(new Error('shot not found'), { status: 404 });
@@ -340,50 +353,77 @@ async function lastFrameOf(shot, signal) {
 
 const refIdsOf = (c) => [...new Set([...(c.refAssetIds || []), c.refAssetId].filter(Boolean))];
 
-/** Reference photos for keyframes (up to the image model's limit) plus a line telling it which photo shows whom. */
+/**
+ * Reference images for keyframes (up to the image model's limit, shared fairly between characters) plus a line
+ * telling the model which image shows whom. Library characters bring their approved sheet + best-graded photos.
+ */
 export function characterRefs(characters = [], max = 6) {
-  const refs = [];
-  const parts = [];
-  for (const c of characters) {
-    const ids = refIdsOf(c).slice(0, Math.max(0, max - refs.length));
-    if (!ids.length) continue;
-    const a = refs.length + 1;
-    refs.push(...ids);
-    parts.push(`${ids.length > 1 ? `images ${a}-${refs.length} show` : `image ${a} shows`} ${c.name || 'a character'}`);
-  }
-  const guide = parts.length ? `Reference photos: ${parts.join('; ')}. Keep every referenced person's face, hairline, beard and build exactly as in their photos. ` : '';
+  const { refs, guide } = planRefs(resolveBriefCharacters(characters), { limit: max });
   return { refs, guide };
 }
 
+/** Characters named in this shot's prompt (all of them when none is named — the old behaviour). */
+function castFor(p, s) {
+  const all = p.brief.characters || [];
+  const text = `${s.prompt} ${s.action} ${s.title}`.toLowerCase();
+  const hit = all.filter((c) => {
+    const name = String(resolveBriefCharacters([c])[0]?.name || '').trim().toLowerCase().split(/\s+/)[0];
+    return name && name.length > 1 && text.includes(name);
+  });
+  return hit.length ? hit : all;
+}
+
 /** Work out the start frame / extension source for a shot. */
-async function inputsFor(p, s, m, signal, onStatus) {
+async function inputsFor(p, s, m, signal, onStatus, cast = []) {
   const prev = prevShot(p, s);
   const chained = s.continuity === 'continue' && p.brief.continuity !== 'cut' && prev?.status === 'done';
-  if (chained && p.brief.continuity === 'extend' && m.caps?.extend && prev.ref?.provider === m.provider) {
+  // References ride along with any start frame on models that take both (Grok 1.5, Wan 2.7 R2V)…
+  const resolved = resolveBriefCharacters(cast);
+  const useRefs = cast.length && refsOk(m, resolved) && resolved.some((c) => (c.refAssetIds || []).length);
+  const withRefs = (o) => (useRefs && m.caps.refsWithImage ? { ...o, characters: cast } : o);
+  if (chained && p.brief.continuity === 'extend' && m.caps?.extend && prev.ref?.provider === m.provider && !(useRefs && p.brief.identityLock !== false)) {
     return { extend: { ref: prev.ref, sourceDuration: getAsset(prev.videoId)?.duration } };
   }
   if (chained) {
     const frame = await lastFrameOf(prev, signal);
-    if (frame) return { image: frame, startFrameId: frame };
+    if (frame) return withRefs({ image: frame, startFrameId: frame });
   }
-  // A cut (or the chain broke): keyframe first when asked, or when the model can't do text-to-video.
-  if (s.keyframeId) return { image: s.keyframeId, startFrameId: s.keyframeId };
+  // A cut (or the chain broke): a pinned still first.
+  if (s.keyframeId && !(s.keyframeAuto && useRefs && !m.caps.refsWithImage)) return withRefs({ image: s.keyframeId, startFrameId: s.keyframeId });
+  // …and a reference-only model goes straight to reference-to-video: no lone still for it to drift away from.
+  if (useRefs && !m.caps.refsWithImage) return { characters: cast };
   if (p.brief.keyframes || !m.caps?.t2v) {
     const im = getModel(p.brief.imageModel);
     if (!im) throw new Error(`image model ${p.brief.imageModel} not found`);
     onStatus({ message: `Keyframe · ${im.label}` });
-    const { refs, guide } = characterRefs(p.brief.characters, im.refs ?? 0);
+    const { refs, guide } = characterRefs(castFor(p, s), im.refs ?? 0);
     const kf = await generate({ model: im.id, prompt: `Cinematic film still, ${p.brief.aspect} frame. ${guide}${s.prompt}`, refs, aspect: p.brief.aspect }, { onStatus, signal });
-    await setShot(p.id, s.id, { keyframeId: kf.asset.id });
-    return { image: kf.asset.id, startFrameId: kf.asset.id };
+    await setShot(p.id, s.id, { keyframeId: kf.asset.id, keyframeAuto: true });
+    return withRefs({ image: kf.asset.id, startFrameId: kf.asset.id });
   }
-  return {};
+  return useRefs ? { characters: cast } : {};
 }
+
+/**
+ * Identity strategies for a shot, best first: [{ model }]. Attempt 0 renders; if the likeness check fails, attempt 1
+ * re-renders once with the next model that holds the cast's references. Shots without real people keep their model.
+ */
+function identityPlan(p, s, m, cast) {
+  const resolved = resolveBriefCharacters(cast);
+  if (!cast.length || !isRealCast(resolved)) return [{ model: m }];
+  const lock = p.brief.identityLock !== false;
+  const first = characterFallback(m, resolved, { identityLock: lock })?.model || m;
+  if (!lock) return [{ model: first }];
+  const plan = [{ model: first }];
+  for (const x of identityModels(resolved)) if (!plan.some((q) => q.model.id === x.id)) plan.push({ model: x });
+  return plan.slice(0, 3);
+}
+const tryScore = (t) => (Number.isFinite(t?.likeness?.min) ? t.likeness.min : 5); // unknown (no face seen / no check) = middling
 
 async function runShot(id, sid, signal) {
   const p = getProduction(id);
   const s = p.shots.find((x) => x.id === sid);
-  const m = modelFor(p, s);
+  let m = modelFor(p, s);
   let lastMsg = 0;
   const onStatus = ({ message }) => {
     if (!message || Date.now() - lastMsg < 1500) return;
@@ -392,13 +432,44 @@ async function runShot(id, sid, signal) {
   };
   await setShot(id, sid, { status: 'running', error: null, message: 'Starting', startedAt: now() });
   try {
-    const inputs = await inputsFor(p, s, m, signal, onStatus);
+    // Identity lock: real people go to models that keep their references in view (Omni refuses them outright).
+    const cast = (p.brief.characters || []).length ? castFor(p, s) : [];
+    const resolved = resolveBriefCharacters(cast);
+    const plan = identityPlan(p, s, m, cast);
+    const attempt = Math.min(s.identityAttempt || 0, plan.length - 1);
+    if (plan[attempt].model.id !== m.id) {
+      m = plan[attempt].model;
+      await mutate(id, (x) => log(x, `Shot ${s.index + 1}: ${attempt ? 'likeness re-render' : 'identity lock'} → ${m.label}`));
+    }
+    const inputs = await inputsFor(p, s, m, signal, onStatus, cast);
     const duration = Number(s.duration) || Number(p.brief.clipSeconds) || 8;
-    const r = await generate({ model: m.id, prompt: s.prompt, aspect: p.brief.aspect, resolution: p.brief.resolution, duration, ...inputs }, { onStatus, signal });
+    const frameOnly = cast.length && !inputs.characters && !inputs.extend && isRealCast(resolved);
+    const r = await generate({ model: m.id, prompt: (frameOnly ? stagingLine(resolved) : '') + s.prompt, aspect: p.brief.aspect, resolution: p.brief.resolution, duration, ...inputs, identityLock: false, likeness: false }, { onStatus, signal });
     const total = r.asset.duration || duration;
+    const result = {
+      videoId: r.asset.id, posterId: r.asset.posterId || null, ref: r.ref, trimStart: r.trimStart || 0,
+      clipDuration: Math.max(0.5, total - (r.trimStart || 0)), startFrameId: inputs.startFrameId || null,
+      identity: { model: m.id, mode: inputs.extend ? 'extend' : inputs.characters ? (inputs.image ? 'frame+refs' : 'refs') : inputs.image ? 'frame' : 'text' },
+    };
+    // Likeness QA: frames every 0.5 s vs the cast's references; one re-render with the next strategy if it drifts.
+    let likeness = null;
+    if (p.brief.likenessQA !== false && resolved.some((c) => (c.refAssetIds || []).length)) {
+      onStatus({ message: 'Checking likeness' });
+      try { likeness = await checkLikeness({ video: assetPath(r.asset), characters: resolved, signal }); } catch (e) { if (signal.aborted) throw e; likeness = { error: e.message.slice(0, 200) }; }
+      updateAsset(r.asset.id, { likeness });
+    }
+    const tries = [...(getProduction(id).shots.find((x) => x.id === sid)?.identityTries || []), { ...result, likeness }];
+    // The vision judge is advisory (it was not consistent enough on real tests to spend money on by default).
+    if (p.brief.likenessRetry === true && likeness?.pass === false && attempt + 1 < plan.length && tries.length < 2) {
+      const next = plan[attempt + 1].model;
+      await setShot(id, sid, { status: 'pending', identityAttempt: attempt + 1, identityTries: tries, likeness, message: `Likeness ${likeness.min}/10 at ${likeness.minAt}s — re-rendering with ${next.label}` });
+      await mutate(id, (x) => log(x, `Shot ${s.index + 1}: likeness ${likeness.min}/10 at ${likeness.minAt}s on ${m.label} — re-rendering once with ${next.label}`));
+      return;
+    }
+    const best = tries.reduce((a, t) => (tryScore(t) > tryScore(a) ? t : a));
     await setShot(id, sid, {
-      status: 'done', videoId: r.asset.id, posterId: r.asset.posterId || null, ref: r.ref, trimStart: r.trimStart || 0,
-      clipDuration: Math.max(0.5, total - (r.trimStart || 0)), startFrameId: inputs.startFrameId || null, message: inputs.extend ? 'Extended from previous shot' : '', finishedAt: now(),
+      ...best, status: 'done', identityTries: tries, finishedAt: now(),
+      message: inputs.extend ? 'Extended from previous shot' : best.likeness?.pass === false ? `Likeness ${best.likeness.min}/10 at ${best.likeness.minAt}s${tries.length > 1 ? ` — kept the better of ${tries.length} renders` : ' (advisory estimate)'}` : '',
     });
   } catch (e) {
     if (signal.aborted) return;
@@ -495,7 +566,11 @@ async function buildSoundtrack(id, shots, starts, durs, total) {
   const music = [];
   if (b.narration) {
     // Key on the resolved provider so one film never mixes narrators when "auto" changes its pick.
-    const key = `${pickVoiceProvider(b.voiceProvider)}|${b.voice}|${b.narratorStyle}`;
+    // voice 'char:<id>' = that character's ElevenLabs voice.
+    const cv = /^char:/.test(b.voice || '') ? characterVoice(b.voice) : null;
+    const vProvider = cv ? 'eleven' : b.voiceProvider;
+    const vVoice = cv ? cv.voiceId : b.voice;
+    const key = `${pickVoiceProvider(vProvider)}|${vVoice}|${b.narratorStyle}`;
     let n = 0;
     for (const [k, s] of shots.entries()) {
       const text = (s.narration || '').trim();
@@ -504,14 +579,14 @@ async function buildSoundtrack(id, shots, starts, durs, total) {
       if (!a) {
         await mutate(id, (x) => { x.message = `Recording narration ${++n}`; });
         try {
-          a = await makeVoice({ provider: b.voiceProvider, voice: b.voice, text, style: b.narratorStyle });
+          a = await makeVoice({ provider: vProvider, voice: vVoice, text, style: b.narratorStyle });
           await mutate(id, (x) => { const t = x.shots.find((y) => y.id === s.id); if (t) { t.voiceId = a.id; t.voiceKey = `${key}|${text}`; } });
         } catch (e) {
           await mutate(id, (x) => log(x, `Narration for shot ${s.index + 1} failed: ${e.message}`));
           continue;
         }
       }
-      voice.push({ file: assetPath(a), start: starts[k] + 0.3 });
+      voice.push({ file: assetPath(a), start: starts[k] + 0.3, duration: Number(a.duration) || 0 });
     }
   }
   if (b.music === 'upload' && getAsset(b.musicAssetId)) {
@@ -601,7 +676,7 @@ export async function assemble(id) {
       }
     };
     await Promise.all([worker(), worker(), worker()]);
-    const cut = path.join(SEGMENTS, `cut_${id}_${Date.now()}.mp4`);
+    let cut = path.join(SEGMENTS, `cut_${id}_${Date.now()}.mp4`);
     await ff.concat({ segments: segs, out: cut });
     const b = briefOf(p);
     let stage = cut;
@@ -610,6 +685,15 @@ export async function assemble(id) {
       durs.reduce((t, d, k) => { starts[k] = t; return t + d; }, 0);
       const total = durs.reduce((t, d) => t + d, 0);
       const sound = await buildSoundtrack(id, shots, starts, durs, total);
+      // A closing narration line that outruns the picture finishes over black instead of being cut off.
+      const tail = Math.max(0, ...sound.voice.map((v) => v.start + v.duration + 0.8 - total));
+      if (tail > 0.05) {
+        const longer = cut.replace(/\.mp4$/, '.tail.mp4');
+        await ff.extendTail({ video: cut, out: longer, seconds: tail });
+        await fsp.rm(cut, { force: true });
+        cut = longer;
+        stage = cut;
+      }
       if (sound.music.length || sound.voice.length) {
         await mutate(id, (x) => { x.message = 'Mixing music and narration'; });
         stage = cut.replace(/\.mp4$/, '.mix.mov'); // float PCM: the master's AAC encode is the only lossy audio step
@@ -656,7 +740,11 @@ export function hydrate(p) {
     ...p,
     running: runners.has(p.id),
     shotCount: shotCountFor(p.brief),
-    brief: { ...briefOf(p), musicUrl: u(p.brief.musicAssetId), characters: (p.brief.characters || []).map((c) => ({ ...c, refUrl: u(c.refAssetId || c.refAssetIds?.[0]), refUrls: refIdsOf(c).map(u) })) },
+    brief: { ...briefOf(p), musicUrl: u(p.brief.musicAssetId), characters: (p.brief.characters || []).map((c) => {
+      const r = c.characterId ? resolveBriefCharacters([c])[0] : null; // library character: show its name + best refs
+      const ids = r ? r.refAssetIds || [] : refIdsOf(c);
+      return { ...c, ...(r && { linked: true, resolvedName: r.name, resolvedDescription: r.description || '', hasVoice: !!r.voice }), refUrl: u(r ? ids[0] : c.refAssetId || c.refAssetIds?.[0]), refUrls: ids.map(u) };
+    }) },
     scenes: (p.scenes || []).map((sc) => ({ ...sc, musicUrl: u(sc.musicId) })),
     shots: p.shots.map((s) => ({ ...s, videoUrl: u(s.videoId), posterUrl: u(s.posterId), keyframeUrl: u(s.keyframeId), startFrameUrl: u(s.startFrameId), voiceUrl: u(s.voiceId) })),
   };

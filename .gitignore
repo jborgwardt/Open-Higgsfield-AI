@@ -29,3 +29,6 @@ dist-ssr
 # Local engine data (keys, media, productions)
 engine-data/
 HANDOFF.md
+
+# Agent worktrees
+.claude/worktrees/

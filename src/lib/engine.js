@@ -70,7 +70,7 @@ export const engine = {
                 if (m.refs) adds.i2i.push({ ...base, images: { param: 'image', max: m.refs, required: true } });
             } else {
                 const v = { ...base, durations: m.durations || [], hasDuration: !!m.durations?.length, images: m.caps?.i2v ? { param: 'image', max: 1, required: !m.caps?.t2v } : undefined };
-                if (m.caps?.t2v) adds.t2v.push(v);
+                if (m.caps?.t2v || m.caps?.refs) adds.t2v.push(m.caps?.t2v ? v : { ...v, label: `${v.label} · needs a character`, name: `${v.name} · needs a character` });
                 if (m.caps?.i2v) adds.i2v.push(v);
             }
         }
@@ -107,6 +107,7 @@ export const engine = {
             duration: params.duration ? Number(params.duration) : undefined,
             resolution: params.resolution,
             seed: params.seed,
+            characters: params.characters?.length ? params.characters : undefined,
         });
         if (params.onRequestId) params.onRequestId(`engine:${job.id}`);
         return this.poll(job.id);

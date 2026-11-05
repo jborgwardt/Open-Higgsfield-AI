@@ -120,6 +120,12 @@ export async function replaceAudio({ video, audio, out, bedVolume = 0, signal })
   await run(FFMPEG, ['-y', '-v', 'error', '-i', video, '-i', audio, ...af, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-shortest', '-movflags', '+faststart', out], { signal });
 }
 
+/** Hold the final frame (black after a scene fade) for extra seconds, padding audio with silence. */
+export async function extendTail({ video, out, seconds, signal }) {
+  await run(FFMPEG, ['-y', '-v', 'error', '-i', video, '-vf', `tpad=stop_mode=clone:stop_duration=${seconds.toFixed(3)}`, '-af', `apad=pad_dur=${seconds.toFixed(3)}`,
+    '-c:v', 'libx264', '-preset', process.env.ENGINE_X264_PRESET || 'slow', '-crf', '17', '-pix_fmt', 'yuv420p', '-r', '24', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-movflags', '+faststart', out], { signal });
+}
+
 /** Concatenate conformed segments without re-encoding. */
 export async function concat({ segments, out, signal }) {
   const list = `${out}.txt`;
@@ -169,7 +175,8 @@ export async function mixSoundtrack({ video, out, music = [], voice = [], musicV
   // The narrator ducks both the clip's own sound and the score, so dialogue keeps full level elsewhere.
   if (voiceLabels.length) {
     const keys = ['[vkey0]', ...(musicLabels.length ? ['[vkey1]'] : [])];
-    parts.push(`${voiceLabels.join('')}amix=inputs=${voiceLabels.length}:normalize=0:dropout_transition=0,volume=${voiceVolume},asplit=${keys.length + 1}[vmix]${keys.join('')}`);
+    parts.push(`${voiceLabels.join('')}amix=inputs=${voiceLabels.length}:normalize=0:dropout_transition=0,volume=${voiceVolume},apad,asplit=${keys.length + 1}[vmix]${keys.join('')}`);
+    // apad: the narration bus outlives its last line, so the sidechained clip/music (and the film) never end with it.
     parts.push('[clip0][vkey0]sidechaincompress=threshold=0.03:ratio=4:attack=20:release=500[clip]');
     mixIn.push('[clip]', '[vmix]');
   } else mixIn.push('[clip0]');

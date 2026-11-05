@@ -83,7 +83,11 @@ When the engine is running, the app boots straight into the studios without the 
 | `engine/lib/director.js` | script → scenes → shots (LLM, with an offline fallback splitter) |
 | `engine/lib/post.js`, `engine/lib/subtitles.js` | post-production: whisper.cpp subtitles (soft track / burned in), dialogue cleanup, two-pass loudness mastering, denoise / deflicker / frame interpolation / colour matching, Topaz upscale (fal) and ElevenLabs voice isolation; benchmarks and API in [`docs/post-production.md`](docs/post-production.md) |
 | `engine/lib/providers/` | xai (incl. SuperGrok OAuth), google, apimart, eleven, fal, replicate, muapi, kie, comfy, openai-compatible, localaudio |
-| `src/components/LongFormStudio.js`, `ProvidersModal.js`, `src/lib/engine.js` | UI |
+| `engine/lib/characters.js` | characters (`DATA/characters.json`): refs, coverage, model sheet, identity-lock routing, `/characters` + `/likeness` routes |
+| `engine/lib/charref.js`, `charvision.js`, `likeness.js` | ref ranking/coverage (pure), ffmpeg sharpness + vision grading + video frames, likeness QA |
+| `src/components/LongFormStudio.js`, `CharactersPage.js`, `CharacterPicker.js`, `ProvidersModal.js`, `src/lib/engine.js` | UI |
+
+**Characters.** Build a person once (photos and/or a 10–15 s head-turn video → graded references → an approved model sheet) and pass `characters: [id]` to `POST /engine/api/generate` or link it in a long-form brief. Real people are rendered with reference-to-video models (identity lock: Veo 3.1 Fast reference, Kling V4 / 3.0 Omni, Grok Imagine 1.5 … — any catalog model with `caps.refs`), never by animating a lone still, and every character render gets a likeness check (frames every 0.5 s, face crops judged against the references; long-form re-renders a drifting shot once with the next model). Tests: `node --test engine/test/*.test.mjs`.
 
 ---
 

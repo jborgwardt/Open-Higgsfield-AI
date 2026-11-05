@@ -19,6 +19,7 @@ import { fetchJSON } from './lib/http.js';
 import { apimartModels, APIMART_LLMS } from './lib/providers/apimart.js';
 import { elevenSubscription, elevenVoices, elevenAvailable, ELEVEN_TTS_MODELS } from './lib/providers/eleven.js';
 import * as post from './lib/post.js';
+import { characterRoutes } from './lib/characters.js';
 
 const PORT = Number(process.env.ENGINE_PORT) || 4848;
 const HOST = process.env.ENGINE_HOST || '127.0.0.1';
@@ -198,6 +199,10 @@ route('POST', '/generate', ({ body }) => {
     model: id, prompt: body.prompt || '', image: body.image_url || body.image || null, endImage: body.end_image_url || null,
     refs: body.images_list || body.refs || [], aspect: body.aspect_ratio || body.aspect || '16:9', duration: body.duration, resolution: body.resolution,
     seed: Number.isInteger(body.seed) && body.seed >= 0 ? body.seed : undefined,
+    characters: Array.isArray(body.characters) ? body.characters : body.characters ? [body.characters] : undefined, // character ids → refs routed per model
+    keyframeModel: body.keyframe_model || body.keyframeModel || undefined,
+    identityLock: body.identity_lock ?? body.identityLock, // false = keep a first-frame-only model for real people
+    likeness: body.likeness, // false = skip the likeness check on character renders
   });
 });
 route('GET', '/jobs/:id', ({ params }) => jobs.getJob(params.id) || Promise.reject(new HttpError(404, 'job not found')));
@@ -220,6 +225,8 @@ route('GET', '/sound', () => soundCatalog());
 route('PATCH', '/productions/:id/shots/:sid', async ({ params, body }) => { await lf.updateShot(params.id, params.sid, body); return lf.hydrate(prod(params.id)); });
 route('DELETE', '/productions/:id/shots/:sid', async ({ params }) => { await lf.deleteShot(params.id, params.sid); return lf.hydrate(prod(params.id)); });
 route('POST', '/productions/:id/shots/:sid/voice-swap', async ({ params, body }) => { await lf.voiceSwap(params.id, params.sid, body); return lf.hydrate(prod(params.id)); });
+// Characters (engine/lib/characters.js): /characters, /characters/:id, refs, coverage, sheet
+characterRoutes(route);
 route('POST', '/productions/:id/shots/:sid/import', async ({ params, body }) => lf.hydrate(await lf.importClip(params.id, params.sid, body.assetId)));
 
 // Post-production: /post/enhance, /post/transcribe, /post/jobs/:id, /post/transcripts/:assetId, /post/capabilities

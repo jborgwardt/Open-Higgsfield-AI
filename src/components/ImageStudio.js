@@ -8,6 +8,8 @@ import { ENHANCE_TAGS, QUICK_PROMPTS } from '../lib/promptUtils.js';
 import { sortByPriceDesc, loadPricing, modelPrice } from '../lib/modelSort.js';
 import { AuthModal } from './AuthModal.js';
 import { createUploadPicker } from './UploadPicker.js';
+import { CharacterPicker } from './CharacterPicker.js';
+import { isEngineModel } from '../lib/engine.js';
 import { savePendingJob, removePendingJob, getPendingJobs } from '../lib/pendingJobs.js';
 
 function createInlineInstructions(type) {
@@ -138,6 +140,9 @@ export function ImageStudio() {
         }
     });
     topRow.appendChild(picker.trigger);
+    // Saved characters (engine): their best references are routed to the chosen model.
+    const charPicker = CharacterPicker();
+    topRow.appendChild(charPicker.el);
     container.appendChild(picker.panel);
 
     const textarea = document.createElement('textarea');
@@ -1068,6 +1073,11 @@ export function ImageStudio() {
             AuthModal(() => generateBtn.click());
             return;
         }
+        const characters = charPicker.ids();
+        if (characters.length && !isEngineModel(selectedModel)) {
+            alert('Characters work with the engine models (the ones marked “via …”). Pick one of those, or clear the character.');
+            return;
+        }
 
         hero.classList.add('opacity-0', 'scale-95', '-translate-y-10', 'pointer-events-none');
         generateBtn.disabled = true;
@@ -1086,6 +1096,7 @@ export function ImageStudio() {
                     images_list: uploadedImageUrls,
                     image_url: uploadedImageUrls[0], // backward compat for single-image models
                     aspect_ratio: selectedAr,
+                    characters,
                     onRequestId: (rid) => {
                         capturedRequestId = rid;
                         savePendingJob({ requestId: rid, studioType: 'image', historyMeta, maxAttempts: 60, interval: 2000, submittedAt: Date.now() });
@@ -1100,6 +1111,7 @@ export function ImageStudio() {
                     model: selectedModel,
                     prompt,
                     aspect_ratio: selectedAr,
+                    characters,
                     onRequestId: (rid) => {
                         capturedRequestId = rid;
                         savePendingJob({ requestId: rid, studioType: 'image', historyMeta, maxAttempts: 60, interval: 2000, submittedAt: Date.now() });
