@@ -249,7 +249,7 @@ struct BannerStack: View {
 struct SplashView: View {
     var body: some View {
         VStack(spacing: 16) {
-            Image("BrandMark").resizable().frame(width: 96, height: 96).clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            Image("BrandMark").resizable().frame(width: 96, height: 96)
             ProgressView()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -1,6 +1,9 @@
 // Renders the Film Studio app icon layers + flat fallbacks.
 // Usage: swiftc -O scripts/render-app-icon.swift -o /tmp/render-icon && /tmp/render-icon <outdir>
 // Then copy aperture.png/spark.png into FilmStudio/Resources/AppIcon.icon/Assets and icon-*.png into AppIcon.appiconset.
+//
+// In-app brand mark (aperture + gold spark, no rounded-square background, transparent, @1x/2x/3x):
+//   /tmp/render-icon mark FilmStudio/Resources/Assets.xcassets/BrandMark.imageset [points=120]
 
 import CoreGraphics
 import Foundation
@@ -153,7 +156,27 @@ func drawFlat(_ c: CGContext) {
     drawSpark(c, flat: true)
 }
 
-let out = CommandLine.arguments[1]
+let args = Array(CommandLine.arguments.dropFirst())
+if args.first == "mark" {
+    // Crop to the mark itself (aperture rim + a little room for the spark glow), transparent background.
+    let out = args[1], pts = args.count > 2 ? Int(args[2])! : 120
+    let M: CGFloat = 700
+    for scale in 1...3 {
+        let w = pts * scale
+        let c = CGContext(data: nil, width: w, height: w, bitsPerComponent: 8, bytesPerRow: 0, space: cs,
+                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        c.interpolationQuality = .high
+        c.setShouldAntialias(true)
+        c.translateBy(x: 0, y: CGFloat(w)); c.scaleBy(x: CGFloat(w)/M, y: -CGFloat(w)/M)
+        c.translateBy(x: -(C.x - M/2), y: -(C.y - M/2))
+        drawAperture(c, flat: true)
+        drawSparkGlowFlat(c)
+        drawSpark(c, flat: true)
+        save(c, "\(out)/brand\(scale == 1 ? "" : "@\(scale)x").png")
+    }
+    print("ok"); exit(0)
+}
+let out = args[0]
 // Layer PNGs for Icon Composer
 do { let c = ctx(1024); drawAperture(c, flat: false); save(c, "\(out)/aperture.png") }
 do { let c = ctx(1024); drawSpark(c, flat: false); save(c, "\(out)/spark.png") }

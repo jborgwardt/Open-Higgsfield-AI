@@ -15,8 +15,7 @@ struct SignInView: View {
                     Image("BrandMark")
                         .resizable()
                         .frame(width: 112, height: 112)
-                        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-                        .shadow(color: .black.opacity(0.25), radius: 18, y: 8)
+                        .shadow(color: .orange.opacity(0.25), radius: 24)
                         .accessibilityHidden(true)
                     VStack(spacing: 8) {
                         Text("Film Studio").font(.largeTitle.weight(.bold))

@@ -52,6 +52,7 @@ targets:
         LSApplicationCategoryType: public.app-category.video
         UILaunchScreen:
           UIColorName: LaunchBackground
+        UIUserInterfaceStyle: Dark
         UIApplicationSupportsIndirectInputEvents: true
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true

@@ -7,7 +7,6 @@ struct SettingsView: View {
     @State private var statusError: String?
     @State private var pending = 0
     @State private var confirmSignOut = false
-    @AppStorage("appearance") private var appearance: Appearance = .dark
 
     var body: some View {
         Form {
@@ -86,9 +85,6 @@ struct SettingsView: View {
 
     @ViewBuilder private var appSection: some View {
         Section {
-            Picker("Appearance", selection: $appearance) {
-                ForEach(Appearance.allCases) { Text($0.label).tag($0) }
-            }
             LabeledContent("Version", value: "\(DeviceFacts.appVersion) (\(DeviceFacts.build))")
             LabeledContent("Device", value: "\(DeviceFacts.model) · \(DeviceFacts.os)")
             if let d = app.config.updatedAt.flatMap(ISODate.parse) {

@@ -42,17 +42,3 @@ extension View {
         if prominent { buttonStyle(.glassProminent) } else { buttonStyle(.glass) }
     }
 }
-
-/// App-wide appearance. Film Studio is dark-first; Settings can follow the system or force light.
-enum Appearance: String, CaseIterable, Identifiable {
-    case dark, system, light
-    var id: String { rawValue }
-    var label: String { rawValue.capitalized }
-    var scheme: ColorScheme? {
-        switch self {
-        case .dark: .dark
-        case .light: .light
-        case .system: nil
-        }
-    }
-}

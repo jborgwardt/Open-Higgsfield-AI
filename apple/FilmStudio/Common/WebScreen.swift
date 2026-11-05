@@ -96,6 +96,9 @@ private struct WebView: UIViewRepresentable {
         v.allowsBackForwardNavigationGestures = true
         v.isInspectable = true
         v.scrollView.refreshControl = context.coordinator.refreshControl(for: v)
+        v.isOpaque = false  // no white flash before the (dark) page paints
+        v.backgroundColor = .systemBackground
+        v.underPageBackgroundColor = .systemBackground
         context.coordinator.load(url, in: v, token: reloadToken)
         return v
     }
@@ -114,6 +117,7 @@ private struct WebView: NSViewRepresentable {
         v.navigationDelegate = context.coordinator
         v.allowsBackForwardNavigationGestures = true
         v.isInspectable = true
+        v.underPageBackgroundColor = .windowBackgroundColor
         context.coordinator.load(url, in: v, token: reloadToken)
         return v
     }
