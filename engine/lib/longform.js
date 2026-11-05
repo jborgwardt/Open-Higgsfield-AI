@@ -192,7 +192,7 @@ export async function updateShot(id, sid, patch) {
       if (patch.keyframeId && !getAsset(patch.keyframeId)) throw Object.assign(new Error('keyframe asset not found'), { status: 400 });
       s.keyframeId = patch.keyframeId || null;
     }
-    if (patch.reset) Object.assign(s, { status: 'pending', attempts: 0, error: null, videoId: null, posterId: null, ref: null, trimStart: 0, clipDuration: null, keyframeId: patch.keepKeyframe ? s.keyframeId : null, startFrameId: null, message: '' });
+    if (patch.reset) Object.assign(s, { status: 'pending', attempts: 0, error: null, videoId: null, originalVideoId: null, voiceSwap: null, posterId: null, ref: null, trimStart: 0, clipDuration: null, keyframeId: patch.keepKeyframe ? s.keyframeId : null, startFrameId: null, message: '' });
     if (patch.skip) s.status = 'skipped';
   });
 }
