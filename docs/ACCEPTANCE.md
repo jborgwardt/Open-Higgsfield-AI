@@ -41,6 +41,14 @@ Test engine: `studio-test-qa`, a throwaway container on the VPS reached through 
 - Fix (`f21a119`, source only): activate the app before sign-in, show "Waiting for the Pocket ID passkey window…" and add a Cancel button.
 - Not yet in the installer: the user is in the live Mac session, which runs from the OTA build folder.
 
+### Ship pass (UI suites on the 5db5290 build, before the app-only fixes)
+- Live engine is on 5db5290: 98/98 engine tests passed, the site returns 200, /feed has previews. The backend is identical to HEAD.
+- iPhone suite: 16/18 passed. The 2 failures were test harness problems (Photos picker still open; a field scrolled under the nav bar). A rerun got past both points.
+- iPad suite: 12/18 passed. Most failures came from the harness and simulator state (landscape left over from test15; there is no "Close" button on the iPad composer). Launching the app by hand in landscape works.
+- test12 Offline and test13 Unauthorized don't actually exercise their paths, because the stored session skips them. That's a gap in the tests.
+- The orange/gold accent is intended: Justin approved the gold/violet palette. The New Film sheet is already protected from accidental dismissal (interactiveDismissDisabled when edited).
+- VPS test engine, volumes, images, tunnel and the copied fal key were all removed at 18:15. Only studio:latest remains.
+
 ### Open / needs a human
 - **Audio audibility:** the file has an AAC track, but the simulator's player shows muted and I can't hear it. Check by ear on the phone.
 - **Mac:** the build launches and the dark sign-in screen renders. Signed-in Mac screens are not verified, because automation can't type into the access-code field (a password field). Needs one manual sign-in.
