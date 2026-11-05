@@ -104,6 +104,17 @@ export async function normalizeAudio({ video, out, signal }) {
   await run(FFMPEG, ['-y', '-v', 'error', '-i', video, '-map', '0:v', '-map', '0:a', '-c:v', 'copy', '-af', LOUDNORM, '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', '-movflags', '+faststart', out], { signal });
 }
 
+/** Pull a clip's soundtrack out as 44.1 kHz WAV (voice-changer input). */
+export const extractAudio = (video, out, { signal } = {}) => run(FFMPEG, ['-y', '-v', 'error', '-i', video, '-vn', '-ac', '1', '-ar', '44100', '-c:a', 'pcm_s16le', out], { signal });
+
+/** Swap a clip's audio for a new track (picture copied untouched); the original can stay underneath as a quiet bed. */
+export async function replaceAudio({ video, audio, out, bedVolume = 0, signal }) {
+  const af = bedVolume > 0
+    ? ['-filter_complex', `[1:a]aresample=48000,aformat=channel_layouts=stereo[new];[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=${bedVolume}[bed];[new][bed]amix=inputs=2:normalize=0:duration=first[a]`, '-map', '0:v', '-map', '[a]']
+    : ['-map', '0:v', '-map', '1:a', '-af', 'aresample=48000,aformat=channel_layouts=stereo'];
+  await run(FFMPEG, ['-y', '-v', 'error', '-i', video, '-i', audio, ...af, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-shortest', '-movflags', '+faststart', out], { signal });
+}
+
 /** Concatenate conformed segments without re-encoding. */
 export async function concat({ segments, out, signal }) {
   const list = `${out}.txt`;

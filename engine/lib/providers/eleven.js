@@ -56,3 +56,25 @@ export async function elevenSpeech({ text, voice, model }, { signal } = {}) {
   if (!res.ok) throw await httpError('elevenlabs', res);
   return { buffer: Buffer.from(await res.arrayBuffer()), mime: 'audio/mpeg', ext: 'mp3' };
 }
+
+/**
+ * Voice changer: re-speak a recorded line in another ElevenLabs voice (your clone included),
+ * keeping the original timing and delivery — so lip movement in a generated clip still lines up.
+ */
+export async function elevenVoiceChange({ buffer, mime = 'audio/wav', filename = 'line.wav', voice, model = 'eleven_multilingual_sts_v2', removeNoise = true }, { signal } = {}) {
+  const vid = String(voice || ELEVEN_DEFAULT_VOICE).replace(/^el:/, '');
+  const fd = new FormData();
+  fd.append('audio', new Blob([buffer], { type: mime }), filename);
+  fd.append('model_id', model);
+  fd.append('remove_background_noise', String(!!removeNoise));
+  fd.append('voice_settings', JSON.stringify({ stability: 0.5, similarity_boost: 0.85, style: 0 }));
+  let res;
+  try {
+    res = await fetch(`${BASE}/v1/speech-to-speech/${encodeURIComponent(vid)}?output_format=mp3_44100_192`, { method: 'POST', headers: { 'xi-api-key': key(), Accept: 'audio/mpeg' }, body: fd, signal: signal || AbortSignal.timeout(300000) });
+  } catch (e) {
+    if (signal?.aborted) throw new Error('cancelled');
+    throw new ProviderError('elevenlabs', 0, e.cause?.code || e.message, { retryable: true });
+  }
+  if (!res.ok) throw await httpError('elevenlabs', res);
+  return { buffer: Buffer.from(await res.arrayBuffer()), mime: 'audio/mpeg', ext: 'mp3' };
+}

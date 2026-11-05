@@ -218,6 +218,7 @@ route('PATCH', '/productions/:id/scenes/:scid', async ({ params, body }) => { aw
 route('GET', '/sound', () => soundCatalog());
 route('PATCH', '/productions/:id/shots/:sid', async ({ params, body }) => { await lf.updateShot(params.id, params.sid, body); return lf.hydrate(prod(params.id)); });
 route('DELETE', '/productions/:id/shots/:sid', async ({ params }) => { await lf.deleteShot(params.id, params.sid); return lf.hydrate(prod(params.id)); });
+route('POST', '/productions/:id/shots/:sid/voice-swap', async ({ params, body }) => { await lf.voiceSwap(params.id, params.sid, body); return lf.hydrate(prod(params.id)); });
 route('POST', '/productions/:id/shots/:sid/import', async ({ params, body }) => lf.hydrate(await lf.importClip(params.id, params.sid, body.assetId)));
 
 /* ---------------- server ---------------- */

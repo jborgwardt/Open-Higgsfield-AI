@@ -3,12 +3,14 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { PRODUCTIONS, DATA, uid, now, readJSON, writeJSON, getSettings, getAsset, assetPath, addAsset, newAssetPath } from './store.js';
+import os from 'node:os';
+import { PRODUCTIONS, DATA, uid, now, readJSON, writeJSON, getSettings, getAsset, assetPath, addAsset, newAssetPath, updateAsset } from './store.js';
 import { generate, getModel } from './catalog.js';
 import { planProduction, shotCountFor } from './director.js';
 import * as ff from './ffmpeg.js';
 import { sleep } from './http.js';
 import { makeMusic, makeVoice, pickVoiceProvider } from './sound.js';
+import { elevenVoiceChange } from './providers/eleven.js';
 
 const SEGMENTS = path.join(DATA, 'segments');
 fs.mkdirSync(SEGMENTS, { recursive: true });
@@ -193,6 +195,39 @@ export async function updateShot(id, sid, patch) {
     if (patch.reset) Object.assign(s, { status: 'pending', attempts: 0, error: null, videoId: null, posterId: null, ref: null, trimStart: 0, clipDuration: null, keyframeId: patch.keepKeyframe ? s.keyframeId : null, startFrameId: null, message: '' });
     if (patch.skip) s.status = 'skipped';
   });
+}
+
+/**
+ * Re-voice a rendered shot's dialogue in an ElevenLabs voice (e.g. your clone) — or pass voice: null
+ * to go back to the model's original audio. Re-assemble the master afterwards.
+ */
+export async function voiceSwap(id, sid, { voice, keepBed = 0 } = {}) {
+  const p = getProduction(id);
+  const s = p?.shots.find((x) => x.id === sid);
+  if (!s) throw Object.assign(new Error('shot not found'), { status: 404 });
+  if (!voice) {
+    if (s.originalVideoId) await setShot(id, sid, { videoId: s.originalVideoId, originalVideoId: null, voiceSwap: null });
+    return;
+  }
+  const src = getAsset(s.originalVideoId || s.videoId);
+  if (!src || s.status !== 'done') throw Object.assign(new Error('render the shot first'), { status: 409 });
+  const wav = path.join(os.tmpdir(), `vs_${sid}_${Date.now()}.wav`);
+  const mp3 = wav.replace(/\.wav$/, '.mp3');
+  try {
+    await ff.extractAudio(assetPath(src), wav);
+    const r = await elevenVoiceChange({ buffer: await fsp.readFile(wav), voice });
+    await fsp.writeFile(mp3, r.buffer);
+    const out = newAssetPath('video/mp4');
+    await ff.replaceAudio({ video: assetPath(src), audio: mp3, out: out.abs, bedVolume: Number(keepBed) || 0 });
+    const info = await ff.probe(out.abs).catch(() => ({}));
+    const asset = await addAsset({ ...out, mime: 'video/mp4', meta: { source: 'voice-swap', model: src.model, prompt: src.prompt, ...info } });
+    if (src.posterUrl) updateAsset(asset.id, { posterUrl: src.posterUrl, posterId: src.posterId });
+    await setShot(id, sid, { videoId: asset.id, originalVideoId: src.id, voiceSwap: voice });
+    await mutate(id, (x) => log(x, `Shot ${s.index + 1} re-voiced`));
+  } finally {
+    await fsp.rm(wav, { force: true });
+    await fsp.rm(mp3, { force: true });
+  }
 }
 
 export async function updateScene(id, scid, patch) {
