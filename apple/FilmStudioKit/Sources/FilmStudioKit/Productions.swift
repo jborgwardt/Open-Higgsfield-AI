@@ -99,6 +99,9 @@ public struct Brief: Sendable, Hashable {
     public var voiceProvider = "auto"
     public var voice = ""
     public var characterNames: [String] = []
+    /// This film's own director (set on the server), overriding the studio-wide choice. Read-only here: not sent back.
+    public var directorProvider = ""
+    public var directorModel = ""
 
     public init() {}
 
@@ -117,7 +120,8 @@ public struct Brief: Sendable, Hashable {
         music = s("music", music); musicModel = s("musicModel", musicModel); musicPrompt = s("musicPrompt", musicPrompt)
         musicVolume = n("musicVolume", musicVolume); narration = b("narration", narration)
         narratorStyle = s("narratorStyle", narratorStyle); voiceProvider = s("voiceProvider", voiceProvider); voice = s("voice", voice)
-        characterNames = (o["characters"]?.array ?? []).compactMap { $0["name"]?.string }
+        characterNames = (o["characters"]?.array ?? []).compactMap { $0["name"]?.string ?? $0["resolvedName"]?.string }
+        directorProvider = s("directorProvider", directorProvider); directorModel = s("directorModel", directorModel)
     }
 
     /// Body for POST /productions or PATCH /productions/:id.

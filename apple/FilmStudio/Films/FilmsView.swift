@@ -295,7 +295,9 @@ struct FilmDetailView: View {
             Button("Write the script…") { editingBrief = true }
         }
         if p.shots.isEmpty || canPlan {
-            LabeledContent("Director", value: app.directors.map { $0.describe($0.current) } ?? "…")
+            LabeledContent("Director", value: p.brief.directorProvider.isEmpty
+                ? (app.directors.map { $0.describe($0.current) } ?? "…")
+                : (app.directors.map { $0.describe(DirectorChoice(provider: p.brief.directorProvider, model: p.brief.directorModel)) } ?? p.brief.directorProvider) + " (this film)")
                 .font(.callout)
                 .task { if app.directors == nil { try? await app.loadDirectors() } }
         }
@@ -331,6 +333,11 @@ struct FilmDetailView: View {
 
     /// Planning needs an explicitly chosen director; ask for one first instead of failing.
     private func plan() async {
+        // A film with its own director plans with it; the studio-wide choice is only needed when it has none.
+        if production?.brief.directorProvider.isEmpty == false {
+            await run("Plan") { try await app.client.productionAction(id, "plan") }
+            return
+        }
         if app.directors?.current?.isChosen != true { try? await app.loadDirectors() }
         guard app.directors?.current?.isChosen == true else { askDirector = true; return }
         await run("Plan") { try await app.client.productionAction(id, "plan") }
