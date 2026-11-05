@@ -21,7 +21,8 @@ export function ProvidersModal() {
     const secret = (name, st, placeholder) => `<input type="password" name="${name}" autocomplete="off" ${st?.env ? 'disabled' : ''} placeholder="${st?.env ? 'set via environment variable' : st?.set ? '•••••••• saved — type to replace' : esc(placeholder)}" />`;
 
     async function render() {
-        const [s, st] = await Promise.all([engine.get('/settings'), engine.get('/status')]);
+        const [s, st, dirs] = await Promise.all([engine.get('/settings'), engine.get('/status'), engine.get('/directors').catch(() => ({ providers: [] }))]);
+        const dsel = dirs.providers.find((d) => d.id === s.directorProvider);
         const x = st.xai;
         const p = st.providers;
         overlay.querySelector('.eg-modal').innerHTML = `
@@ -84,11 +85,11 @@ export function ProvidersModal() {
             </div>
 
             <div class="card prov col">
-              <h4>Director (script → shot list) ${chip(!!st.director, { xai: 'Grok', google: 'Gemini', apimart: 'ApiMart', openai: 'local LLM' }[st.director] || '', 'offline splitter', 'ok')}</h4>
-              <p>Long-form uses an LLM to break your script into scenes and shots. <b>Auto</b> picks Grok (SuperGrok), then Gemini, then ApiMart, then an OpenAI-compatible server such as Ollama or LM Studio. With <b>ApiMart</b> the model defaults to <code>claude-haiku-5-5</code>.</p>
+              <h4>Director (writers' room: script → shot list) ${chip(!!st.director, dsel ? dsel.label : '', s.directorProvider ? 'not available' : 'not chosen', 'ok')}</h4>
+              <p>Long-form uses the director you pick here for every film until you change it — there is no automatic choice. <b>Claude</b> runs on your Claude subscription through Claude Code. Every chat model on your connected keys is listed.${dsel && !dsel.available ? ` <b>${esc(dsel.label)}:</b> ${esc(dsel.detail)}` : ''}</p>
               <div class="grid3">
-                <label class="f"><span>Director</span><select name="directorProvider">${['auto', 'xai', 'google', 'apimart', 'openai'].map((v) => `<option value="${v}" ${s.directorProvider === v ? 'selected' : ''}>${{ auto: 'Auto', xai: 'Grok (xAI)', google: 'Gemini', apimart: 'ApiMart', openai: 'OpenAI-compatible' }[v]}</option>`).join('')}</select></label>
-                <label class="f"><span>Model <em>optional</em></span><input type="text" name="directorModel" value="${esc(s.directorModel)}" placeholder="auto" list="eg-director" /><datalist id="eg-director">${(st.directorModels?.apimart || []).map((m) => `<option value="${esc(m)}">ApiMart</option>`).join('')}</datalist></label>
+                <label class="f"><span>Director</span><select name="directorProvider"><option value="" ${s.directorProvider ? '' : 'selected'}>Choose a director…</option>${dirs.providers.map((d) => `<option value="${d.id}" ${s.directorProvider === d.id ? 'selected' : ''}>${esc(d.label)}${d.available ? '' : ' (not connected)'}</option>`).join('')}</select></label>
+                <label class="f"><span>Model <em>${dsel?.defaultModel ? `default ${esc(dsel.defaultModel)}` : 'optional'}</em></span><input type="text" name="directorModel" value="${esc(s.directorModel)}" placeholder="${esc(dsel?.defaultModel || 'model id')}" list="eg-director" /><datalist id="eg-director">${(dsel?.models || []).map((m) => `<option value="${esc(m.id)}">${esc(m.label)}</option>`).join('')}</datalist></label>
                 <label class="f"><span>Local LLM model</span><input type="text" name="llmModel" value="${esc(s.llmModel)}" list="eg-llm" /><datalist id="eg-llm">${(st.llm.models || []).map((m) => `<option value="${esc(m)}">`).join('')}</datalist></label>
               </div>
               <div class="grid2"><input type="url" name="llmBaseUrl" value="${esc(s.llmBaseUrl)}" placeholder="http://127.0.0.1:11434/v1" />${secret('llmKey', s.llmKey, 'API key (optional for local servers)')}</div>
