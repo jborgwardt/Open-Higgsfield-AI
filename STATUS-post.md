@@ -14,13 +14,14 @@ Full benchmarks, API and build notes: `docs/post-production.md`.
 - Colour match (3-point levels) on 5 real courtroom clips: spread Ylow 10→3, Ymean 10.8→5.0, Yhigh 50→18, U 3.1→1.6, V 6.5→2.6.
 - Fail-soft assembly: post prep / per-shot conform / finishMaster failures fall back to the plain path.
 
+- Fixed + verified: VAD word timing (290 words → 262 distinct starts, 53 cues on the 5-min film), cues clamped to the
+  picture, `queued` job state, DTW opt-in. Merged `multi-provider-longform` (characters, narration apad/tail) — 55 tests pass.
+- Long-form e2e (6 shots, 48 s, 1080p): plain 40.8 s; soft subs+colour+clean+smooth 142 s; burn 73 s;
+  music+narration 136 s → 48.08 s master, −16.0 LUFS / −1.5 dBTP, 9 cues.
+
 ## In progress
-- BUG: with VAD, whisper token times are on VAD's compressed timeline (segments are real time), and some segments
-  have collapsed token times → words all at the segment start. Fix: map token span onto the segment in `parseWhisperJson`.
-  `t_dtw` is −1 (DTW not computed — flash attention is ON by default in whisper-cli v1.9.5; pass `-nfa` with `-dtw`).
-- e2e `longform` (L0 plain, L1 soft+colour+clean+smooth, L2 burn, L3 music+narration) running on VPS.
-- Paid proofs still to run: P1 Topaz 720p→1080p (~$0.16), P2 ElevenLabs isolate (~134 credits), P3 long-form topaz+isolate (~$0.16 + ~267 credits).
-- Merge latest `multi-provider-longform` (mixSoundtrack narration `apad` fix + characters) — keep both.
+- Paid proofs running: P1 Topaz 720p→1080p (~$0.16), P2 ElevenLabs isolate (~134 credits), P3 long-form topaz+isolate (~$0.16 + ~267 credits).
+- Then: final docs numbers, cleanup of VPS test resources, final report.
 
 ## Paid calls so far
 - ElevenLabs audio isolation ×2 (40 s each, benchmark) ≈ 1,340 credits ≈ $0.29 (Creator plan rate). Called once from the Mac
