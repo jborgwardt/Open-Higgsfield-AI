@@ -104,7 +104,7 @@ export async function createProduction(brief = {}) {
 }
 
 export async function deleteProduction(id) {
-  pause(id);
+  await pause(id); // pause() writes the production; awaiting it keeps a deleted production from coming back
   cache.delete(id);
   await fsp.rm(file(id), { force: true });
 }
