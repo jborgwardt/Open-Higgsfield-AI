@@ -80,6 +80,9 @@ export const VIRAL = P([
   ['Dance Break', `{subject} breaks into a confident trending dance, full body visible, natural rhythm. ${KEEP}`],
 ]);
 
+/** One Effects library: VFX presets + trending templates (both are photo → clip on the same model). */
+export const EFFECTS = [...VFX, ...VIRAL];
+
 /** Photo styles (games & characters, extras) — photo → image. */
 export const PHOTO_STYLES = P([
   ['Game Dump', 'Turn {subject} into a 3x3 grid of 9 video-game characters, each in a different iconic game art style (16-bit pixel art, PS1 low-poly, cel-shaded, AAA photoreal, fighting game, cozy farm sim, isometric RPG, platformer, arcade). Same person recognisable in every tile.'],

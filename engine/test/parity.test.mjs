@@ -132,6 +132,26 @@ test('motion control and video edit bodies', () => {
   assert.equal(w.metadata.audio_setting, 'origin');
 });
 
+test('Qwen Token Plan bodies: HappyHorse routes to t2v / i2v / r2v, images use the messages envelope', async () => {
+  const q = await import('../lib/providers/qwen.js');
+  const t2v = q.qwenVideoBody({ prompt: 'p', aspect: '9:16', resolution: '480p', duration: 3 });
+  assert.deepEqual([t2v.model, t2v.parameters.ratio, t2v.parameters.resolution, t2v.parameters.duration, t2v.parameters.watermark], ['happyhorse-1.1-t2v', '9:16', '480P', 3, false]);
+  assert.equal(t2v.input.media, undefined);
+  const i2v = q.qwenVideoBody({ prompt: 'p', image: 'data:image/png;base64,AA', aspect: '9:16', duration: 99 });
+  assert.equal(i2v.model, 'happyhorse-1.1-i2v');
+  assert.deepEqual(i2v.input.media, [{ type: 'first_frame', url: 'data:image/png;base64,AA' }]);
+  assert.equal(i2v.parameters.ratio, undefined, 'no ratio for i2v');
+  assert.equal(i2v.parameters.duration, 15);
+  const r2v = q.qwenVideoBody({ prompt: 'walks into the cafe', refs: Array.from({ length: 12 }, (_, i) => `https://r/${i}`) });
+  assert.equal(r2v.model, 'happyhorse-1.1-r2v');
+  assert.equal(r2v.input.media.length, 9);
+  assert.ok(r2v.input.media.every((m) => m.type === 'reference_image'));
+  assert.match(r2v.input.prompt, /^\[Image 1\] .*\[Image 9\] walks into the cafe$/);
+  const im = q.qwenImageBody({ model: 'wan2.7-image-pro', prompt: 'p', images: ['https://i/1'], aspect: '16:9' });
+  assert.deepEqual(im.input.messages[0].content, [{ image: 'https://i/1' }, { text: 'p' }]);
+  assert.equal(im.parameters.size, '1664*928');
+});
+
 /* ---------------- Cinema ---------------- */
 
 test('cinema prompt stacks camera moves in order and adds look + genre', () => {
@@ -149,8 +169,8 @@ test('cinema prompt stacks camera moves in order and adds look + genre', () => {
 
 const TYPES = ['text', 'longtext', 'image', 'video', 'audio', 'select', 'number', 'toggle', 'character', 'voice', 'model'];
 test('every tool matches the schema the Apple app renders', async () => {
-  const list = await tools.listTools();
-  assert.ok(list.length >= 40);
+  const list = await tools.listTools({ all: true });
+  assert.ok(list.length >= 30);
   const ids = new Set();
   for (const t of list) {
     assert.ok(!ids.has(t.id), `duplicate ${t.id}`); ids.add(t.id);
@@ -179,8 +199,19 @@ test('input normalisation: required, clamps, toggles, unknown selects', () => {
   const s = tools.normalize(tools.getTool('sfx'), { prompt: 'boom', loop: 'true', seconds: '-3' });
   assert.equal(s.loop, true);
   assert.equal(s.seconds, 1);
-  const vfx = tools.normalize(tools.getTool('vfx'), { image: 'a', effect: 'not-real' });
-  assert.equal(vfx.effect, 'bullet-time');
+  const fx = tools.normalize(tools.getTool('effects'), { image: 'a', effect: 'not-real' });
+  assert.equal(fx.effect, 'bullet-time');
+});
+
+test('disabled tools are hidden and refuse to run', async () => {
+  const visible = (await tools.listTools()).map((t) => t.id);
+  const all = await tools.listTools({ all: true });
+  for (const t of all.filter((x) => !x.enabled)) {
+    assert.ok(!visible.includes(t.id), `${t.id} should be hidden`);
+    assert.throws(() => tools.runTool(t.id, {}), /not enabled/);
+  }
+  // one tool per job: no model pickers except Cinema Studio
+  for (const t of await tools.listTools()) if (t.id !== 'cinema-shot') assert.ok(!t.inputs.some((i) => i.type === 'model'), `${t.id} exposes a model picker`);
 });
 
 /* ---------------- end-to-end runs (stubbed providers) ---------------- */
@@ -217,11 +248,10 @@ test('Talking avatar → audio padded to the model minimum, OmniHuman request sh
 test('Talking avatar from a script uses ElevenLabs then the avatar model', async () => {
   const a = await fixture('img.png', 'image/png');
   falOutput = { video: { url: 'https://cdn.test/out.mp4' } };
-  const j = await waitJob(tools.runTool('talking-avatar', { image: a.id, text: 'Hello there', voice: 'abc123', model: 'fal/fabric' }).id);
+  const j = await waitJob(tools.runTool('talking-avatar', { image: a.id, text: 'Hello there', voice: 'abc123' }).id);
   assert.equal(j.status, 'done', j.error);
   assert.ok(calls.some((c) => c.url.startsWith('https://api.elevenlabs.io/v1/text-to-speech/abc123')));
-  assert.equal(falSubmits().at(-1).url, 'https://queue.fal.run/veed/fabric-1.0');
-  assert.equal(falSubmits().at(-1).body.resolution, '720p');
+  assert.equal(falSubmits().at(-1).url, 'https://queue.fal.run/bytedance/omnihuman/v2');
 });
 
 test('Motion control → ApiMart Kling with fal-hosted reference video', async () => {
@@ -266,12 +296,29 @@ test('Product ad scene → keyframe on an image model, then image-to-video', asy
   assert.equal(j.assets.length, 2);
 });
 
-test('Extend video by continuation joins the source and the new clip', async () => {
+test('Extend video: Grok extension on fal, joined with the source', async () => {
   const v = await fixture('clip.mp4', 'video/mp4');
-  amTask = { result: { videos: [{ url: ['https://cdn.test/out.mp4'] }] } };
-  const j = await waitJob(tools.runTool('extend', { video: v.id, prompt: 'the camera keeps moving', model: 'apimart/kling-v3', seconds: 5 }).id);
+  falOutput = { video: { url: 'https://cdn.test/out.mp4' } };
+  const n = falSubmits().length;
+  const j = await waitJob(tools.runTool('extend', { video: v.id, prompt: 'the camera keeps moving', seconds: 5 }).id);
   assert.equal(j.status, 'done', j.error);
+  const sub = falSubmits().slice(n)[0];
+  assert.equal(sub.url, 'https://queue.fal.run/xai/grok-imagine-video/extend-video');
+  assert.equal(sub.body.duration, 5);
   assert.ok(j.duration > 7, `joined clip should be ~8 s, got ${j.duration}`);
+});
+
+test('Transitions: start + end frame on Kling 3.0', async () => {
+  const a = await fixture('img.png', 'image/png');
+  const b = await fixture('img.png', 'image/png');
+  amTask = { result: { videos: [{ url: ['https://cdn.test/out.mp4'] }] } };
+  const n = amSubmits().length;
+  const j = await waitJob(tools.runTool('transitions', { start: a.id, end: b.id, style: 'whip-pan' }).id);
+  assert.equal(j.status, 'done', j.error);
+  const sub = amSubmits().slice(n)[0];
+  assert.equal(sub.body.model, 'kling-v3');
+  assert.equal(sub.body.image_urls.length, 2, 'first + last frame');
+  assert.match(sub.body.prompt, /whip pan/);
 });
 
 test('Inpaint builds a full-size grayscale mask for FLUX Fill', async () => {
