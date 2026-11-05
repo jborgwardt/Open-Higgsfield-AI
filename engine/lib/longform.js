@@ -185,6 +185,11 @@ export async function updateShot(id, sid, patch) {
     const s = p.shots.find((x) => x.id === sid);
     if (!s) throw Object.assign(new Error('shot not found'), { status: 404 });
     for (const k of ['title', 'prompt', 'action', 'camera', 'continuity', 'duration', 'model', 'narration']) if (k in patch) s[k] = patch[k];
+    // Pin an approved still (an engine asset) as this shot's keyframe, or clear it with null.
+    if ('keyframeId' in patch) {
+      if (patch.keyframeId && !getAsset(patch.keyframeId)) throw Object.assign(new Error('keyframe asset not found'), { status: 400 });
+      s.keyframeId = patch.keyframeId || null;
+    }
     if (patch.reset) Object.assign(s, { status: 'pending', attempts: 0, error: null, videoId: null, posterId: null, ref: null, trimStart: 0, clipDuration: null, keyframeId: patch.keepKeyframe ? s.keyframeId : null, startFrameId: null, message: '' });
     if (patch.skip) s.status = 'skipped';
   });
