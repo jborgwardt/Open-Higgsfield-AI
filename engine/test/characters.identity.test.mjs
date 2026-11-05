@@ -102,3 +102,11 @@ test('Seedance 2.0 Fast + real person → rerouted by identity lock, never sent 
   assert.notEqual(r.asset.model, 'apimart/seedance-2.0-fast');
   assert.match(r.asset.characterNote, /Identity lock/);
 });
+
+test('identity lock does not fire when every real-person ref is unusable (no-face)', async () => {
+  const { isRealCast } = await import('../lib/characters.js');
+  const bad = [{ name: 'X', realPerson: true, refs: [{ kind: 'photo', status: 'ready', quality: { flags: ['no-face'] } }, { kind: 'photo', status: 'ready', quality: { flags: ['no-face'] } }] }];
+  const good = [{ name: 'Y', realPerson: true, refs: [{ kind: 'photo', status: 'ready', quality: { flags: [] } }] }];
+  assert.equal(isRealCast(bad), false);
+  assert.equal(isRealCast(good), true);
+});

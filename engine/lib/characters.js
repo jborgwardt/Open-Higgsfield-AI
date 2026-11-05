@@ -459,7 +459,9 @@ const REAL_FACE_FALLBACK = ['apimart/veo3.1-quality', 'apimart/kling-v3', 'apima
 const refusesReal = (m) => !!m?.caps?.noRealPeople || /gemini-omni|omni-flash/.test(m?.id || '');
 
 /** True when any character is a real person with photo references (fictional characters can opt out). */
-export const isRealCast = (chars) => chars.some((c) => c.realPerson !== false && ((c.refs || []).some((r) => r.kind !== 'sheet') || (c.refAssetIds || []).length));
+// Only refs that pickRefs would actually send count — a cast whose photos were all graded unusable has nothing to lock to.
+const usableRef = (r) => r.kind !== 'sheet' && r.status !== 'error' && !(r.quality?.flags || []).includes('no-face');
+export const isRealCast = (chars) => chars.some((c) => c.realPerson !== false && ((c.refs || []).some(usableRef) || (c.refAssetIds || []).length));
 /** Can model m hold these characters' identity through reference images? (Seedance blocks real faces as refs.) */
 export const refsOk = (m, chars) => !!m?.caps?.refs && !(isRealCast(chars) && (m.caps.refsRealPeople === false || refusesReal(m)));
 
