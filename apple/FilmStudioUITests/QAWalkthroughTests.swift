@@ -20,6 +20,8 @@ final class QAWalkthroughTests: XCTestCase {
 
     override func setUp() {
         continueAfterFailure = true
+        // A test that fails mid-rotation leaves the simulator in landscape; every later launch then starts there.
+        XCUIDevice.shared.orientation = .portrait
     }
 
     private func start(_ extra: [String] = []) {
