@@ -206,7 +206,7 @@ extension View {
     /// Zoom transition source (tile → viewer / composer). iOS only; a no-op on the Mac.
     @ViewBuilder func zoomSource(_ id: String, in ns: Namespace.ID?) -> some View {
         #if os(iOS)
-        if let ns { matchedTransitionSource(id: id, in: ns) { $0.clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)) } } else { self }
+        if let ns { matchedTransitionSource(id: id, in: ns) } else { self }
         #else
         self
         #endif
