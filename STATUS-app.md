@@ -5,30 +5,33 @@ sign-in in `engine/lib/oidc.js` + auth part of `engine/server.js`, `engine/lib/a
 
 ## Done + verified
 - Engine: native sign-in (`/engine/auth/native` → `filmstudio://auth?session=…&state=…`, one-time handoff,
-  no browser cookie, Bearer sessions, logout ends Bearer session, same-site `next`). `node --test apple/scripts/test-*.mjs` → 15/15 pass.
-- Engine: `/engine/api/app/config` (GET/PATCH, merge patch, tabs by id, reset), `/app/version` (open),
-  `/app/log` (POST/GET/DELETE ring buffer 2000). Tested in the same suite.
-- FilmStudioKit (Swift package): `cd apple/FilmStudioKit && swift test` → 41/41 pass.
-- App builds: iOS Simulator + macOS (`xcodebuild … -scheme FilmStudio / FilmStudioMac`).
-- UI walkthroughs (XCUITest, `apple/scripts/ui-screenshots.sh`) against a local engine + contract mock:
-  iPhone 17 Pro sim tests 1–4 pass; iPad Pro 13" sim tests 1–4 pass. Screenshots in `apple/screenshots/`.
-  Mac sections captured with `apple/scripts/mac-screenshots.sh` (Debug `-snapshotAfter` hook).
-- Server-driven config verified live (test4): tab → web, feature off, default changed, notice shown on foreground.
+  no browser cookie, Bearer sessions, logout ends Bearer session, same-site `next`); `/app/config`, `/app/version`,
+  `/app/log`. `node --test apple/scripts/test-*.mjs` → 15/15 pass.
+- FilmStudioKit: `cd apple/FilmStudioKit && swift test` → 42/42 pass (incl. main's characters response shape).
+- App builds: iOS Simulator + macOS.
+- UI walkthroughs (`apple/scripts/ui-screenshots.sh`):
+  - local engine + contract mock: iPhone tests 1–4 pass, iPad tests 1–4 pass;
+  - VPS test container (via SSH tunnel, access-code mode, free `local` models only, guarded): test1 (Create + Library)
+    and test4 (server-driven config) pass; test2 rendered 4/4 shots but the **engine's** master assembly fails in the
+    Docker image (ffmpeg 5.1: "Error reinitializing filters … stream #0:1"; works with ffmpeg 9 on the Mac).
+- Mac sections captured (`apple/scripts/mac-screenshots.sh`).
 - OTA files installed into ~/OTA (`ExportOptions-FilmStudio.plist`, `rebuild-film-studio.sh`, `dist/film-studio.html`, card on `dist/index.html`).
 
-## In progress / next
-1. Coordinator: test against a VPS test engine instead of the Mac (see below), incl. test5 (native sign-in) if OIDC can be pointed at a fake IdP there — otherwise test5 stays Mac-only.
-2. Run `~/OTA/rebuild-film-studio.sh` (FILMSTUDIO_SRC=<worktree>/apple) for FilmStudio.ipa + FilmStudio-mac.zip.
-3. Final report.
+## Not verified
+- Real Pocket ID passkey sign-in (only the fake-IdP engine tests + unit tests). test5 (simulator sign-in via fake IdP) written, not run.
+- Camera capture (no camera in the simulator); PhotosPicker/drag & drop uploads (upload path covered by tests/API).
+
+## Next
+1. `~/OTA/rebuild-film-studio.sh` (FILMSTUDIO_SRC=<worktree>/apple) → FilmStudio.ipa + FilmStudio-mac.zip (running).
+2. Final report.
 
 ## How to resume
 - `cd apple && xcodegen` (project is generated, not committed).
 - Local engine for UI tests: `ENGINE_PORT=4961 ENGINE_DATA=$(mktemp -d) LLM_BASE_URL=http://127.0.0.1:9/v1 node engine/server.js`
-  (+ `node apple/scripts/contract-mock.mjs 4962 http://127.0.0.1:4961` and `node apple/scripts/seed-characters.mjs` for Characters/Tools).
-- `apple/scripts/ui-screenshots.sh <sim-udid> <prefix> <server> [test1,test2,…]`
-- Simulators created for this work: "FilmStudio iPhone" 76037ADE-ECDA-4A89-B620-F101DF0C5C11, "FilmStudio iPad" 7C093F48-BFA8-44BD-9231-2C6A249B4415 (`xcrun simctl delete <udid>` to remove).
+  (+ `node apple/scripts/contract-mock.mjs 4962 http://127.0.0.1:4961` and `node apple/scripts/seed-characters.mjs`).
+- `apple/scripts/ui-screenshots.sh <sim-udid> <prefix> <server> [test1,test2,…] [code-file]`
+- Simulators created: "FilmStudio iPhone" 76037ADE-ECDA-4A89-B620-F101DF0C5C11, "FilmStudio iPad" 7C093F48-BFA8-44BD-9231-2C6A249B4415.
 
-## Test infrastructure started (remove when done)
-- Mac: local engines/mocks on 4961/4962/4963/4964 — being stopped per coordinator.
-- VPS: `studio-test-app` container (127.0.0.1:4964), volume `studio-test-app`, dir `/opt/studio-test/app/`; Mac SSH tunnel `ssh -N -L 4964:127.0.0.1:4964 root@100.64.0.4`.
-  Remove: `docker rm -f studio-test-app && docker volume rm studio-test-app && rm -rf /opt/studio-test/app`; kill the tunnel.
+## Test infrastructure
+- Mac local engines/mocks (4961–4964): stopped.
+- VPS `studio-test-app` container, `studio-test-app` volume, `studio:app` image tag, `/opt/studio-test/app*`, SSH tunnel: **removed**.
