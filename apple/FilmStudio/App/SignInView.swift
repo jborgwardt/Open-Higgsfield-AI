@@ -63,12 +63,18 @@ struct SignInControls: View {
     @Environment(AppModel.self) private var app
     @Environment(\.webAuthenticationSession) private var webAuth
     @State private var code = ""
+    @State private var signInTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 14) {
             if app.health?.usesPocketID ?? true {
                 Button {
-                    Task { await app.signIn(using: webAuth) }
+                    #if os(macOS)
+                    // The system passkey window only appears once Film Studio is the active app;
+                    // launched or clicked in the background it otherwise waits silently.
+                    NSApplication.shared.activate()
+                    #endif
+                    signInTask = Task { await app.signIn(using: webAuth) }
                 } label: {
                     HStack {
                         if app.isSigningIn { ProgressView().tint(.black) } else { Image(systemName: "person.badge.key.fill") }
@@ -78,8 +84,16 @@ struct SignInControls: View {
                 .buttonStyle(.ember(.large, fullWidth: true))
                 .disabled(app.isSigningIn)
                 .keyboardShortcut(.defaultAction)
-                Text("Uses your passkey. Your session is stored in the Keychain on this device.")
-                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                if app.isSigningIn {
+                    // Never look frozen: say what we're waiting for and offer a way out.
+                    Text("Waiting for the Pocket ID passkey window… If you don't see it, check behind this window.")
+                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Button("Cancel sign-in") { signInTask?.cancel(); signInTask = nil; app.cancelSignIn() }
+                        .buttonStyle(.plain).font(.callout.weight(.semibold)).foregroundStyle(Color.ember)
+                } else {
+                    Text("Uses your passkey. Your session is stored in the Keychain on this device.")
+                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }
             } else {
                 SecureField("Access code", text: $code)
                     .textContentType(.password)

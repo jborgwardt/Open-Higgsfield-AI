@@ -308,11 +308,17 @@ final class AppModel {
             try await adopt(token: token)
         } catch let e as ASWebAuthenticationSessionError where e.code == .canceledLogin {
             // The user closed the sheet.
+        } catch is CancellationError {
+            // "Cancel sign-in" tapped while waiting for the passkey window.
         } catch {
+            if Task.isCancelled { return }
             signInError = error.localizedDescription
             record(DiagnosticEntry(level: "warn", kind: "error", message: "Sign-in failed: \(error.localizedDescription)", screen: "signIn"))
         }
     }
+
+    /// Lets the user back out of a passkey window that never appeared (the button is usable again at once).
+    func cancelSignIn() { isSigningIn = false }
 
     /// For engines in access-code mode (no Pocket ID): the code itself is the Bearer token.
     func signIn(accessCode: String) async {
