@@ -10,22 +10,32 @@ struct SignInView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 28) {
-                    Spacer(minLength: 40)
+                VStack(spacing: 26) {
+                    Spacer(minLength: 56)
                     Image("BrandMark")
                         .resizable()
-                        .frame(width: 112, height: 112)
-                        .shadow(color: .orange.opacity(0.25), radius: 24)
+                        .frame(width: 104, height: 104)
+                        .shadow(color: .orange.opacity(0.3), radius: 28)
                         .accessibilityHidden(true)
-                    VStack(spacing: 8) {
-                        Text("Film Studio").font(.largeTitle.weight(.bold))
+                    VStack(spacing: 10) {
+                        Text("FILM STUDIO")
+                            .font(.display(56))
+                            .tracking(-0.5)
+                            .foregroundStyle(.white)
+                            .accessibilityAddTraits(.isHeader)
+                        Text("Images, video, effects and whole films —\nrendered on your own studio.")
+                            .font(.callout).foregroundStyle(Color.textSecondary).multilineTextAlignment(.center)
                         Text(app.serverURL.host ?? app.serverURL.absoluteString)
-                            .font(.callout.monospaced()).foregroundStyle(.secondary)
+                            .font(.caption.monospaced()).foregroundStyle(Color.textTertiary)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(Color.surfaceHigh, in: Capsule())
                     }
                     SignInControls()
                         .frame(maxWidth: 380)
+                        .padding(.top, 8)
                     Button(showServer ? "Hide server" : "Use a different server") { withAnimation { showServer.toggle() } }
-                        .font(.footnote)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.textSecondary)
                     if showServer {
                         Form { ServerSection() }
                             .studioForm()
@@ -37,7 +47,13 @@ struct SignInView: View {
                 .padding()
                 .frame(maxWidth: .infinity)
             }
-            .background(Color.groupedBackground)
+            .background {
+                ZStack {
+                    Color.canvas
+                    RadialGradient(colors: [Color.lime.opacity(0.13), .clear], center: .init(x: 0.5, y: 0.18), startRadius: 0, endRadius: 360)
+                }
+                .ignoresSafeArea()
+            }
         }
     }
 }
@@ -55,15 +71,11 @@ struct SignInControls: View {
                     Task { await app.signIn(using: webAuth) }
                 } label: {
                     HStack {
-                        if app.isSigningIn { ProgressView().tint(.white) } else { Image(systemName: "person.badge.key.fill") }
+                        if app.isSigningIn { ProgressView().tint(.black) } else { Image(systemName: "person.badge.key.fill") }
                         Text("Sign in with \(app.health?.provider ?? "Pocket ID")")
                     }
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
                 }
-                .buttonStyle(.glassProminent)
-                .controlSize(.large)
+                .buttonStyle(.lime(.large, fullWidth: true))
                 .disabled(app.isSigningIn)
                 .keyboardShortcut(.defaultAction)
                 Text("Uses your passkey. Your session is stored in the Keychain on this device.")
@@ -77,10 +89,9 @@ struct SignInControls: View {
                 Button {
                     Task { await app.signIn(accessCode: code) }
                 } label: {
-                    Text("Sign In").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
+                    Text("Sign In")
                 }
-                .buttonStyle(.glassProminent)
-                .controlSize(.large)
+                .buttonStyle(.lime(.large, fullWidth: true))
                 .disabled(code.isEmpty || app.isSigningIn)
             }
             if let error = app.signInError {
@@ -97,8 +108,8 @@ struct ReauthSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 22) {
-                Image(systemName: "lock.rotation").font(.system(size: 48)).foregroundStyle(Color.accentColor)
-                Text("Sign in again").font(.title2.weight(.bold))
+                Image(systemName: "lock.rotation").font(.system(size: 48)).foregroundStyle(Color.lime)
+                DisplayTitle("Sign in again", size: 32).foregroundStyle(.white)
                 Text("Your studio session has expired. Sign in to pick up where you left off — nothing running on the server was interrupted.")
                     .multilineTextAlignment(.center).foregroundStyle(.secondary)
                 SignInControls()

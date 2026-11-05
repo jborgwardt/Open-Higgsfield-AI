@@ -20,6 +20,7 @@ struct FilmStudioApp: App {
             RootView()
                 .environment(app)
                 .preferredColorScheme(.dark)
+                .tint(.lime)
         }
         #if os(macOS)
         .defaultSize(width: 1240, height: 820)
@@ -54,7 +55,7 @@ struct StudioCommands: Commands {
     private var shortcuts: [Shortcut] {
         var out: [Shortcut] = []
         for (i, t) in app.config.visibleTabs.prefix(9).enumerated() {
-            out.append(Shortcut(id: t.id, title: t.title, key: KeyEquivalent(Character(String(i + 1)))))
+            out.append(Shortcut(id: t.id, title: t.displayTitle, key: KeyEquivalent(Character(String(i + 1)))))
         }
         return out
     }
@@ -65,6 +66,11 @@ struct StudioCommands: Commands {
                 .keyboardShortcut("r")
                 .disabled(app.phase != .ready)
             Divider()
+            if app.config.isOn("create") {
+                Button("Create…") { app.openComposer() }
+                    .keyboardShortcut("n")
+                    .disabled(app.phase != .ready)
+            }
             ForEach(shortcuts) { s in
                 Button(s.title) { tab = s.id }
                     .keyboardShortcut(s.key)

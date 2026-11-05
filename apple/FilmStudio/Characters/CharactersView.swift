@@ -22,23 +22,16 @@ struct CharactersView: View {
                 } else if let error, app.characters.isEmpty {
                     ErrorStateView(message: error) { await load() }
                 } else if app.characters.isEmpty {
-                    ContentUnavailableView {
-                        Label("No characters yet", systemImage: "person.crop.rectangle.stack")
-                    } description: {
-                        Text("Add the people in your films once — a few sharp photos from different angles — and every shot keeps their face.")
-                    } actions: {
-                        Button("New Character") { creating = true }.buttonStyle(.glassProminent)
-                    }
+                    ScrollView { VStack(alignment: .leading, spacing: 18) { header; emptyCard } }
                 } else {
                     grid
                 }
             }
+            .studioCanvas()
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
             .navigationTitle("Characters")
-            .toolbar {
-                if app.charactersAvailable == true {
-                    ToolbarItem(placement: .trailing) { Button("New Character", systemImage: "plus") { creating = true } }
-                }
-            }
             .refreshable { await load() }
             .task(id: app.refreshTick) { await load() }
             .navigationDestination(item: $opened) { CharacterDetailView(id: $0) }
@@ -51,40 +44,76 @@ struct CharactersView: View {
         }
     }
 
+    /// Soul-ID style: big uppercase header, a lime "new" tile, then portrait character cards.
     private var grid: some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 240), spacing: 14)], spacing: 18) {
-                ForEach(app.characters) { c in
-                    Button { opened = c.id } label: { CharacterCard(c: c) }.buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 18) {
+                header
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 240), spacing: 10)], spacing: 12) {
+                    Button { creating = true } label: { newTile }.buttonStyle(PressScale())
+                    ForEach(app.characters) { c in
+                        Button { opened = c.id } label: { CharacterTile(c: c) }.buttonStyle(PressScale())
+                            .accessibilityLabel(c.name)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .padding(.bottom, 24)
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center) {
+                DisplayTitle("Characters", size: 34, lineLimit: 1).foregroundStyle(.white)
+                Spacer()
+                if app.charactersAvailable == true {
+                    Button { creating = true } label: { Label("New", systemImage: "plus") }.buttonStyle(.lime(.small))
                 }
             }
-            .padding()
+            Text("Train a face once — every shot keeps it.").font(.subheadline).foregroundStyle(Color.textSecondary)
         }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+
+    private var newTile: some View {
+        Color.clear
+            .aspectRatio(3 / 4, contentMode: .fit)
+            .background(Color.surface)
+            .overlay {
+                VStack(spacing: 10) {
+                    Image(systemName: "plus").font(.system(size: 26, weight: .heavy)).foregroundStyle(Color.onLime)
+                        .frame(width: 58, height: 58).background(Color.lime, in: Circle())
+                    Text("NEW CHARACTER").font(.label(14, weight: .heavy)).foregroundStyle(.white)
+                    Text("A few sharp photos").font(.caption).foregroundStyle(Color.textSecondary)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.lime.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("New Character")
+            .accessibilityAddTraits(.isButton)
+    }
+
+    private var emptyCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DisplayTitle("Your cast lives here", size: 28).foregroundStyle(.white)
+            Text("Add the people in your films once — a few sharp photos from different angles — and every shot keeps their face.")
+                .font(.subheadline).foregroundStyle(Color.textSecondary)
+            Button { creating = true } label: { Label("New Character", systemImage: "plus") }.buttonStyle(.lime)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .padding(.horizontal, 16)
     }
 
     private func load() async {
         await app.loadCharacters()
         loaded = true
         error = app.charactersAvailable == nil ? "Couldn't load characters." : nil
-    }
-}
-
-private struct CharacterCard: View {
-    let c: StudioCharacter
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Color.clear
-                .aspectRatio(3 / 4, contentMode: .fit)
-                .overlay { AuthedImage(url: c.coverImageURL, maxPixelSize: 600) }
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(alignment: .topTrailing) {
-                    if c.sheet?.approved == true {
-                        Image(systemName: "checkmark.seal.fill").foregroundStyle(.white, .green).font(.title3).padding(8)
-                    }
-                }
-            Text(c.name).font(.headline).lineLimit(1)
-            Text("\(c.refs.count) reference\(c.refs.count == 1 ? "" : "s")").font(.caption).foregroundStyle(.secondary)
-        }
     }
 }
 

@@ -95,7 +95,7 @@ final class FilmStudioUITests: XCTestCase {
 
     func test1_CreateAndLibrary() {
         start()
-        wait(app.staticTexts["What will you make?"], 30, "Explore")
+        wait(app.staticTexts["FILM STUDIO"], 30, "Home")
         shot("01-explore")
 
         // Image
@@ -138,7 +138,7 @@ final class FilmStudioUITests: XCTestCase {
 
     func test2_FilmsCharactersSettings() {
         start()
-        wait(app.staticTexts["What will you make?"], 30, "Explore")
+        wait(app.staticTexts["FILM STUDIO"], 30, "Home")
 
         go("Films")
         sleep(1)
@@ -184,7 +184,7 @@ final class FilmStudioUITests: XCTestCase {
         sleep(2)
         shot("14-characters")
 
-        go("Settings")
+        go("Profile"); wait(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Settings")).firstMatch).tap()
         sleep(2)
         shot("15-settings")
     }
@@ -192,7 +192,7 @@ final class FilmStudioUITests: XCTestCase {
     /// Needs the Characters/Tools API (or scripts/contract-mock.mjs in front of the engine).
     func test3_ToolsAndCharacters() {
         start()
-        wait(app.staticTexts["What will you make?"], 30, "Explore")
+        wait(app.staticTexts["FILM STUDIO"], 30, "Home")
         wait(button("Talking Avatar"), 20, "tools on Explore")
         sleep(2)
         shot("16-explore-tools")
@@ -245,7 +245,7 @@ final class FilmStudioUITests: XCTestCase {
     func test4_ServerDrivenConfig() throws {
         try patchConfig(["reset": true])
         start()
-        wait(app.staticTexts["What will you make?"], 30, "Explore")
+        wait(app.staticTexts["FILM STUDIO"], 30, "Home")
         shot("23-config-before")
 
         // Flip a tab to web, disable a feature, change a default, set a notice.
@@ -293,14 +293,14 @@ final class FilmStudioUITests: XCTestCase {
         signIn.tap()
         wait(app.staticTexts["What will you make?"], 40, "signed in")
         shot("31-signed-in")
-        go("Settings")
+        go("Profile"); wait(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Settings")).firstMatch).tap()
         wait(app.staticTexts["justin@example.com"], 10, "signed-in user")
         shot("32-settings-signed-in")
         // Relaunch: the session comes back from the Keychain.
         app.terminate()
         start()
         wait(app.staticTexts["What will you make?"], 30, "still signed in after relaunch")
-        go("Settings")
+        go("Profile"); wait(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Settings")).firstMatch).tap()
         let out = wait(app.buttons["Sign Out"], 10)
         out.tap()
         sleep(1)

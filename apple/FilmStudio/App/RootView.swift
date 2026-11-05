@@ -46,88 +46,113 @@ extension AppModel {
     }
 }
 
-/// Tabs on iPhone; a sidebar on iPad and the Mac. Order, visibility and native-vs-web come from the server.
+/// iPhone: a floating Liquid Glass tab bar (Home · Characters · CREATE · Library · Profile) over content.
+/// iPad / Mac: a sidebar with the same sections and a persistent Create. Order, visibility and native-vs-web
+/// come from the server config.
 struct MainView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.horizontalSizeClass) private var sizeClass
     @SceneStorage("tab") private var tab = "explore"
-    @State private var showSettings = false
+    @Namespace private var ns
 
     private static let featureTabs: Set<String> = ["explore", "create", "films", "characters", "tools"]
+    /// Server tabs; Create is the centre button / persistent sidebar item, never a tab of its own.
     private var tabs: [AppConfig.Tab] {
-        app.config.visibleTabs.filter { !Self.featureTabs.contains($0.id) || app.config.isOn($0.id) }
+        app.config.visibleTabs.filter { $0.id != "create" && (!Self.featureTabs.contains($0.id) || app.config.isOn($0.id)) }
+    }
+    /// Four around the Create button; Films and Tools stay reachable from Home and Profile.
+    private var barTabs: [AppConfig.Tab] {
+        var list = tabs
+        for drop in ["tools", "films"] where list.count > 4 { list.removeAll { $0.id == drop } }
+        return Array(list.prefix(4))
+    }
+    private var compact: Bool {
+        #if os(iOS)
+        sizeClass == .compact
+        #else
+        false
+        #endif
     }
 
     var body: some View {
         content
+            .environment(\.heroNamespace, ns)
             .focusedSceneValue(\.tabSelection, $tab)
+            .onChange(of: compact, initial: true) { _, c in app.compactWindow = c }
             .onChange(of: app.requestedTab, initial: true) { _, t in
                 guard let t else { return }
-                tab = t
                 app.requestedTab = nil
+                if t == "create", compact { app.composer = app.composerDraft ?? ComposerRequest(); app.composerDraft = nil; return }
+                withAnimation(.snappy) { tab = t }
             }
             .onChange(of: tabs.map(\.id), initial: true) { _, ids in
-                if !ids.contains(tab), let first = ids.first { tab = first }
+                if !ids.contains(tab), tab != "create" || compact, let first = ids.first { tab = first }
             }
             .onAppear {
                 // `-startTab films` (launch argument) opens a section directly — used for screenshots.
-                if let t = UserDefaults.standard.string(forKey: "startTab"), tabs.contains(where: { $0.id == t }) { tab = t }
+                if let t = UserDefaults.standard.string(forKey: "startTab"), t == "create" || tabs.contains(where: { $0.id == t }) {
+                    if t == "create" { app.openComposer() } else { tab = t }
+                }
+                #if DEBUG
+                if UserDefaults.standard.bool(forKey: "openComposer") { app.openComposer() }
+                #endif
             }
     }
 
     @ViewBuilder private var content: some View {
         #if os(iOS)
-        if sizeClass == .compact { phoneTabs } else { split }
+        if compact { phoneTabs } else { split }
         #else
         split
         #endif
     }
 
-    /// iPhone: at most five tabs; Settings moves to a toolbar button when there are more.
+    #if os(iOS)
     private var phoneTabs: some View {
-        let list = tabs.count > 5 ? tabs.filter { $0.id != "settings" } : tabs
-        let settingsInToolbar = list.count < tabs.count
+        @Bindable var app = app
+        let list = barTabs
         return TabView(selection: $tab) {
             ForEach(list) { t in
-                NavigationStack {
-                    TabRoot(tab: t)
-                        .toolbar {
-                            if settingsInToolbar {
-                                ToolbarItem(placement: .cancellationAction) {
-                                    Button("Settings", systemImage: "gearshape") { showSettings = true }
-                                }
-                            }
-                        }
+                Tab(value: t.id) {
+                    NavigationStack { TabRoot(tab: t) }
+                        .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: StudioTabBar.height + 8) }
+                        .toolbarVisibility(.hidden, for: .tabBar)
                 }
-                .tabItem { Label(t.title, systemImage: t.sfSymbol) }
-                .tag(t.id)
             }
         }
-        #if os(iOS)
-        .tabBarMinimizeBehavior(.onScrollDown)
-        .modifier(WorkingAccessory(tabs: list.map(\.id), tab: $tab))
-        #endif
-        .sheet(isPresented: $showSettings) {
-            NavigationStack {
-                SettingsView().toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showSettings = false } } }
+        .overlay(alignment: .bottom) {
+            VStack(spacing: 8) {
+                WorkingPill(tab: $tab, tabs: list.map(\.id))
+                StudioTabBar(tabs: list, selection: $tab) { app.openComposer() }
             }
-            .environment(app)
+            .padding(.bottom, 2)
+            .ignoresSafeArea(.keyboard)
+        }
+        .fullScreenCover(item: $app.composer) { req in
+            NavigationStack { ComposerView(request: req, dismissable: true) }
+                .environment(app)
+                .zoomTransition(req.sourceID ?? "create-button", in: ns)
         }
     }
+    #endif
 
     private var split: some View {
         NavigationSplitView {
             List(selection: Binding<String?>(get: { tab }, set: { if let v = $0 { tab = v } })) {
+                if app.config.isOn("create") {
+                    Label { Text("Create").font(.headline) } icon: { Image(systemName: "sparkle").foregroundStyle(Color.onLime).padding(5).background(Color.lime, in: Circle()) }
+                        .tag("create")
+                }
                 Section {
                     ForEach(tabs) { t in
-                        Label(t.title, systemImage: t.sfSymbol).tag(t.id)
+                        Label(t.displayTitle, systemImage: t.displaySymbol).tag(t.id)
                     }
                 }
                 if !app.generations.runs.filter({ !$0.isFinished }).isEmpty {
-                    Section("Working") {
+                    Section("Generating") {
                         ForEach(app.generations.runs.filter { !$0.isFinished }) { r in
                             HStack {
-                                ProgressView(value: r.job?.fraction ?? 0).progressViewStyle(.circular).controlSize(.small)
+                                ProgressView(value: r.job?.fraction ?? 0).progressViewStyle(.circular).controlSize(.small).tint(.lime)
                                 Text(r.title).lineLimit(1).font(.caption)
                             }
                         }
@@ -135,55 +160,129 @@ struct MainView: View {
                 }
             }
             .navigationTitle("Film Studio")
+            .scrollContentBackground(.hidden)
             #if os(macOS)
             .navigationSplitViewColumnWidth(min: 190, ideal: 220)
             #endif
         } detail: {
-            if let t = tabs.first(where: { $0.id == tab }) ?? tabs.first {
+            if tab == "create", app.config.isOn("create") {
+                NavigationStack { ComposerView(request: app.composerDraft) }
+            } else if let t = tabs.first(where: { $0.id == tab }) ?? tabs.first {
                 NavigationStack { TabRoot(tab: t) }.id(t.id)
             }
         }
     }
 }
 
-#if os(iOS)
-/// iPhone: generations in flight ride above the tab bar as a glass accessory; tap to jump to where they started.
-private struct WorkingAccessory: ViewModifier {
-    let tabs: [String]
-    @Binding var tab: String
-    @Environment(AppModel.self) private var app
-
-    func body(content: Content) -> some View {
-        if #available(iOS 26.1, *) {
-            content.tabViewBottomAccessory(isEnabled: !active.isEmpty) { pill }
-        } else {
-            content
+extension AppConfig.Tab {
+    /// Higgsfield-style names for the two tabs whose old titles don't fit the new bar.
+    var displayTitle: String {
+        switch id {
+        case "explore": "Home"
+        case "settings": "Profile"
+        default: title
         }
     }
+    var displaySymbol: String {
+        switch id {
+        case "explore": "house"
+        case "settings": "person.crop.circle"
+        case "characters": "person.crop.square.on.square.angled"
+        case "library": "square.grid.2x2"
+        default: sfSymbol
+        }
+    }
+}
 
-    private var active: [GenerationStore.Run] { app.generations.runs.filter { !$0.isFinished } }
+#if os(iOS)
+/// The floating glass tab bar with the big lime Create button in the middle.
+struct StudioTabBar: View {
+    static let height: CGFloat = 66
+    let tabs: [AppConfig.Tab]
+    @Binding var selection: String
+    let create: () -> Void
+    @Environment(AppModel.self) private var app
+    @Environment(\.heroNamespace) private var ns
 
-    private var pill: some View {
-        let runs = active
-        let lead = runs.first
+    var body: some View {
+        let half = (tabs.count + 1) / 2
+        HStack(spacing: 0) {
+            ForEach(tabs.prefix(half)) { item($0) }
+            if app.config.isOn("create") { createButton }
+            ForEach(tabs.dropFirst(half)) { item($0) }
+        }
+        .padding(.horizontal, 6)
+        .frame(height: Self.height)
+        .studioGlass(Capsule(), tint: .black.opacity(0.45))
+        .padding(.horizontal, 14)
+    }
+
+    private func item(_ t: AppConfig.Tab) -> some View {
+        let on = selection == t.id
         return Button {
-            if let lead, tabs.contains(lead.source) { tab = lead.source } else if tabs.contains("create") { tab = "create" }
+            if selection != t.id { Platform.selection() }
+            withAnimation(.snappy) { selection = t.id }
         } label: {
-            HStack(spacing: 10) {
-                ProgressView(value: lead?.job?.fraction ?? 0).progressViewStyle(.circular).controlSize(.small)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(runs.count > 1 ? "\(runs.count) generations running" : "Generating · \(lead?.title ?? "")")
-                        .font(.subheadline.weight(.semibold)).lineLimit(1)
-                    if let lead { Text(lead.statusText).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
-                }
-                Spacer(minLength: 0)
+            VStack(spacing: 3) {
+                Image(systemName: t.displaySymbol).symbolVariant(on ? .fill : .none).font(.system(size: 19, weight: .semibold))
+                    .frame(height: 24)
+                Text(t.displayTitle).font(.system(size: 10, weight: .semibold))
             }
-            .padding(.horizontal, 16)
+            .foregroundStyle(on ? Color.white : Color.white.opacity(0.55))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("Shows the screen where it started")
+        .accessibilityLabel(t.displayTitle)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    private var createButton: some View {
+        Button {
+            Platform.impact()
+            create()
+        } label: {
+            Image(systemName: "sparkle")
+                .font(.system(size: 24, weight: .heavy))
+                .foregroundStyle(Color.onLime)
+                .frame(width: 64, height: 50)
+                .background(Capsule().fill(Color.lime))
+                .shadow(color: Color.lime.opacity(0.35), radius: 12)
+        }
+        .buttonStyle(PressScale())
+        .zoomSource("create-button", in: ns)
+        .padding(.horizontal, 6)
+        .accessibilityLabel("Create")
+    }
+}
+
+/// Generations in flight float above the tab bar as a glass pill; tap to see them in the Library.
+private struct WorkingPill: View {
+    @Binding var tab: String
+    let tabs: [String]
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        let runs = app.generations.runs.filter { !$0.isFinished }
+        if let lead = runs.first {
+            Button {
+                if tabs.contains("library") { withAnimation(.snappy) { tab = "library" } }
+            } label: {
+                HStack(spacing: 10) {
+                    ProgressView(value: lead.job?.fraction ?? 0).progressViewStyle(.circular).controlSize(.small).tint(.lime)
+                    Text(runs.count > 1 ? "\(runs.count) generating" : "Generating · \(lead.title)").font(.subheadline.weight(.semibold)).lineLimit(1)
+                    if let f = lead.job?.fraction { Text("\(Int(f * 100))%").font(.subheadline.monospacedDigit()).foregroundStyle(Color.lime) }
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .studioGlass(Capsule(), interactive: true)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .accessibilityHint("Shows it in the Library")
+        }
     }
 }
 #endif
@@ -205,13 +304,13 @@ struct TabRoot: View {
         } else {
             Group {
                 switch tab.id {
-                case "explore": ExploreView()
+                case "explore": HomeView()
                 case "library": LibraryView()
-                case "create": CreateView()
+                case "create": ComposerView()
                 case "films": FilmsView()
                 case "characters": CharactersView()
                 case "tools": ToolsView()
-                case "settings": SettingsView()
+                case "settings": ProfileView()
                 default:
                     // A tab this app version doesn't know: show its web page.
                     WebScreen(path: tab.path, title: tab.title)
@@ -248,9 +347,9 @@ struct BannerStack: View {
 
 struct SplashView: View {
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 18) {
             Image("BrandMark").resizable().frame(width: 96, height: 96)
-            ProgressView()
+            ProgressView().tint(.lime)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color("LaunchBackground"))
@@ -267,7 +366,7 @@ struct UnreachableView: View {
             } description: {
                 Text("\(message)\n\(app.serverURL.host ?? app.serverURL.absoluteString)")
             } actions: {
-                Button("Try Again") { Task { await app.start() } }.buttonStyle(.glassProminent)
+                Button("Try Again") { Task { await app.start() } }.buttonStyle(.lime)
                 NavigationLink("Server Settings") { Form { ServerSection() }.studioForm().navigationTitle("Server") }
             }
         }
@@ -284,7 +383,7 @@ struct UpdateRequiredView: View {
             Text("This version of Film Studio (\(DeviceFacts.appVersion)) is no longer supported by the studio. Install the new version to continue.")
         } actions: {
             if let s = updateURL ?? app.config.updateUrl, let url = URL(string: s) {
-                Button("Install Update") { Platform.open(url) }.buttonStyle(.glassProminent)
+                Button("Install Update") { Platform.open(url) }.buttonStyle(.lime)
             }
             Button("Check Again") { Task { await app.start() } }
         }

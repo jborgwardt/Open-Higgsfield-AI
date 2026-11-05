@@ -38,6 +38,19 @@ enum Platform {
         #endif
     }
 
+    /// A firm tap (Generate, Create).
+    static func impact() {
+        #if os(iOS)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        #endif
+    }
+
+    static func selection() {
+        #if os(iOS)
+        UISelectionFeedbackGenerator().selectionChanged()
+        #endif
+    }
+
     static func haptic(_ success: Bool = true) {
         #if os(iOS)
         UINotificationFeedbackGenerator().notificationOccurred(success ? .success : .error)
@@ -53,27 +66,10 @@ func hideKeyboard() {
 #endif
 
 extension Color {
-    static var groupedBackground: Color {
-        #if os(iOS)
-        Color(uiColor: .systemGroupedBackground)
-        #else
-        Color(nsColor: .windowBackgroundColor)
-        #endif
-    }
-    static var cardBackground: Color {
-        #if os(iOS)
-        Color(uiColor: .secondarySystemGroupedBackground)
-        #else
-        Color(nsColor: .controlBackgroundColor)
-        #endif
-    }
-    static var tileBackground: Color {
-        #if os(iOS)
-        Color(uiColor: .tertiarySystemFill)
-        #else
-        Color(nsColor: .quaternaryLabelColor).opacity(0.5)
-        #endif
-    }
+    // Dark-only app: the system grouped colours are replaced by the studio palette (Theme.swift).
+    static var groupedBackground: Color { .canvas }
+    static var cardBackground: Color { .surface }
+    static var tileBackground: Color { .surfaceHigh }
 }
 
 extension View {
@@ -104,7 +100,7 @@ extension View {
 
     /// The grouped form look on every platform.
     @ViewBuilder func studioForm() -> some View {
-        formStyle(.grouped)
+        formStyle(.grouped).scrollContentBackground(.hidden).background(Color.canvas.ignoresSafeArea())
     }
 
     func card(padding: CGFloat = 14) -> some View {

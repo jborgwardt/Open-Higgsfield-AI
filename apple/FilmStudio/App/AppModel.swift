@@ -42,6 +42,20 @@ final class AppModel {
     let generations = GenerationStore()
     @ObservationIgnored var isStarting = false
 
+    /// Home feed (GET /feed, or built from catalog/tools/characters/media on older engines).
+    var feed: Feed?
+    var feedIsFallback = false
+    var tools: [Tool] = []
+    /// nil = unknown yet, false = the server has no tools API.
+    var toolsAvailable: Bool?
+    var recentMedia: [MediaItem] = []
+    /// iPhone: the full-screen composer. iPad / Mac: what the inline Create screen should load next.
+    var composer: ComposerRequest?
+    var composerDraft: ComposerRequest?
+    /// DEBUG `-sampleDir <folder>`: offline sample data for design screenshots (no engine involved).
+    var isSample = false
+    @ObservationIgnored let responses = ResponseCache.standard
+
     @ObservationIgnored let tokens: TokenStore
     @ObservationIgnored let images = ImagePipeline()
     @ObservationIgnored let diagnostics: DiagnosticsReporter
@@ -62,6 +76,9 @@ final class AppModel {
         serverURL = server
         tokens = KeychainTokenStore()
         config = ConfigCache.standard.load(server: server) ?? .fallback
+        // Last good feed / catalog / tools for an instant (and offline) launch.
+        feed = ResponseCache.standard.load("feed", server: server, as: Feed.self)
+        catalog = ResponseCache.standard.load("catalog", server: server, as: Catalog.self)
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("FilmStudio", isDirectory: true)
         diagnostics = DiagnosticsReporter(file: support.appendingPathComponent("diagnostics-queue.json"), device: DeviceFacts.info)
         client = APIClient(baseURL: server, token: { nil })
@@ -87,6 +104,9 @@ final class AppModel {
     // MARK: Launch
 
     func start() async {
+        #if DEBUG
+        if SampleData.applyIfRequested(to: self) { return }
+        #endif
         if phase != .ready { phase = .starting }
         // 1. Update gate first, unauthenticated: a broken build can be replaced even if sign-in is broken.
         if let v = try? await client.appVersion(), VersionNumber(DeviceFacts.appVersion) < VersionNumber(v.minVersion) {
@@ -112,11 +132,10 @@ final class AppModel {
         sessionExpired = false
         signInError = nil
         await refreshConfig(force: true)
-        async let cat = try? client.catalog()
-        async let snd = try? client.sound()
-        if let c = await cat { catalog = c }
-        if let s = await snd { sound = s }
-        await loadCharacters()
+        async let cat: Void = reloadCatalog()
+        async let chars: Void = loadCharacters()
+        _ = await (cat, chars)
+        await loadFeed()
     }
 
     /// On launch and every time the app comes to the foreground (debounced for several windows).
@@ -142,22 +161,25 @@ final class AppModel {
     }
 
     /// "Animate in Create": opens Create (its own tab, or pushed on Explore) with this image as the start frame.
-    func openCreate(startFrame: UploadedAsset) {
-        pendingStartFrame = startFrame
-        requestedTab = config.visibleTabs.contains { $0.id == "create" } ? "create" : "explore"
+    func openCreate(startFrame: UploadedAsset, mode: ComposerRequest.Mode = .video) {
+        openComposer(ComposerRequest(mode: mode, startFrame: startFrame))
     }
 
     func catalogIfNeeded() async {
-        if catalog == nil { catalog = try? await client.catalog() }
+        if catalog == nil { await reloadCatalog() }
     }
 
     func reloadCatalog() async {
-        if let c = try? await client.catalog() { catalog = c }
+        guard !isSample else { return }
+        if let (c, data) = try? await client.getRaw("/catalog", as: Catalog.self) {
+            catalog = c
+            responses.save(data, "catalog", server: serverURL)
+        }
         if let s = try? await client.sound() { sound = s }
     }
 
     func loadCharacters() async {
-        guard config.isOn("characters") else { return }
+        guard config.isOn("characters"), !isSample else { return }
         do {
             characters = try await client.characters()
             charactersAvailable = true
@@ -166,6 +188,84 @@ final class AppModel {
             characters = []
         } catch {}
     }
+
+    // MARK: Feed, tools, library
+
+    /// Server feed first; engines without GET /feed get the same sections built from their catalog,
+    /// tools, characters and library. The result is cached for the next (possibly offline) launch.
+    func loadFeed() async {
+        guard !isSample else { return }
+        do {
+            let (f, data) = try await client.feed()
+            if !f.isEmpty {
+                feed = f
+                feedIsFallback = false
+                responses.save(data, "feed", server: serverURL)
+                return
+            }
+        } catch let e as APIError where e.status == 404 {
+            // Older engine: build it here.
+        } catch {
+            if feed != nil { return } // offline: keep the cached feed
+        }
+        async let t: Void = loadTools()
+        async let m: Void = loadRecentMedia()
+        _ = await (t, m)
+        if catalog == nil { await reloadCatalog() }
+        let built = buildFeed()
+        if built.isEmpty, feed != nil { return }
+        feed = built
+        feedIsFallback = true
+        if let data = try? JSONEncoder().encode(built) { responses.save(data, "feed", server: serverURL) }
+    }
+
+    func buildFeed() -> Feed {
+        let config = config
+        return FeedBuilder.build(.init(
+            catalog: catalog, tools: tools, characters: charactersAvailable == true ? characters : [], media: recentMedia,
+            preferredVideo: config.defaultList("videoModels"), preferredImage: config.defaultList("imageModels"),
+            hiddenProviders: hiddenProviders, features: { config.isOn($0) }))
+    }
+
+    func loadTools() async {
+        guard config.isOn("tools"), !isSample else { return }
+        do {
+            let data = try await client.perform(client.makeRequest("GET", "/tools"), route: "/tools")
+            tools = try client.parseTools(data)
+            toolsAvailable = true
+        } catch let e as APIError where e.isMissingRoute {
+            toolsAvailable = false
+            tools = []
+        } catch {}
+    }
+
+    /// The library (newest first). Also keeps `recentMedia` fresh for Home.
+    func fetchMedia() async throws -> [MediaItem] {
+        if isSample { return recentMedia }
+        let list = try await client.media()
+        recentMedia = list
+        return list
+    }
+
+    func loadRecentMedia() async { _ = try? await fetchMedia() }
+
+    var sampleProductions: [ProductionSummary] = []
+    func fetchProductions() async throws -> [ProductionSummary] {
+        if isSample { return sampleProductions }
+        return try await client.productions()
+    }
+
+    /// Opens the composer (full screen on iPhone, the Create screen on iPad / Mac).
+    func openComposer(_ request: ComposerRequest = ComposerRequest()) {
+        guard config.isOn("create") else { return }
+        #if os(iOS)
+        if compactWindow { composer = request; return }
+        #endif
+        composerDraft = request
+        requestedTab = "create"
+    }
+    /// Set by the main view: whether the window shows the iPhone tab bar.
+    @ObservationIgnored var compactWindow = true
 
     // MARK: Sign-in
 
@@ -228,6 +328,11 @@ final class AppModel {
         sound = .empty
         characters = []
         charactersAvailable = nil
+        tools = []
+        toolsAvailable = nil
+        recentMedia = []
+        feed = responses.load("feed", server: url, as: Feed.self)
+        catalog = responses.load("catalog", server: url, as: Catalog.self)
         directors = nil
         health = nil
         sessionExpired = false
@@ -240,7 +345,7 @@ final class AppModel {
     private func handle(_ event: APIEvent) {
         switch event {
         case .unauthorized(let route):
-            if phase == .ready, needsAuth, !sessionExpired {
+            if phase == .ready, !isSample, needsAuth, !sessionExpired {
                 sessionExpired = true
                 record(DiagnosticEntry(level: "info", kind: "request", message: "Session expired", route: route, status: 401))
             }

@@ -27,10 +27,10 @@ struct ToolsView: View {
                             LazyVStack(alignment: .leading, spacing: 22) {
                                 ForEach(Tool.grouped(shown), id: \.category) { g in
                                     VStack(alignment: .leading, spacing: 10) {
-                                        Text(g.category).font(.title3.weight(.semibold)).padding(.horizontal)
-                                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 160, maximum: 280), spacing: 12)], spacing: 12) {
+                                        StudioSectionHeader(title: g.category)
+                                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 260), spacing: 10)], spacing: 14) {
                                             ForEach(g.tools) { t in
-                                                NavigationLink { ToolRunView(tool: t) } label: { ToolCard(tool: t) }.buttonStyle(.plain)
+                                                NavigationLink { ToolRunView(tool: t) } label: { ToolCard(tool: t) }.buttonStyle(PressScale())
                                             }
                                         }
                                         .padding(.horizontal)
@@ -43,6 +43,7 @@ struct ToolsView: View {
                     }
                 }
             }
+            .studioCanvas()
             .navigationTitle("Tools")
             .searchable(text: $search, prompt: "Search tools")
             .refreshable { await load() }
@@ -59,6 +60,7 @@ struct ToolsView: View {
     }
 
     private func load() async {
+        if app.isSample { state = .loaded(app.tools); return }
         do { state = .loaded(try await app.client.tools()) } catch let e as APIError where e.isMissingRoute {
             state = .unavailable
         } catch is CancellationError {
@@ -72,16 +74,15 @@ private struct ToolCard: View {
     let tool: Tool
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: tool.sfSymbol)
-                .font(.title2)
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 44, height: 44)
-                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-            Text(tool.title).font(.headline).lineLimit(1)
-            Text(tool.description).font(.caption).foregroundStyle(.secondary).lineLimit(3, reservesSpace: true)
+            Color.clear
+                .aspectRatio(4 / 5, contentMode: .fit)
+                .overlay { PreviewMediaView(preview: tool.preview, seed: tool.id, symbol: tool.sfSymbol, maxPixelSize: 600) }
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.hairline))
+            Text(tool.title.uppercased()).font(.display(17, weight: .heavy)).foregroundStyle(.white).lineLimit(1)
+            Text(tool.description).font(.caption).foregroundStyle(Color.textSecondary).lineLimit(2, reservesSpace: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .card()
         .contentShape(Rectangle())
     }
 }
@@ -123,6 +124,9 @@ private struct RunsList: View {
 /// Renders any tool's form from its input schema and runs it.
 struct ToolRunView: View {
     let tool: Tool
+    /// Values chosen elsewhere (a feed preset, "Upscale" from the viewer).
+    var prefill: [String: JSONValue] = [:]
+    var prefillAsset: UploadedAsset?
     @Environment(AppModel.self) private var app
     @State private var values: [String: JSONValue] = [:]
     @State private var media: [String: UploadedAsset] = [:]
@@ -148,11 +152,9 @@ struct ToolRunView: View {
                 }
                 Section {
                     Button(action: run) {
-                        Label("Run \(tool.title)", systemImage: tool.sfSymbol)
-                            .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
+                        Label("Run \(tool.title)", systemImage: "sparkle")
                     }
-                    .buttonStyle(.glassProminent)
-                    .controlSize(.large)
+                    .buttonStyle(.lime(.large, fullWidth: true))
                     .disabled(!missing.isEmpty)
                     .keyboardShortcut(.return, modifiers: .command)
                     .listRowBackground(Color.clear)
@@ -176,7 +178,13 @@ struct ToolRunView: View {
             #endif
             .navigationDestination(item: $open) { MediaViewer(item: $0) }
             .onAppear {
-                if !started { values = tool.initialValues; started = true }
+                guard !started else { return }
+                started = true
+                values = tool.initialValues.merging(prefill) { $1 }
+                if let a = prefillAsset, let input = tool.inputs.first(where: { $0.kind == .image || ($0.kind == .video && a.kind == "video") }) {
+                    media[input.key] = a
+                    values[input.key] = .string(a.id)
+                }
             }
             .task {
                 if tool.inputs.contains(where: { $0.kind == .model }) { await app.catalogIfNeeded() }

@@ -15,6 +15,8 @@ public struct Tool: Decodable, Sendable, Identifiable, Hashable {
     public var output: String // image | video | audio (anything else is shown generically)
     /// Example still for the Explore feed (any of thumbnail / thumb / image / coverUrl / preview).
     public var thumbnail: String?
+    /// Example media (previewUrl / previewPoster / previewKind).
+    public var preview: MediaPreview?
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
@@ -29,6 +31,7 @@ public struct Tool: Decodable, Sendable, Identifiable, Hashable {
         run = Run(method: (r?["method"]?.string ?? "POST").uppercased(), path: r?["path"]?.string ?? "/tools/\(id.pathSegment)/run")
         output = c.string("output", default: "image")
         thumbnail = c.string("thumbnail") ?? c.string("thumb") ?? c.string("image") ?? c.string("coverUrl") ?? c.string("preview") ?? c.json("example")?["image"]?.string
+        preview = MediaPreview(c, fallbackStill: thumbnail)
     }
 
     /// Group by category, keeping the server's order.

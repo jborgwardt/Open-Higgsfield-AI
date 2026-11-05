@@ -88,7 +88,7 @@ public final class APIClient: Sendable {
     /// Resolves a media URL from the engine ("/engine/media/a_1.jpg" or absolute).
     public func resolve(_ string: String?) -> URL? {
         guard let s = string?.nonEmpty else { return nil }
-        if s.hasPrefix("http://") || s.hasPrefix("https://") { return URL(string: s) }
+        if s.hasPrefix("http://") || s.hasPrefix("https://") || s.hasPrefix("file://") { return URL(string: s) }
         return URL(string: s, relativeTo: baseURL)?.absoluteURL
     }
 
@@ -228,6 +228,11 @@ public extension APIClient {
     func status() async throws -> StatusReport { try await get("/status") }
     func catalog() async throws -> Catalog { try await get("/catalog") }
     func sound() async throws -> SoundCatalog { try await get("/sound") }
+    /// The Home feed plus its raw bytes (cached for offline launch). Throws `.notFound` on engines without it.
+    func feed() async throws -> (Feed, Data) {
+        let data = try await perform(makeRequest("GET", "/feed"), route: "/feed", report: false)
+        return (try decode(Feed.self, from: data, route: "/feed"), data)
+    }
 
     func media() async throws -> [MediaItem] { try await get("/media", as: LossyList<MediaItem>.self).items }
     func hideMedia(_ id: String) async throws { try await call("DELETE", "/media/\(id.pathSegment)", json: nil) }
@@ -307,11 +312,19 @@ public extension APIClient {
 
     // Server-defined tools
     func tools() async throws -> [Tool] {
-        let v: JSONValue = try await get("/tools")
-        // Accept a bare array or { tools: [...] }.
+        let data = try await perform(makeRequest("GET", "/tools"), route: "/tools")
+        return try parseTools(data)
+    }
+    /// Accepts a bare array or `{ tools: [...] }`; broken entries are skipped.
+    func parseTools(_ data: Data) throws -> [Tool] {
+        let v = try decode(JSONValue.self, from: data, route: "/tools")
         let list = v.array ?? v["tools"]?.array ?? []
-        let data = try JSONEncoder().encode(JSONValue.array(list))
-        return try decode(LossyList<Tool>.self, from: data, route: "/tools").items
+        return try decode(LossyList<Tool>.self, from: JSONEncoder().encode(JSONValue.array(list)), route: "/tools").items
+    }
+    /// GET returning the decoded value and the raw bytes (for the offline cache).
+    func getRaw<T: Decodable>(_ path: String, as type: T.Type = T.self) async throws -> (T, Data) {
+        let data = try await perform(makeRequest("GET", path), route: path)
+        return (try decode(T.self, from: data, route: path), data)
     }
     /// Runs a tool; resolves `{ jobId }`, a job object, or an immediate `{ url }` result into a `Job`.
     func runTool(_ tool: Tool, values: [String: JSONValue]) async throws -> Job {

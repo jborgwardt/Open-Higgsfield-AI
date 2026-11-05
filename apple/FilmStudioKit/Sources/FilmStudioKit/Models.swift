@@ -117,11 +117,17 @@ public struct ModelInfo: Decodable, Sendable, Identifiable, Hashable {
     public var refs: Int
     /// Optional example still (thumbnail / thumb / example) for the Explore feed.
     public var thumbnail: String?
+    /// Example media (previewUrl / previewPoster / previewKind) for Home and the model picker.
+    public var preview: MediaPreview?
+    /// Free-form price hint from the engine ("$0.05 / s"), when it knows one.
+    public var price: String?
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
         guard let id = c.string("id") else { throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "model without id")) }
+        price = c.string("price") ?? c.string("cost") ?? c.string("credits").map { "\($0) credits" }
         thumbnail = c.string("thumbnail") ?? c.string("thumb") ?? c.string("example")
+        preview = MediaPreview(c, fallbackStill: thumbnail)
         self.id = id
         provider = c.string("provider") ?? String(id.split(separator: "/").first ?? "")
         label = c.string("label", default: id)

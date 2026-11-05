@@ -17,33 +17,46 @@ struct FilmsView: View {
                 case .failed(let m): ErrorStateView(message: m) { await load() }
                 case .unavailable: EmptyView()
                 case .loaded(let list):
-                    if list.isEmpty {
-                        ContentUnavailableView {
-                            Label("No films yet", systemImage: "film.stack")
-                        } description: {
-                            Text("Write or paste a script, choose a length, and the director plans every shot. Rendering runs on the studio server — you can close the app.")
-                        } actions: {
-                            Button("New Film") { creating = true }.buttonStyle(.glassProminent)
-                        }
-                    } else {
-                        List {
-                            ForEach(list) { p in
-                                NavigationLink(value: p.id) { FilmRow(p: p) }
-                                    .contextMenu {
-                                        Button("Delete Film…", systemImage: "trash", role: .destructive) { pendingDelete = p }
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            header
+                            if list.isEmpty {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    DisplayTitle("Script to screen", size: 28).foregroundStyle(.white)
+                                    Text("Write or paste a script, choose a length, and the director plans every shot. Rendering runs on the studio server — you can close the app.")
+                                        .font(.subheadline).foregroundStyle(Color.textSecondary)
+                                    Button { creating = true } label: { Label("New Film", systemImage: "plus") }.buttonStyle(.lime)
+                                }
+                                .padding(20)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                                .padding(.horizontal, 16)
+                            } else {
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 12)], spacing: 14) {
+                                    ForEach(list) { p in
+                                        NavigationLink(value: p.id) { FilmCard(p: p) }
+                                            .buttonStyle(PressScale())
+                                            .contextMenu {
+                                                Button("Delete Film…", systemImage: "trash", role: .destructive) { pendingDelete = p }
+                                            }
                                     }
-                                    .swipeActions { Button("Delete", role: .destructive) { pendingDelete = p } }
+                                }
+                                .padding(.horizontal, 16)
                             }
                         }
+                        .padding(.bottom, 24)
                     }
                 }
             }
+            .studioCanvas()
             .navigationTitle("Films")
+            .inlineTitle()
             .navigationDestination(for: String.self) { id in FilmDetailView(id: id) }
             .navigationDestination(item: $opened) { id in FilmDetailView(id: id) }
             .toolbar {
                 ToolbarItem(placement: .trailing) {
                     Button("New Film", systemImage: "plus") { creating = true }.keyboardShortcut("n", modifiers: [.command, .shift])
+                        .tint(.lime)
                 }
                 ToolbarItem(placement: .trailing) {
                     Menu {
@@ -80,7 +93,7 @@ struct FilmsView: View {
     }
 
     private func load() async {
-        do { state = .loaded(try await app.client.productions()) } catch is CancellationError {
+        do { state = .loaded(try await app.fetchProductions()) } catch is CancellationError {
         } catch {
             if state.value == nil { state = .failed(error.localizedDescription) }
         }
@@ -94,25 +107,18 @@ struct FilmsView: View {
     }
 }
 
-private struct FilmRow: View {
-    let p: ProductionSummary
-    var body: some View {
-        HStack(spacing: 14) {
-            AuthedImage(url: p.cover, maxPixelSize: 320)
-                .frame(width: 96, height: 54)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            VStack(alignment: .leading, spacing: 5) {
-                Text(p.title).font(.headline).lineLimit(1)
-                HStack(spacing: 8) {
-                    StatusBadge(text: p.status.label, tint: p.status.tint, spinning: p.status.isLive)
-                    if p.shots > 0 { Text("\(p.done)/\(p.shots) shots").font(.caption).foregroundStyle(.secondary).monospacedDigit() }
-                }
-                if p.shots > 0, p.done < p.shots, p.status.isLive {
-                    ProgressView(value: Double(p.done), total: Double(p.shots)).frame(maxWidth: 220)
-                }
+extension FilmsView {
+    var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                DisplayTitle("Films", size: 34, lineLimit: 1).foregroundStyle(.white)
+                Spacer()
+                Button { creating = true } label: { Label("New film", systemImage: "plus") }.buttonStyle(.lime(.small))
             }
+            Text("Long-form: every shot planned, rendered and cut on the server.").font(.subheadline).foregroundStyle(Color.textSecondary)
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
     }
 }
 

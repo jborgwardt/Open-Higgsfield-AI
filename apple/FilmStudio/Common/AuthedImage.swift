@@ -6,6 +6,8 @@ struct AuthedImage: View {
     let url: String?
     var maxPixelSize: Int = 600
     var contentMode: ContentMode = .fill
+    /// No spinner or glyphs while loading (media tiles show their own placeholder underneath).
+    var quiet = false
     @Environment(AppModel.self) private var app
     @State private var image: DecodedImage?
     @State private var failed = false
@@ -18,9 +20,10 @@ struct AuthedImage: View {
                     .aspectRatio(contentMode: contentMode)
                     .transition(.opacity)
             } else {
-                Rectangle().fill(Color.tileBackground)
+                Rectangle().fill(quiet ? Color.surface : Color.tileBackground)
                     .overlay {
-                        if failed { Image(systemName: "photo").font(.title2).foregroundStyle(.tertiary) }
+                        if quiet { EmptyView() }
+                        else if failed { Image(systemName: "photo").font(.title2).foregroundStyle(.tertiary) }
                         else if url?.nonEmpty != nil { ProgressView().controlSize(.small) }
                         else { Image(systemName: "film").font(.title2).foregroundStyle(.tertiary) }
                     }
