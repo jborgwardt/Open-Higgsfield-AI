@@ -51,7 +51,9 @@ const SYSTEM = `You are a film director and cinematographer planning a film that
 Every shot becomes an independent short clip, so each shot prompt must be fully self-contained: restate who is on screen with their
 fixed visual description (face, hair, wardrobe), the setting, time of day, lighting, lens/camera move, and the action within the clip.
 Keep characters, wardrobe, props and locations consistent across shots. Prefer one clear action and one camera move per shot.
-Describe sound (ambience, music mood, short dialogue lines in quotes) when useful. Never include text overlays or subtitles.`;
+Describe sound (ambience, music mood, short dialogue lines in quotes) when useful. Never include text overlays or subtitles.
+Real people are recreated from reference photos: keep each character's face visible in the opening of a shot, from the angle the shot
+mostly holds; avoid big head turns, spins or turning away from camera within one shot — cut to a new angle instead.`;
 
 function bible(brief) {
   const chars = (brief.characters || []).filter((c) => c.name || c.description);

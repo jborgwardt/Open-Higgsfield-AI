@@ -96,7 +96,9 @@ test('pickRefs: approved sheet first, then distinct angles, blurry dropped, limi
   assert.deepEqual(four, ['a_sheet', 'a_front', 'a_tql', 'a_smile']);
   assert.deepEqual(cr.pickRefs(JUSTIN, 2).map((r) => r.assetId), ['a_sheet', 'a_front']);
   assert.ok(!cr.pickRefs(JUSTIN, 6).some((r) => r.assetId === 'a_blurry'));
-  assert.deepEqual(cr.pickRefs({ ...JUSTIN, sheet: { ...JUSTIN.sheet, approved: false } }, 2).map((r) => r.assetId), ['a_front', 'a_tql']);
+  // no approved sheet (no sheet ref) → photos only; a newer sheet awaiting review doesn't revoke the approved one
+  assert.deepEqual(cr.pickRefs({ ...JUSTIN, refs: JUSTIN.refs.filter((r) => r.kind !== 'sheet') }, 2).map((r) => r.assetId), ['a_front', 'a_tql']);
+  assert.equal(cr.pickRefs({ ...JUSTIN, sheet: { assetId: 'a_newer', approved: false } }, 2)[0].assetId, 'a_sheet');
   assert.deepEqual(cr.pickRefs(JUSTIN, 3, { includeSheet: false }).map((r) => r.assetId), ['a_front', 'a_tql', 'a_smile']);
   // near-duplicate of the front photo is skipped when filling the remainder
   const dup = { ...JUSTIN, refs: [...JUSTIN.refs, ref('a_dup', { hash: JUSTIN.refs[1].hash, quality: { score: 87, flags: [] } })] };
@@ -211,21 +213,59 @@ test('applyCharacters: Grok video 1.5 goes reference-to-video with <IMAGE_n> tag
 test('applyCharacters: Gemini Omni switches to a model that accepts real people', async () => {
   const m = cat.getModel('google/gemini-omni-1.1-flash');
   const j = await ch.applyCharacters({ model: m.id, prompt: 'x', characters: ['ch_justin'] }, m);
-  assert.equal(j.model, 'apimart/veo3.1-quality');
-  assert.match(j.characterNote, /refuses to animate real people.*Veo 3\.1 Quality/);
+  assert.equal(j.model, ch.identityModels([JUSTIN])[0].id);
+  assert.match(j.characterNote, /refuses to animate real people.*using/);
   assert.deepEqual(j.characters, ['ch_justin'], 'characters stay on the job for the new model');
-  // a model that takes refs with a frame: kling v4 + start frame → description only
+  // even with identity lock off, Omni is never used for a real person
+  const off = await ch.applyCharacters({ model: m.id, prompt: 'x', characters: ['ch_justin'], identityLock: false }, m);
+  assert.notEqual(off.model, m.id);
+});
+
+test('identity lock: real people go to reference-to-video models, ahead of first-frame-only ones', async () => {
+  const q = cat.getModel('apimart/veo3.1-quality'); // first-frame only
+  const j = await ch.applyCharacters({ model: q.id, prompt: 'Justin turns to camera', characters: ['ch_justin'] }, q);
+  assert.equal(j.model, ch.identityModels([JUSTIN])[0].id);
+  assert.match(j.characterNote, /^Identity lock: Veo 3\.1 Quality \(ApiMart\) only animates a still/);
+  // with a start frame only models taking frame + refs qualify (Grok 1.5 here; Wan 2.7 R2V also would)
+  const f = await ch.applyCharacters({ model: q.id, prompt: 'x', characters: ['ch_justin'], image: 'a_kf' }, q);
+  assert.ok(cat.getModel(f.model).caps.refsWithImage, f.model);
+  // opt out keeps the chosen model: keyframe route with staging guidance
   const k = cat.getModel('apimart/kling-v4');
-  const t = await ch.applyCharacters({ model: k.id, prompt: 'Justin waves', characters: ['ch_justin'], image: 'a_kf' }, k);
+  const t = await ch.applyCharacters({ model: k.id, prompt: 'Justin waves', characters: ['ch_justin'], image: 'a_kf', identityLock: false }, k);
   assert.equal(t.refMode, undefined);
-  assert.match(t.prompt, /^Characters \(keep their look consistent\): Justin: Late 30s/);
+  assert.match(t.prompt, /^Characters \(keep their look consistent\): Justin: Late 30s.*Staging: keep Justin's face visible/);
+  // Seedance never gets a real person's photos as references; a fictional character is fine
+  const sd = cat.getModel('apimart/seedance-2.0');
+  assert.equal(ch.refsOk(sd, [JUSTIN]), false);
+  assert.equal(ch.refsOk(sd, [{ ...JUSTIN, realPerson: false }]), true);
+  const s2 = await ch.applyCharacters({ model: sd.id, prompt: 'x', characters: ['ch_justin'] }, sd);
+  assert.notEqual(s2.model, sd.id);
+  // fictional characters are left alone on a first-frame model
+  assert.equal(ch.characterFallback(q, [{ ...JUSTIN, realPerson: false }]), null);
 });
 
 test('generate(): first-frame model makes a keyframe from the refs, then animates it (offline models)', async () => {
-  const r = await cat.generate({ model: 'local/animatic', prompt: 'Justin looks out to sea', characters: ['ch_justin'], keyframeModel: 'local/plate', aspect: '16:9', duration: 1 });
+  const r = await cat.generate({ model: 'local/animatic', prompt: 'Justin looks out to sea', characters: ['ch_justin'], keyframeModel: 'local/plate', aspect: '16:9', duration: 1, identityLock: false, likeness: false });
   assert.equal(r.asset.kind, 'video');
   assert.deepEqual(r.asset.characters, ['ch_justin']);
-  assert.match(r.asset.prompt, /^Characters \(keep their look consistent\): Justin/);
+  assert.match(r.asset.prompt, /^Characters \(keep their look consistent\): Justin.*Staging: keep Justin's face visible/);
+});
+
+test('likeness summary: average, worst second, flags below threshold, ignores frames without the face', async () => {
+  const { summarize } = await import('../lib/likeness.js');
+  const f = (t, score, visible = true, character = 'Justin') => ({ t, faces: [{ character, visible, score: visible ? score : null }] });
+  const s = summarize([f(0.25, 9), f(0.75, 8), f(1.25, null, false), f(1.75, 4), f(2.25, 7)], { threshold: 6 });
+  assert.equal(s.score, 7);
+  assert.equal(s.min, 4);
+  assert.equal(s.minAt, 1.75);
+  assert.equal(s.pass, false);
+  assert.deepEqual(s.flagged.map((x) => x.t), [1.75]);
+  assert.equal(s.visibleFrames, 4);
+  assert.equal(s.perCharacter.Justin.min, 4);
+  assert.equal(summarize([f(0.5, null, false)]).pass, null, 'no face visible → no verdict');
+  const two = summarize([{ t: 0.5, faces: [{ character: 'Justin', visible: true, score: 9 }, { character: 'Mara', visible: true, score: 5 }] }]);
+  assert.equal(two.frames[0].score, 5);
+  assert.equal(two.frames[0].character, 'Mara');
 });
 
 test('long-form: { characterId } entries resolve; inline entries still work', () => {

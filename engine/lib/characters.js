@@ -7,11 +7,12 @@
 //  - applyCharacters() routes the best refs into any generate() call according to what the model can take
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { DATA, uid, now, readJSON, writeJSON, getAsset, assetPath, addAsset, newAssetPath, updateAsset } from './store.js';
-import { generate, getModel, availableProviders } from './catalog.js';
+import { DATA, uid, now, readJSON, writeJSON, getAsset, assetPath, addAsset, newAssetPath, updateAsset, assetFromUrl } from './store.js';
+import { generate, getModel, availableProviders, allModels } from './catalog.js';
 import * as jobs from './jobs.js';
 import * as cr from './charref.js';
 import * as cv from './charvision.js';
+import { checkLikeness } from './likeness.js';
 
 const FILE = path.join(DATA, 'characters.json');
 const TMP = path.join(DATA, 'tmp');
@@ -46,12 +47,14 @@ export function hydrate(c) {
   const sheet = c.sheet ? { assetId: c.sheet.assetId, url: url(c.sheet.assetId), approved: !!c.sheet.approved, createdAt: c.sheet.createdAt, model: c.sheet.model || null } : null;
   const best = cr.pickRefs(c, 1, { includeSheet: false })[0];
   const cov = cr.coverage(c.refs);
+  const inForce = c.refs.find((r) => r.kind === 'sheet');
   return {
     id: c.id,
     name: c.name,
     description: c.description || '',
     lookNotes: c.lookNotes || '',
     voice: c.voice || null,
+    realPerson: c.realPerson !== false,
     refs: c.refs.map((r) => ({
       assetId: r.assetId,
       url: url(r.workId || r.assetId),
@@ -73,6 +76,8 @@ export function hydrate(c) {
       addedAt: r.addedAt,
     })),
     sheet,
+    // The approved sheet that leads generation (can be an older one while a new sheet awaits review).
+    approvedSheet: inForce ? { assetId: inForce.assetId, url: url(inForce.assetId) } : null,
     sheetJob: c.sheetJob || null,
     sheetError: c.sheetError || null,
     coverUrl: url(best?.workId || best?.assetId) || sheet?.url || null,
@@ -100,7 +105,7 @@ export async function create(body = {}) {
   if (!name) throw fail(400, 'name required');
   const c = {
     id: uid('ch_'), name: name.slice(0, 80), description: String(body.description || '').slice(0, 2000), lookNotes: String(body.lookNotes || '').slice(0, 1000),
-    voice: body.voice !== undefined ? voiceOf(body.voice) : null, refs: [], sheet: null, videos: [], createdAt: now(), updatedAt: now(),
+    voice: body.voice !== undefined ? voiceOf(body.voice) : null, realPerson: body.realPerson !== false, refs: [], sheet: null, videos: [], createdAt: now(), updatedAt: now(),
   };
   db[c.id] = c;
   await save();
@@ -113,6 +118,7 @@ export async function update(id, body = {}) {
   if ('description' in body) c.description = String(body.description || '').slice(0, 2000);
   if ('lookNotes' in body) c.lookNotes = String(body.lookNotes || '').slice(0, 1000);
   if ('voice' in body) c.voice = voiceOf(body.voice);
+  if ('realPerson' in body) c.realPerson = body.realPerson !== false; // false = fictional / AI-generated person
   touch(c);
   await saveQ;
   return hydrate(c);
@@ -353,7 +359,7 @@ export function startSheet(id, body = {}) {
   const photos = cr.pickRefs(c, Math.min(m.refs ?? 6, 6), { includeSheet: false });
   if (!photos.length) throw fail(400, 'add at least one usable photo first');
   if (c.sheetJob && jobs.getJob(c.sheetJob.jobId)?.status === 'running') return { jobId: c.sheetJob.jobId };
-  const approved = c.sheet?.approved ? c.refs.find((r) => r.kind === 'sheet' && r.assetId === c.sheet.assetId) : null;
+  const approved = c.refs.find((r) => r.kind === 'sheet');
   const refs = approved && body.useApproved !== false ? [...photos.slice(0, Math.min(m.refs ?? 6, 6) - 1), { ...approved, id: approved.assetId }] : photos;
   const prompt = sheetPrompt(c, refs);
   const job = jobs.startTask(m.id, async (ctx) => {
@@ -416,7 +422,7 @@ export function resolveCharacters(list, { strict = true } = {}) {
         if (x && typeof x === 'object' && (x.name || refIdsOf(x).length)) out.push({ name: x.name, description: x.description, refAssetIds: refIdsOf(x) });
         continue;
       }
-      out.push({ characterId: c.id, name: (typeof x === 'object' && x.name) || c.name, description: (typeof x === 'object' && x.description) || c.description, lookNotes: c.lookNotes, refs: c.refs, sheet: c.sheet, voice: c.voice });
+      out.push({ characterId: c.id, name: (typeof x === 'object' && x.name) || c.name, description: (typeof x === 'object' && x.description) || c.description, lookNotes: c.lookNotes, refs: c.refs, sheet: c.sheet, voice: c.voice, realPerson: c.realPerson !== false });
     } else if (x && typeof x === 'object') {
       out.push({ name: x.name, description: x.description, refAssetIds: refIdsOf(x) });
     }
@@ -439,39 +445,73 @@ export function characterVoice(ref) {
   return v?.voiceId ? v : null;
 }
 
-// Models that refuse to animate stills of real people (Gemini Omni on the Gemini API returns INVALID_ARGUMENT).
-const REAL_FACE_FALLBACK = ['apimart/veo3.1-quality', 'apimart/veo3.1-fast', 'xai/grok-imagine-video-1.5', 'apimart/kling-v4', 'apimart/kling-v3-omni', 'apimart/seedance-2.5', 'apimart/kling-v3', 'apimart/seedance-2.0'];
-const hasRealPhotos = (chars) => chars.some((c) => (c.refs || []).some((r) => r.kind !== 'sheet') || (c.refAssetIds || []).length);
+// Identity lock. A first-frame-only model (one still → video) has to invent the face whenever the head turns or the
+// take runs on, so a real person drifts into a stranger. For people built from real photos, prefer models that keep
+// the references in view for the whole clip. Any catalog video model with caps.refs qualifies (so new providers light
+// up by themselves); this list only sets the order — measured on the same real-person test shot where we have data
+// (Veo 3.1 Fast ref and Kling V4 ref held the face, first-frame Veo drifted into another man), recommended otherwise.
+const IDENTITY_RANK = ['apimart/veo3.1-fast', 'qwen/happyhorse-1.1-r2v', 'apimart/kling-v4', 'xai/grok-imagine-video-1.5', 'apimart/kling-v3-omni', 'fal/wan-3.0-prime-r2v', 'fal/wan-3.0-r2v', 'apimart/wan2.7-r2v', 'xai/grok-imagine-video'];
+// Gemini Omni refuses real people's likeness outright (INVALID_ARGUMENT); anything else is better than failing.
+const REAL_FACE_FALLBACK = ['apimart/veo3.1-quality', 'apimart/kling-v3', 'apimart/seedance-2.5', 'apimart/seedance-2.0'];
+// Gemini Omni under any provider (Gemini API, Venice, ApiMart…) — refused real likeness on the Gemini API; assume the same.
+const refusesReal = (m) => !!m?.caps?.noRealPeople || /gemini-omni|omni-flash/.test(m?.id || '');
 
-/** If `m` can't take these characters, the model to use instead + why (or null when m is fine). */
-export function characterFallback(m, chars) {
-  if (!m?.caps?.noRealPeople || !hasRealPhotos(chars)) return null;
+/** True when any character is a real person with photo references (fictional characters can opt out). */
+export const isRealCast = (chars) => chars.some((c) => c.realPerson !== false && ((c.refs || []).some((r) => r.kind !== 'sheet') || (c.refAssetIds || []).length));
+/** Can model m hold these characters' identity through reference images? (Seedance blocks real faces as refs.) */
+export const refsOk = (m, chars) => !!m?.caps?.refs && !(isRealCast(chars) && (m.caps.refsRealPeople === false || refusesReal(m)));
+
+/** Connected video models that take the cast's references, best first. withImage: must also accept a first frame. */
+export function identityModels(chars, { withImage = false } = {}) {
   const avail = availableProviders();
-  const alt = REAL_FACE_FALLBACK.map(getModel).find((x) => x && avail[x.provider]);
-  const reason = `${m.label} refuses to animate real people's likeness`;
-  return { model: alt || null, reason: alt ? `${reason} — using ${alt.label} instead` : `${reason} — connect ApiMart (Veo 3.1, Kling, Seedance) or xAI for character shots` };
+  const rank = (x) => { const i = IDENTITY_RANK.indexOf(x.id); return i < 0 ? IDENTITY_RANK.length : i; };
+  return allModels().filter((x) => x.kind === 'video' && avail[x.provider] && refsOk(x, chars) && (!withImage || x.caps.refsWithImage)).sort((a, b) => rank(a) - rank(b));
 }
+
+/** The model to use instead of m for these characters + why, or null when m is fine. */
+export function characterFallback(m, chars, { identityLock = true, hasImage = false } = {}) {
+  if (m?.kind !== 'video' || !isRealCast(chars)) return null;
+  const holds = refsOk(m, chars) && (!hasImage || m.caps.refsWithImage);
+  if (refusesReal(m)) {
+    const avail = availableProviders();
+    const alt = [...identityModels(chars, { withImage: hasImage }), ...identityModels(chars), ...REAL_FACE_FALLBACK.map(getModel).filter((x) => x && avail[x.provider])][0] || null;
+    const reason = `${m.label} refuses to animate real people's likeness`;
+    return { model: alt, reason: alt ? `${reason} — using ${alt.label} instead` : `${reason} — connect ApiMart (Veo 3.1, Kling) or xAI for character shots` };
+  }
+  if (identityLock && !holds) {
+    const alt = identityModels(chars, { withImage: hasImage })[0];
+    if (alt && alt.id !== m.id) return { model: alt, reason: `Identity lock: ${m.label} ${m.caps?.refs ? 'cannot use these references' : 'only animates a still, so the face drifts when the head turns'} — using ${alt.label} with ${hasImage ? 'your frame + ' : ''}character references` };
+  }
+  return null;
+}
+
+const names = (chars) => chars.map((c) => c.name).filter(Boolean).join(' and ') || 'the character';
+/** Staging that keeps a first-frame model from inventing a new face mid-shot. */
+export const stagingLine = (chars) => `Staging: keep ${names(chars)}'s face visible and close to the opening angle for the whole shot; no big head turns, spins or turning away from camera. `;
 
 /**
  * Rewrite a generate() job that names characters into what the model can actually take:
- *   image models → labelled reference images; video models with a reference mode → reference-to-video;
- *   first-frame models → a keyframe from the refs, then animate it; anything else → a description line.
+ *   identity lock → swap a first-frame-only model for a reference-to-video model when the cast is real;
+ *   image models → labelled reference images; video models with a reference mode → reference-to-video
+ *   (plus the start frame where the model takes both); first-frame models → a keyframe from the refs, then animate
+ *   it with staging guidance; anything else → a description line.
+ * The returned job carries qaChars so generate() can run the likeness check on the result.
  */
 export async function applyCharacters(job, m, { onStatus, signal } = {}) {
   const chars = resolveCharacters(job.characters);
   const ids = chars.map((c) => c.characterId).filter(Boolean);
-  const base = { ...job, characters: undefined, characterIds: ids };
+  const base = { ...job, characters: undefined, characterIds: ids, qaChars: chars };
   if (!chars.length) return base;
   const prompt = String(job.prompt || '');
   if (m.kind === 'video') {
-    const fb = characterFallback(m, chars);
+    const fb = characterFallback(m, chars, { identityLock: job.identityLock !== false, hasImage: !!job.image });
     if (fb) {
       if (!fb.model) throw fail(400, fb.reason);
       onStatus?.({ message: fb.reason });
       return { ...job, model: fb.model.id, characterNote: fb.reason };
     }
   }
-  const route = cr.routeFor(m, { hasImage: !!job.image });
+  const route = cr.routeFor(m.kind === 'image' || refsOk(m, chars) ? m : { ...m, caps: { ...m.caps, refs: 0 } }, { hasImage: !!job.image });
   if (route === 'image-refs') {
     const slots = Math.max(0, (m.refs ?? 0) - (job.image ? 1 : 0));
     const user = job.refs || [];
@@ -481,10 +521,10 @@ export async function applyCharacters(job, m, { onStatus, signal } = {}) {
   }
   if (route === 'video-refs') {
     const c = m.caps;
-    const plan = cr.planRefs(chars, { limit: c.refs, offset: job.image && c.refTag === 'xai' ? 1 : 0, tag: c.refTag || 'plain' });
+    const plan = cr.planRefs(chars, { limit: c.refs - (job.image && m.id === 'apimart/wan2.7-r2v' ? 1 : 0), offset: job.image && c.refTag === 'xai' ? 1 : 0, tag: cr.tagFor(m) });
     if (plan.refs.length) {
-      onStatus?.({ message: `Reference-to-video · ${plan.refs.length} refs` });
-      return { ...base, refs: plan.refs, refMode: true, prompt: plan.guide + prompt, routeNote: `reference mode, ${plan.refs.length} refs` };
+      onStatus?.({ message: `Reference-to-video · ${plan.refs.length} refs${job.image ? ' + start frame' : ''}` });
+      return { ...base, refs: plan.refs, refMode: true, prompt: plan.guide + prompt, routeNote: `reference mode, ${plan.refs.length} refs${job.image ? ' + frame' : ''}` };
     }
   }
   if (route === 'keyframe' || (route === 'video-refs' && !job.image && m.caps?.i2v)) {
@@ -493,12 +533,23 @@ export async function applyCharacters(job, m, { onStatus, signal } = {}) {
     if (im && anyRefs) {
       onStatus?.({ message: `Keyframe from character refs · ${im.label}` });
       const aspect = job.aspect || '16:9';
-      const kf = await generate({ model: im.id, prompt: `Cinematic film still, ${aspect} frame, photorealistic. ${prompt}`, characters: job.characters, aspect }, { onStatus, signal });
+      const kf = await generate({ model: im.id, prompt: `Cinematic film still, ${aspect} frame, photorealistic. Show ${names(chars)}'s face clearly and in focus, from the angle the shot mostly holds. ${prompt}`, characters: job.characters, aspect }, { onStatus, signal });
       updateAsset(kf.asset.id, { source: 'character-keyframe' });
-      return { ...base, image: kf.asset.id, keyframeId: kf.asset.id, prompt: cr.textGuide(chars) + prompt, routeNote: `keyframe ${kf.asset.id}` };
+      return { ...base, image: kf.asset.id, keyframeId: kf.asset.id, prompt: cr.textGuide(chars) + stagingLine(chars) + prompt, routeNote: `keyframe ${kf.asset.id}` };
     }
   }
-  return { ...base, prompt: cr.textGuide(chars) + prompt, routeNote: 'description only' };
+  return { ...base, prompt: cr.textGuide(chars) + (m.kind === 'video' && job.image ? stagingLine(chars) : '') + prompt, routeNote: 'description only' };
+}
+
+/** POST /likeness { assetId, characters: [id], every, threshold } — score any clip against characters. */
+export async function likenessOf(body = {}) {
+  const a = getAsset(body.assetId) || assetFromUrl(body.url);
+  if (!a || a.kind !== 'video') throw fail(400, 'assetId of a video required');
+  const chars = resolveCharacters(body.characters?.length ? body.characters : a.characters || []);
+  if (!chars.length) throw fail(400, 'characters required');
+  const r = await checkLikeness({ video: assetPath(a), characters: chars, every: Number(body.every) || 0.5, threshold: Number(body.threshold) || undefined });
+  updateAsset(a.id, { likeness: r });
+  return r;
 }
 
 /* ------------------------------------------------------------------ HTTP */
@@ -516,4 +567,5 @@ export function characterRoutes(route) {
   route('GET', '/characters/:id/coverage', ({ params }) => coverageOf(params.id));
   route('POST', '/characters/:id/sheet', ({ params, body }) => startSheet(params.id, body));
   route('POST', '/characters/:id/sheet/approve', ({ params, body }) => approveSheet(params.id, body));
+  route('POST', '/likeness', ({ body }) => likenessOf(body));
 }

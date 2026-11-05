@@ -117,35 +117,65 @@ export function visionBackend() {
   return null;
 }
 
-async function smallJpeg(file, signal) {
-  const { out } = await exec(FFMPEG, ['-v', 'error', '-i', file, '-vf', "scale=w='min(1024,iw)':h='min(1024,ih)':force_original_aspect_ratio=decrease,format=yuvj420p", '-frames:v', '1', '-q:v', '3', '-f', 'image2pipe', '-vcodec', 'mjpeg', 'pipe:1'], { signal });
+/** Base64 JPEG, long side ≤ maxSide (what vision calls receive). */
+export async function smallJpeg(file, signal, maxSide = 1024) {
+  const { out } = await exec(FFMPEG, ['-v', 'error', '-i', file, '-vf', `scale=w='min(${maxSide},iw)':h='min(${maxSide},ih)':force_original_aspect_ratio=decrease,format=yuvj420p`, '-frames:v', '1', '-q:v', '3', '-f', 'image2pipe', '-vcodec', 'mjpeg', 'pipe:1'], { signal });
   return out.toString('base64');
+}
+
+/** One multimodal JSON call to the configured vision model. content: OpenAI-style parts. */
+export async function visionJSON(content, { signal, timeout = 120000, model: want } = {}) {
+  const backend = visionBackend();
+  if (!backend) throw new Error('no vision model — add a Gemini API key (or ApiMart) in Providers');
+  const s = getSettings();
+  const model = backend === 'google' ? want || process.env.CHAR_VISION_MODEL || 'gemini-flash-latest' : process.env.CHAR_VISION_MODEL_APIMART || 'gemini-3.8-flash';
+  const url = backend === 'google' ? 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions' : `${APIMART}/chat/completions`;
+  const r = await fetchJSON(backend, url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${backend === 'google' ? s.googleKey : s.apimartKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, temperature: 0, messages: [{ role: 'user', content }], ...(backend === 'google' ? { response_format: { type: 'json_object' } } : {}) }),
+    signal: signal || AbortSignal.timeout(timeout),
+  });
+  return { json: parseJSON(r.choices?.[0]?.message?.content), backend, model };
 }
 
 /**
  * Grade one image with the vision model. Returns { vision (normalised), raw, backend, model } or throws.
  */
 export async function gradeImage(file, { signal } = {}) {
-  const backend = visionBackend();
-  if (!backend) throw new Error('no vision model — add a Gemini API key (or ApiMart) in Providers');
-  const s = getSettings();
   const b64 = await smallJpeg(file, signal);
-  const model = backend === 'google' ? process.env.CHAR_VISION_MODEL || 'gemini-flash-latest' : process.env.CHAR_VISION_MODEL_APIMART || 'gemini-3.8-flash';
-  const url = backend === 'google' ? 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions' : `${APIMART}/chat/completions`;
-  const body = {
-    model,
-    temperature: 0,
-    messages: [{ role: 'user', content: [{ type: 'text', text: PROMPT }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } }] }],
-    ...(backend === 'google' ? { response_format: { type: 'json_object' } } : {}),
-  };
-  const r = await fetchJSON(backend, url, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${backend === 'google' ? s.googleKey : s.apimartKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: signal || AbortSignal.timeout(90000),
-  });
-  const raw = parseJSON(r.choices?.[0]?.message?.content);
+  const { json: raw, backend, model } = await visionJSON([{ type: 'text', text: PROMPT }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } }], { signal, timeout: 90000 });
   return { vision: normalizeVision(raw), raw, backend, model };
+}
+
+/** Square crop around a [ymin, xmin, ymax, xmax] 0–1000 box (+30 % margin), scaled to size px. */
+export async function cropBox(file, box, out, { size = 384, signal } = {}) {
+  const { width: W, height: H } = await dims(file);
+  const [y0, x0, y1, x1] = box.map((v) => v / 1000);
+  const cx = ((x0 + x1) / 2) * W;
+  const cy = ((y0 + y1) / 2) * H;
+  const side = Math.round(Math.min(Math.max((x1 - x0) * W, (y1 - y0) * H) * 1.3, W, H));
+  const x = Math.round(Math.max(0, Math.min(W - side, cx - side / 2)));
+  const y = Math.round(Math.max(0, Math.min(H - side, cy - side / 2)));
+  await exec(FFMPEG, ['-v', 'error', '-y', '-i', file, '-vf', `crop=${side}:${side}:${x}:${y},scale=${size}:${size}`, '-frames:v', '1', '-q:v', '3', out], { signal });
+  return out;
+}
+
+/** Crop a fraction of an image (e.g. the front panel of a model sheet) into a new file. */
+export async function cropFraction(file, out, { x0 = 0, w = 1, signal } = {}) {
+  await exec(FFMPEG, ['-v', 'error', '-y', '-i', file, '-vf', `crop=iw*${w}:ih:iw*${x0}:0`, '-frames:v', '1', '-q:v', '3', out], { signal });
+  return out;
+}
+
+/** Frames every `every` seconds (≤ maxFrames, spread over the clip) as small JPEG files: [{ t, file }]. */
+export async function sampleFrames(video, dir, { every = 0.5, maxFrames = 24, maxSide = 640, signal } = {}) {
+  await fsp.mkdir(dir, { recursive: true });
+  const { duration } = await dims(video);
+  const step = Math.max(every, duration ? duration / maxFrames : every);
+  await exec(FFMPEG, ['-v', 'error', '-i', video, '-vf', `fps=1/${step.toFixed(4)},scale=w='min(${maxSide},iw)':h='min(${maxSide},ih)':force_original_aspect_ratio=decrease`, '-q:v', '4', path.join(dir, 'q_%03d.jpg')], { signal });
+  const files = (await fsp.readdir(dir)).filter((f) => /^q_\d+\.jpg$/.test(f)).sort();
+  // fps=1/step emits frame k at ≈ (k + 0.5) · step
+  return files.slice(0, maxFrames).map((f, k) => ({ t: +Math.min(duration || Infinity, (k + 0.5) * step).toFixed(2), file: path.join(dir, f) }));
 }
 
 /** Run async fn over items with at most n in flight. */

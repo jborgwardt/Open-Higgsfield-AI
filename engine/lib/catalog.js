@@ -41,8 +41,8 @@ const VIDEO = [
   { id: 'apimart/kling-v3', provider: 'apimart', label: 'Kling 3.0 (ApiMart)', blurb: 'Kling 3.0, start + end frame, 3–15 s. 720p std / 1080p pro / 4k.', caps: { t2v: true, i2v: true, end: true }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1'], resolutions: ['720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 15 },
   { id: 'apimart/kling-v4', provider: 'apimart', label: 'Kling V4 (ApiMart)', blurb: 'Kling V4 with native stereo audio, start + end frame or up to 10 character references, 3–30 s.', caps: { t2v: true, i2v: true, end: true, refs: 10, refTag: 'kling' }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '21:9'], resolutions: ['720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
   { id: 'apimart/kling-v3-omni', provider: 'apimart', label: 'Kling 3.0 Omni (ApiMart)', blurb: 'Kling 3.0 Omni: up to 7 character references, start + end frame, 3–15 s.', caps: { t2v: true, i2v: true, end: true, refs: 7, refTag: 'omni' }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1'], resolutions: ['720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 15 },
-  { id: 'apimart/seedance-2.0', provider: 'apimart', label: 'Seedance 2.0 (ApiMart)', blurb: 'ByteDance Seedance 2.0 with audio, start + end frame or character references, 4–15 s.', caps: { t2v: true, i2v: true, end: true, refs: 9, refTag: 'plain' }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
-  { id: 'apimart/seedance-2.5', provider: 'apimart', label: 'Seedance 2.5 (ApiMart)', blurb: 'Seedance 2.5 with audio, start + end frame or character references, 4–30 s.', caps: { t2v: true, i2v: true, end: true, refs: 30, refTag: 'plain' }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
+  { id: 'apimart/seedance-2.0', provider: 'apimart', label: 'Seedance 2.0 (ApiMart)', blurb: 'ByteDance Seedance 2.0 with audio, start + end frame; references for fictional characters, 4–15 s.', caps: { t2v: true, i2v: true, end: true, refs: 9, refTag: 'plain', refsRealPeople: false }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
+  { id: 'apimart/seedance-2.5', provider: 'apimart', label: 'Seedance 2.5 (ApiMart)', blurb: 'Seedance 2.5 with audio, start + end frame; references for fictional characters, 4–30 s.', caps: { t2v: true, i2v: true, end: true, refs: 30, refTag: 'plain', refsRealPeople: false }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
   { id: 'apimart/wan2.6', provider: 'apimart', label: 'Wan 2.6 (ApiMart)', blurb: 'Wan 2.6, start frame, 5 / 10 / 15 s.', caps: { t2v: true, i2v: true }, durations: [5, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'], resolutions: ['720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
   { id: 'apimart/wan2.7-r2v', provider: 'apimart', label: 'Wan 2.7 Reference-to-Video (ApiMart)', blurb: 'Keeps characters consistent from up to 5 references (+ optional start frame), 2–15 s. Needs a character or start frame.', caps: { t2v: false, i2v: true, refs: 5, refsWithImage: true, refTag: 'plain' }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'], resolutions: ['720p', '1080p'], resolutionDefault: '1080p', maxClip: 15 },
   { id: 'apimart/wan3.0-video', provider: 'apimart', label: 'Wan 3.0 (ApiMart)', blurb: 'Wan 3.0 cinema video with audio, start + end frame, 2–30 s.', caps: { t2v: true, i2v: true, end: true }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'], resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
@@ -222,7 +222,7 @@ export async function generate(job, { onStatus, signal } = {}) {
   const refs = await Promise.all(refAs.map((a) => asInput(P, a, signal)));
   const dur = clamp(Number(job.duration) || 5, 1, m.maxClip || 15);
   const seed = Number.isInteger(job.seed) ? job.seed : undefined;
-  const meta = { model: m.id, prompt: job.prompt, ...(job.characterIds?.length && { characters: job.characterIds }) };
+  const meta = { model: m.id, prompt: job.prompt, ...(job.characterIds?.length && { characters: job.characterIds }), ...(job.characterNote && { characterNote: job.characterNote }) };
 
   if (m.kind === 'image') {
     let r;
@@ -337,9 +337,17 @@ export async function generate(job, { onStatus, signal } = {}) {
     default: throw new Error(`${P} cannot make video`);
   }
   onStatus?.({ message: 'Downloading result' });
+  if (r.cost != null) meta.cost = r.cost;
   const asset = await saveResult(r, { kind: 'video', signal, meta });
   // Extension endpoints may return source + continuation; keep only the new part.
   if (r.maybeIncludesSource && asset.duration > r.maybeIncludesSource + dur * 0.6) trimStart = r.maybeIncludesSource;
   if (trimStart && asset.duration && trimStart >= asset.duration - 0.5) trimStart = 0;
-  return { asset, ref: r.ref || null, trimStart };
+  // Likeness QA on character renders: frames every 0.5 s scored 0–10 against the references (likeness.js).
+  let likeness = null;
+  if (job.likeness !== false && job.qaChars?.some((c) => (c.refs || []).length || (c.refAssetIds || []).length)) {
+    onStatus?.({ message: 'Checking likeness' });
+    try { likeness = await (await import('./likeness.js')).checkLikeness({ video: assetPath(asset), characters: job.qaChars, signal }); } catch (e) { likeness = { error: e.message }; }
+    updateAsset(asset.id, { likeness });
+  }
+  return { asset: getAsset(asset.id), ref: r.ref || null, trimStart, likeness };
 }

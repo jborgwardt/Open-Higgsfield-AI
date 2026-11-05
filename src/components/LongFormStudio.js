@@ -21,7 +21,9 @@ export function LongFormStudio() {
     const fileInput = Object.assign(document.createElement('input'), { type: 'file', hidden: true });
     root.appendChild(fileInput);
 
-    const S = { list: [], p: null, catalog: [], sound: { music: [], voice: [] }, editing: null, timer: null, patchTimer: null, pending: {} };
+    const S = { list: [], p: null, catalog: [], sound: { music: [], voice: [] }, chars: [], editing: null, timer: null, patchTimer: null, pending: {} };
+    // Brief character entries as stored: a link to a saved character, or the inline { name, description, photo } form.
+    const cleanChars = (list) => list.map((c) => (c.characterId ? { characterId: c.characterId } : { name: c.name || '', description: c.description || '', ...(c.refAssetId && { refAssetId: c.refAssetId }), ...(c.refAssetIds?.length && { refAssetIds: c.refAssetIds }) }));
     const models = (kind) => S.catalog.filter((m) => m.kind === kind);
     const model = (id) => S.catalog.find((m) => m.id === id);
     const pickDefault = (prefs, kind) => prefs.find((id) => model(id)?.available) || models(kind).find((m) => m.available)?.id || prefs.at(-1);
@@ -34,9 +36,10 @@ export function LongFormStudio() {
     /* ---------------- data ---------------- */
 
     async function refreshCatalog() {
-        const [cat, sound] = await Promise.all([engine.get('/catalog'), engine.get('/sound').catch(() => S.sound)]);
+        const [cat, sound, chars] = await Promise.all([engine.get('/catalog'), engine.get('/sound').catch(() => S.sound), engine.get('/characters').catch(() => S.chars)]);
         S.catalog = cat.models;
         S.sound = sound;
+        S.chars = chars;
     }
 
     function soundSection(b) {
@@ -56,7 +59,7 @@ export function LongFormStudio() {
             <label class="toggle"><input type="checkbox" data-b="narration" ${b.narration ? 'checked' : ''}/> Add a narrator (the director writes a line per shot)</label>
             ${b.narration ? `<div class="grid2">
                 <label class="f"><span>Voice from</span><select data-b="voiceProvider"><option value="auto" ${b.voiceProvider === 'auto' ? 'selected' : ''}>Best available</option>${S.sound.voice.map((v) => `<option value="${v.id}" ${v.id === b.voiceProvider ? 'selected' : ''} ${v.available ? '' : 'disabled'}>${esc(v.label)}</option>`).join('')}</select></label>
-                <label class="f"><span>Voice</span><select data-b="voice"><option value="">Default</option>${voices.map((v) => { const id = typeof v === 'string' ? v : v.id; return `<option value="${esc(id)}" ${id === b.voice ? 'selected' : ''}>${esc(typeof v === 'string' ? v : v.name)}</option>`; }).join('')}</select></label></div>
+                <label class="f"><span>Voice</span><select data-b="voice"><option value="">Default</option>${(() => { const cv = vp?.id === 'eleven' ? S.chars.filter((c) => c.voice?.voiceId) : []; return cv.length ? `<optgroup label="Characters">${cv.map((c) => `<option value="char:${esc(c.id)}" ${b.voice === `char:${c.id}` ? 'selected' : ''}>${esc(c.name)}’s voice</option>`).join('')}</optgroup>` : ''; })()}${voices.map((v) => { const id = typeof v === 'string' ? v : v.id; return `<option value="${esc(id)}" ${id === b.voice ? 'selected' : ''}>${esc(typeof v === 'string' ? v : v.name)}</option>`; }).join('')}</select></label></div>
               <label class="f"><span>Narrator style</span><input type="text" data-b="narratorStyle" value="${esc(b.narratorStyle)}"/></label>
               <p class="dim" style="font-size:11.5px">Narration and music are added when the master is assembled. Change them any time and press “Assemble master” again — clips are not re-rendered.</p>` : ''}
           </div>`;
@@ -80,6 +83,9 @@ export function LongFormStudio() {
         });
         await load(p.id);
     }
+
+    // Send the stored form, keep the display fields (thumbnails, resolved names) locally.
+    function setChars(chars) { patchBrief({ characters: cleanChars(chars) }); S.p.brief.characters = chars; }
 
     function patchBrief(fields) {
         Object.assign(S.p.brief, fields);
@@ -114,7 +120,7 @@ export function LongFormStudio() {
             try {
                 const before = S.p.status;
                 S.p = await engine.get(`/productions/${S.p.id}`);
-                for (const [k, v] of Object.entries(S.pending)) S.p.brief[k] = v;
+                for (const [k, v] of Object.entries(S.pending)) if (k !== 'characters') S.p.brief[k] = v;
                 if (before === 'planning' && S.p.status !== 'planning') renderSide();
                 if (!root.querySelector('.lf-main')?.contains(document.activeElement) || document.activeElement === document.body) renderMain();
                 else renderMain(true);
@@ -153,12 +159,20 @@ export function LongFormStudio() {
           <label class="f"><span>Script / story <em>paste a script, treatment or logline</em></span><textarea data-b="script" rows="9" placeholder="INT. ORBITAL GREENHOUSE — NIGHT. Mara, a botanist in a faded orange flight suit, discovers one seedling glowing…">${esc(b.script)}</textarea></label>
           <label class="f"><span>Look & style <em>applied to every shot</em></span><input type="text" data-b="style" value="${esc(b.style)}" placeholder="Anamorphic 35mm film, teal-orange grade, soft haze, shallow depth of field"/></label>
           <div class="col chars">
-            <h3 style="margin:4px 0 0">Characters <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:500">— fixed look + reference image keeps them consistent</span></h3>
-            ${(b.characters || []).map((c, i) => `<div class="ch">
+            <h3 style="margin:4px 0 0">Characters <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:500">— saved characters bring their sheet + best photos</span></h3>
+            ${(b.characters || []).map((c, i) => c.characterId ? `<div class="ch">
+                <div class="ref" data-a="char-manage" title="Open on the Characters page">${c.refUrl ? `<img src="${esc(c.refUrl)}" alt=""/>` : esc((c.resolvedName || '?').charAt(0))}</div>
+                <div class="col" style="gap:3px;min-width:0"><b style="font-size:12.5px">${esc(c.resolvedName || 'Missing character')}</b>
+                  <span class="dim" style="font-size:11px">${c.linked ? `${(c.refUrls || []).length} refs from Characters${c.hasVoice ? ' · has a voice' : ''}` : 'deleted from Characters'}</span>
+                  ${c.resolvedDescription ? `<span class="muted" style="font-size:11.5px;line-height:1.4">${esc(c.resolvedDescription.slice(0, 140))}</span>` : ''}</div>
+                <button class="btn ghost sm" data-a="char-del" data-i="${i}" title="Remove">✕</button></div>` : `<div class="ch">
                 <div class="ref" data-a="char-ref" data-i="${i}" title="Reference image">${c.refUrl ? `<img src="${esc(c.refUrl)}" alt=""/>` : '＋ ref'}</div>
                 <div class="col" style="gap:5px"><input type="text" data-c="name" data-i="${i}" value="${esc(c.name)}" placeholder="Name"/><textarea rows="2" data-c="description" data-i="${i}" placeholder="Face, hair, age, wardrobe…">${esc(c.description)}</textarea></div>
                 <button class="btn ghost sm" data-a="char-del" data-i="${i}" title="Remove">✕</button></div>`).join('')}
-            <button class="btn sm" data-a="char-add">＋ Add character</button>
+            <div class="row">
+              <select data-a="char-link" style="flex:1"><option value="">＋ From Characters…</option>${S.chars.filter((x) => !(b.characters || []).some((c) => c.characterId === x.id)).map((x) => `<option value="${esc(x.id)}">${esc(x.name)} · ${x.refs.length} refs${x.approvedSheet ? ' · sheet ✓' : ''}</option>`).join('')}</select>
+              <button class="btn sm" data-a="char-add" title="Describe a character and attach one photo">＋ Describe one</button>
+            </div>
           </div>
           <div class="grid2">
             <label class="f"><span>Length (min) <em data-shotcount>${shots} shots</em></span><input type="number" min="0.5" max="30" step="0.5" data-b="targetMinutes" data-num value="${b.targetMinutes}"/></label>
@@ -175,6 +189,8 @@ export function LongFormStudio() {
             <option value="cut" ${b.continuity === 'cut' ? 'selected' : ''}>Independent shots (fastest, fully parallel)</option></select></label>
           <div class="col" style="gap:6px">
             <label class="toggle"><input type="checkbox" data-b="keyframes" ${b.keyframes ? 'checked' : ''}/> Generate a keyframe for every cut (better consistency)</label>
+            <label class="toggle" title="Real people from the Characters page render with reference-to-video models (Veo 3.1 Fast ref, Kling…) instead of a single still that has to invent the face"><input type="checkbox" data-b="identityLock" ${b.identityLock !== false ? 'checked' : ''}/> Identity lock for real people</label>
+            <label class="toggle" title="Frames every 0.5 s are compared with the character's photos; a drifting shot is re-rendered once with the next model"><input type="checkbox" data-b="likenessQA" ${b.likenessQA !== false ? 'checked' : ''}/> Check likeness after every character shot</label>
             <label class="toggle"><input type="checkbox" data-b="sceneFades" ${b.sceneFades ? 'checked' : ''}/> Fade between scenes</label>
             <label class="toggle"><input type="checkbox" data-b="autoAssemble" ${b.autoAssemble ? 'checked' : ''}/> Assemble the master automatically</label>
           </div>
@@ -197,6 +213,7 @@ export function LongFormStudio() {
               <button class="cont ${s.continuity === 'continue' ? 'c' : ''}" data-a="cont" data-id="${s.id}" title="Toggle: continue from previous shot / hard cut">${s.continuity === 'continue' ? '↳ continue' : '✂ cut'}</button>
               <span class="chip ${cls}"><i></i>${label}</span>
               ${s.model ? `<span class="dim" style="font-size:11px">${esc(m?.label || s.model)}</span>` : ''}
+              ${Number.isFinite(s.likeness?.min) ? `<span class="chip ${s.likeness.pass ? 'ok' : 'bad'}" title="Likeness vs the character photos, frames every ${s.likeness.every || 0.5}s${s.identityTries?.length > 1 ? ` · best of ${s.identityTries.length} renders` : ''}${s.identity?.model ? ` · ${s.identity.model} (${s.identity.mode})` : ''}"><i></i>Likeness ${s.likeness.score}/10${s.likeness.pass ? '' : ` · ${s.likeness.min} at ${s.likeness.minAt}s`}</span>` : ''}
             </div>
             ${editing ? `<textarea data-edit="${s.id}" rows="5">${esc(s.prompt)}</textarea>${S.p.brief.narration ? `<input type="text" data-edit-narr="${s.id}" value="${esc(s.narration || '')}" placeholder="Narration for this shot (optional)" style="margin-top:6px"/>` : ''}<div class="row" style="margin-top:6px"><button class="btn sm primary" data-a="save-prompt" data-id="${s.id}">Save</button><button class="btn sm ghost" data-a="cancel-edit">Cancel</button><select data-shot-model="${s.id}" style="width:auto;margin-left:auto">${`<option value="">Production model</option>${modelOptions('video', s.model, { includeHandoff: true })}`}</select></div>` : `<div class="p" data-a="edit" data-id="${s.id}" title="Click to edit">${esc(s.prompt)}</div>`}
             ${S.p.brief.narration && s.narration && !editing ? `<div class="msg" style="color:#cfe3ff">🎙 ${esc(s.narration)}</div>` : ''}
@@ -303,7 +320,7 @@ export function LongFormStudio() {
             if (t.type === 'char') {
                 const chars = [...(S.p.brief.characters || [])];
                 chars[t.i] = { ...chars[t.i], refAssetId: asset.id, refUrl: asset.url };
-                patchBrief({ characters: chars });
+                setChars(chars);
                 renderSide();
             } else if (t.type === 'music') {
                 patchBrief({ musicAssetId: asset.id, musicUrl: asset.url });
@@ -365,17 +382,14 @@ export function LongFormStudio() {
                     return;
                 }
                 case 'char-add': {
-                    const chars = [...(S.p.brief.characters || []), { name: '', description: '' }];
-                    patchBrief({ characters: chars });
-                    S.p.brief.characters = chars;
+                    setChars([...(S.p.brief.characters || []), { name: '', description: '' }]);
                     return renderSide();
                 }
                 case 'char-del': {
-                    const chars = (S.p.brief.characters || []).filter((_, i) => i !== Number(el.dataset.i));
-                    patchBrief({ characters: chars });
-                    S.p.brief.characters = chars;
+                    setChars((S.p.brief.characters || []).filter((_, i) => i !== Number(el.dataset.i)));
                     return renderSide();
                 }
+                case 'char-manage': window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'characters' } })); return;
                 case 'char-ref': return pickFile('image/*', { type: 'char', i: Number(el.dataset.i) });
                 case 'music-file': return pickFile('audio/*', { type: 'music' });
             }
@@ -391,15 +405,18 @@ export function LongFormStudio() {
             if (sc) sc.textContent = `${shotCount(S.p.brief)} shots`;
         }
         if (el.dataset.c) {
-            const chars = (S.p.brief.characters || []).map((c, i) => (i === Number(el.dataset.i) ? { ...c, [el.dataset.c]: el.value } : c));
-            S.p.brief.characters = chars;
-            patchBrief({ characters: chars });
+            setChars((S.p.brief.characters || []).map((c, i) => (i === Number(el.dataset.i) ? { ...c, [el.dataset.c]: el.value } : c)));
         }
     });
 
     root.addEventListener('change', async (e) => {
         const el = e.target;
         if (el.dataset.a === 'switch') { await flush(); S.editing = null; return load(el.value); }
+        if (el.dataset.a === 'char-link' && el.value) {
+            const x = S.chars.find((c) => c.id === el.value);
+            setChars([...(S.p.brief.characters || []), { characterId: el.value, linked: true, resolvedName: x?.name, resolvedDescription: x?.description || '', refUrl: x?.coverUrl, refUrls: x?.refs.map((r) => r.url) || [], hasVoice: !!x?.voice }]);
+            return renderSide();
+        }
         if (el.dataset.b && (el.type === 'checkbox' || el.tagName === 'SELECT')) {
             const v = el.type === 'checkbox' ? el.checked : el.dataset.num !== undefined ? Number(el.value) : el.value;
             patchBrief({ [el.dataset.b]: v });

@@ -200,6 +200,8 @@ route('POST', '/generate', ({ body }) => {
     seed: Number.isInteger(body.seed) && body.seed >= 0 ? body.seed : undefined,
     characters: Array.isArray(body.characters) ? body.characters : body.characters ? [body.characters] : undefined, // character ids → refs routed per model
     keyframeModel: body.keyframe_model || body.keyframeModel || undefined,
+    identityLock: body.identity_lock ?? body.identityLock, // false = keep a first-frame-only model for real people
+    likeness: body.likeness, // false = skip the likeness check on character renders
   });
 });
 route('GET', '/jobs/:id', ({ params }) => jobs.getJob(params.id) || Promise.reject(new HttpError(404, 'job not found')));

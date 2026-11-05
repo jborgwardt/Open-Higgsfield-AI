@@ -256,7 +256,8 @@ const refScore = (r) => (r.status === 'ready' ? r.quality?.score ?? 0 : Math.rou
 export function pickRefs(character, limit = 6, { includeSheet = true, sheetLast = false } = {}) {
   if (limit <= 0) return [];
   const refs = character?.refs || [];
-  const sheet = includeSheet ? refs.find((r) => r.kind === 'sheet' && character.sheet?.approved && character.sheet.assetId === r.assetId) : null;
+  // A sheet ref only exists once a sheet is approved; it stays in force while a newer sheet awaits review.
+  const sheet = includeSheet ? refs.find((r) => r.kind === 'sheet') : null;
   const usable = refs.filter((r) => r.kind !== 'sheet' && r.status !== 'error' && !(r.quality?.flags || []).includes('no-face'))
     .sort((a, b) => refScore(b) - refScore(a));
   // Weak photos (< 30) only count when nothing better exists — one poor reference beats none.
@@ -302,7 +303,10 @@ export const TAG = {
   xai: (n) => `<IMAGE_${n}>`,
   kling: (n) => `@Image${n + 1}`,
   omni: (n) => `<<<image_${n + 1}>>>`,
+  bracket: (n) => `[Image ${n + 1}]`, // HappyHorse r2v
 };
+/** Prompt tag style for a model: its catalog caps.refTag, else by family. */
+export const tagFor = (m) => m?.caps?.refTag || (/happyhorse/.test(m?.id || '') ? 'bracket' : 'plain');
 const tagRange = (tag, a, b) => (a === b ? TAG[tag](a) : tag === 'plain' ? `images ${a + 1}–${b + 1}` : Array.from({ length: b - a + 1 }, (_, k) => TAG[tag](a + k)).join(', '));
 
 /**
