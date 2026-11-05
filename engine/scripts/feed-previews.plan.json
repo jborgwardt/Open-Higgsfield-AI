@@ -1,0 +1,425 @@
+{
+  "_note": "Preview media for the server-driven Home feed (engine/lib/feed.js). Generated with Grok Imagine only (free on SuperGrok) by engine/scripts/gen-previews.mjs, then ingested with PATCH /engine/api/feed/previews. Keys are feed item ids.",
+  "defaults": {
+    "video": {
+      "model": "xai/grok-imagine-video-1.5-lite",
+      "duration": 6,
+      "resolution": "720p"
+    },
+    "image": {
+      "model": "xai/grok-imagine-image-2.0"
+    }
+  },
+  "items": [
+    {
+      "id": "studio:video",
+      "kind": "video",
+      "aspect": "16:9",
+      "model": "xai/grok-imagine-video-1.5",
+      "prompt": "A colossal whale made of drifting storm clouds glides over a moonlit desert of glass dunes, lightning flickering inside its body, the camera cranes up slowly as it passes overhead, epic cinematic scale"
+    },
+    {
+      "id": "studio:image",
+      "kind": "video",
+      "aspect": "16:9",
+      "model": "xai/grok-imagine-video-1.5",
+      "prompt": "Macro shot of liquid paint in electric cobalt, molten gold and coral pink swirling and folding into a blooming flower shape, slow motion, glossy reflections, black background, slow push in"
+    },
+    {
+      "id": "studio:cinema",
+      "kind": "video",
+      "aspect": "16:9",
+      "model": "xai/grok-imagine-video-1.5",
+      "prompt": "Anamorphic dolly shot through a rain-soaked 1970s train station at blue hour, steam rolling across the platform, a lone figure in a long coat walks away from camera under sodium lamps, lens flares, shallow depth of field, film grain"
+    },
+    {
+      "id": "studio:films",
+      "kind": "video",
+      "aspect": "16:9",
+      "model": "xai/grok-imagine-video-1.5",
+      "prompt": "An old drive-in cinema at dusk in a vast prairie, the giant screen glowing with flickering projector light, vintage cars parked in rows, fireflies rising, the camera slowly glides between the cars toward the screen"
+    },
+    {
+      "id": "studio:characters",
+      "kind": "video",
+      "aspect": "16:9",
+      "model": "xai/grok-imagine-video-1.5",
+      "prompt": "A fictional android explorer with copper face plates and glowing amber eyes slowly turns her head from profile to camera inside a dim greenhouse full of bioluminescent plants, soft rim light, cinematic portrait"
+    },
+    {
+      "id": "studio:ads",
+      "kind": "video",
+      "aspect": "16:9",
+      "model": "xai/grok-imagine-video-1.5",
+      "prompt": "A sleek unbranded glass perfume bottle rotates on a black mirror floor as a wave of crimson silk sweeps around it and freezes mid-air, crisp studio light, premium commercial packshot, slow orbit"
+    },
+    {
+      "id": "studio:audio",
+      "kind": "video",
+      "aspect": "16:9",
+      "model": "xai/grok-imagine-video-1.5",
+      "prompt": "Close-up of a vintage studio microphone in a dark recording booth, visible sound waves ripple through floating dust as golden light pulses, ultra detailed, slow push in"
+    },
+    {
+      "id": "model:xai/grok-imagine-video-1.5",
+      "kind": "video",
+      "aspect": "3:4",
+      "model": "xai/grok-imagine-video-1.5",
+      "prompt": "A white wolf sprints across a frozen lake at dawn, ice crystals spraying from its paws, low tracking camera racing alongside, breath steaming, golden backlight"
+    },
+    {
+      "id": "model:xai/grok-imagine-video-1.5-lite",
+      "kind": "video",
+      "aspect": "3:4",
+      "prompt": "Hundreds of paper lanterns lift off from a misty mountain lake at night and drift into the stars, slow upward tilt, warm glow on the water"
+    },
+    {
+      "id": "model:google/gemini-omni-1.1-flash",
+      "kind": "video",
+      "aspect": "3:4",
+      "prompt": "A hummingbird made of stained glass hovers beside a blooming orchid, sunlight refracting through its wings into rainbow shards, extreme slow motion macro"
+    },
+    {
+      "id": "model:apimart/veo3.1-quality",
+      "kind": "video",
+      "aspect": "3:4",
+      "prompt": "A massive tidal wave curls over a tiny lighthouse during a violent storm at sunset, spray glittering, the camera pulls back to reveal the full scale, photoreal"
+    },
+    {
+      "id": "model:apimart/veo3.1-fast",
+      "kind": "video",
+      "aspect": "3:4",
+      "prompt": "A red vintage sports car drifts around a hairpin mountain road at golden hour, tire smoke curling, drone camera sweeping overhead"
+    },
+    {
+      "id": "model:apimart/kling-v3",
+      "kind": "video",
+      "aspect": "3:4",
+      "prompt": "A tiger walks slowly through a flooded neon-lit Tokyo backstreet at night, rain falling, reflections of pink and cyan signs shimmering in the water, low angle tracking"
+    },
+    {
+      "id": "model:apimart/kling-v4",
+      "kind": "video",
+      "aspect": "3:4",
+      "prompt": "A giant ancient sea turtle swims through the sunken ruins of a marble city, shafts of light cutting through turquoise water, schools of fish parting around it"
+    },
+    {
+      "id": "model:apimart/kling-v3-omni",
+      "kind": "video",
+      "aspect": "3:4",
+      "prompt": "A knight in obsidian armor kneels in a field of burning sunflowers, embers drifting upward, the camera circles slowly, smoke and golden rim light"
+    },
+    {
+      "id": "model:apimart/seedance-2.0",
+      "kind": "video",
+      "aspect": "3:4",
+      "prompt": "A dancer in a flowing indigo dress spins on a rooftop above a cloud sea at sunrise, fabric trailing in long arcs, handheld orbit shot"
+    },
+    {
+      "id": "model:apimart/wan3.0-video",
+      "kind": "video",
+      "aspect": "3:4",
+      "prompt": "A steampunk airship emerges from a towering cumulus cloud, brass propellers spinning, flocks of birds scattering, sweeping aerial shot at sunset"
+    },
+    {
+      "id": "model:apimart/MiniMax-H3",
+      "kind": "video",
+      "aspect": "3:4",
+      "prompt": "A crystal chandelier in an abandoned ballroom shatters in slow motion, thousands of glittering shards suspended in a beam of moonlight"
+    },
+    {
+      "id": "model:qwen/happyhorse-1.1",
+      "kind": "video",
+      "aspect": "3:4",
+      "prompt": "A herd of wild horses gallops through shallow surf on a black sand beach at dusk, water exploding in sprays of silver, low wide tracking shot"
+    },
+    {
+      "id": "model:google/gemini-nano-banana-2.1",
+      "kind": "image",
+      "aspect": "3:4",
+      "prompt": "A tiny banana-yellow submarine exploring a coral reef inside a glass snow globe on a wooden desk, warm lamp light, tilt-shift miniature photography"
+    },
+    {
+      "id": "model:google/gemini-3-pro-image",
+      "kind": "image",
+      "aspect": "3:4",
+      "prompt": "An ornate floating library carved into a mountain cliff above the clouds, warm windows glowing at twilight, waterfalls cascading off its terraces, hyperdetailed matte painting"
+    },
+    {
+      "id": "model:xai/grok-imagine-image-2.0",
+      "kind": "image",
+      "aspect": "3:4",
+      "prompt": "A lion with a mane of swirling galaxy nebula sitting on a cliff under a sky full of auroras, cinematic lighting, ultra detailed"
+    },
+    {
+      "id": "model:apimart/gpt-image-2.6-flare",
+      "kind": "image",
+      "aspect": "3:4",
+      "prompt": "A sleek retro-futuristic chrome motorcycle parked in a pastel desert canyon at noon, hard shadows, editorial product photography"
+    },
+    {
+      "id": "model:apimart/seedream-5-0-pro",
+      "kind": "image",
+      "aspect": "3:4",
+      "prompt": "A cozy treehouse cafe in a giant cherry blossom tree at dusk, string lights, petals drifting, Studio-quality fantasy illustration"
+    },
+    {
+      "id": "model:apimart/flux-2-max",
+      "kind": "image",
+      "aspect": "3:4",
+      "prompt": "Extreme close-up of a chameleon's eye with iridescent scales, dewdrops on its skin, 100mm macro, studio flash, photoreal"
+    },
+    {
+      "id": "tool:cinema-shot",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "Slow dolly in on a detective's desk in a smoky 1940s office, venetian blind shadows striping across a revolver, a fedora and a glass of whiskey, noir lighting"
+    },
+    {
+      "id": "tool:storyboard",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "Overhead view of a storyboard table covered in wordless hand-drawn charcoal sketch panels of a spaceship chase, pencils and a coffee cup, warm desk lamp"
+    },
+    {
+      "id": "tool:shots",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "A lone red telephone booth on a foggy cliff edge above the ocean, dramatic low angle wide shot, moody overcast light"
+    },
+    {
+      "id": "tool:transitions",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "A snow-covered forest seamlessly morphs into a blooming spring meadow as the camera flies forward, snow melting into flowers in one continuous shot"
+    },
+    {
+      "id": "tool:effects",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "A marble statue of a fox bursts into thousands of glowing golden particles that swirl upward into the night sky, slow motion"
+    },
+    {
+      "id": "tool:photo-styles",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "A claymation astronaut cat standing on a plasticine moon with visible fingerprints in the clay, stop-motion set lighting"
+    },
+    {
+      "id": "tool:click-to-ad",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "An unbranded matte black wireless headphone set spins in midair as neon soundwave light rings pulse around it, glossy studio commercial"
+    },
+    {
+      "id": "tool:product-scenes",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "An unlabeled soda can bursts out of a splash of ice-cold water and lime slices frozen mid-air, bullet-time orbit, crisp studio light"
+    },
+    {
+      "id": "tool:product-placement",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "A minimalist ceramic coffee mug on a sunlit Scandinavian kitchen counter beside a croissant, soft morning window light, lifestyle product photo"
+    },
+    {
+      "id": "tool:image-edit",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "A vintage armchair in an empty white room, half of it upholstered in emerald velvet and the other half in leopard print, split-styling interior photo"
+    },
+    {
+      "id": "tool:inpaint",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "A serene Japanese garden pond with a glowing portal of light rising from the water's center, koi circling it, photoreal"
+    },
+    {
+      "id": "tool:expand",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "An ultra wide panorama of a turquoise fjord with a tiny red cabin, towering cliffs stretching to the horizon, golden hour"
+    },
+    {
+      "id": "tool:relight",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "A bronze bust of a fictional ancient queen lit by dramatic magenta and cyan neon from opposite sides on a black background"
+    },
+    {
+      "id": "tool:skin-enhancer",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "Natural-light beauty close-up of a fictional freckled woman with soft realistic skin texture, golden hour window light, 85mm portrait"
+    },
+    {
+      "id": "tool:color-grade",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "A rainy city crosswalk at night graded in deep teal and orange, umbrellas and blurred taxi lights, cinematic film still"
+    },
+    {
+      "id": "tool:bg-remove",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "A fluffy orange cat mid-jump against a clean pure white seamless background, crisp edges, studio photo"
+    },
+    {
+      "id": "tool:breakdown",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "An exploded view illustration of a fantasy lantern, its glass, gears, flame and frame floating apart in layers, isometric, dark background"
+    },
+    {
+      "id": "tool:image-upscale",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "Ultra sharp macro of a dragonfly wing showing every vein and iridescent cell, 8k detail, black background"
+    },
+    {
+      "id": "tool:vector-gif",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "Flat vector illustration of a retro rocket launching over a stylised city, bold geometric shapes, limited palette of tangerine, navy and cream"
+    },
+    {
+      "id": "tool:face-swap",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "A fictional Renaissance-style oil portrait of a smiling young sailor in a ruffled collar, Rembrandt lighting, cracked varnish texture"
+    },
+    {
+      "id": "tool:character-swap",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "A fictional armored space ranger standing on a red Martian ridge with dust blowing, full body hero shot, cinematic"
+    },
+    {
+      "id": "tool:headshot",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "Professional studio headshot of a fictional confident woman in a charcoal blazer on a grey seamless backdrop, soft key light"
+    },
+    {
+      "id": "tool:try-on",
+      "kind": "image",
+      "aspect": "1:1",
+      "prompt": "A fashion editorial of a fictional model in a sculptural metallic silver trench coat on a windswept salt flat, high fashion photography"
+    },
+    {
+      "id": "tool:video-edit",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "A city park in autumn where the trees' leaves turn from green to burning orange in a wave sweeping across the frame, static wide shot"
+    },
+    {
+      "id": "tool:recast",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "A sleek silver robot walks confidently down a sunlit Parisian boulevard, pigeons scattering, tracking shot"
+    },
+    {
+      "id": "tool:restyle",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "A watercolor painted fox runs through a forest of ink-brush bamboo, paint bleeding with every step, hand-painted animation"
+    },
+    {
+      "id": "tool:motion-control",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "A fictional breakdancer in a neon tracksuit spins on his head on a rain-wet basketball court at night, full body, sparks of light"
+    },
+    {
+      "id": "tool:extend",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "An endless road through a purple lavender field at sunset, the camera keeps flying forward as the horizon reveals distant mountains"
+    },
+    {
+      "id": "tool:video-upscale",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "Crystal clear slow motion of a water droplet falling into a still pool, crown splash, ultra sharp, black background"
+    },
+    {
+      "id": "tool:video-bg-remove",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "A parrot with vivid rainbow feathers flaps its wings against a solid bright green screen backdrop, studio lighting"
+    },
+    {
+      "id": "tool:video-sfx",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "A steam locomotive thunders through a snowy pine forest, smoke billowing, close tracking shot along the wheels"
+    },
+    {
+      "id": "tool:talking-avatar",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "A fictional friendly animated owl professor in round spectacles speaks warmly to camera in a cozy candlelit library"
+    },
+    {
+      "id": "tool:lipsync",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "Close-up of a fictional jazz singer in a sparkling gown singing into a vintage microphone in a smoky club, warm spotlight"
+    },
+    {
+      "id": "tool:tts",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "Glowing golden audio waveform ribbons flowing through a dark velvet space like silk in the wind, abstract, slow motion"
+    },
+    {
+      "id": "tool:sfx",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "A thunderstorm over a dark ocean, a single bolt of lightning striking the waves and lighting the clouds violet, static wide shot"
+    },
+    {
+      "id": "tool:music",
+      "kind": "video",
+      "aspect": "1:1",
+      "prompt": "A grand piano on a mirrored lake at night, its keys glowing as musical notes of light rise into a starry sky"
+    },
+    {
+      "id": "preset:vfx",
+      "kind": "video",
+      "aspect": "9:16",
+      "prompt": "A figure made of polished liquid chrome rises from a pool of mercury, ripples of reflection running up its body, dark studio, slow motion"
+    },
+    {
+      "id": "preset:viral",
+      "kind": "video",
+      "aspect": "9:16",
+      "prompt": "A fluffy pink cloud surfs through a pastel sunset sky like a surfboard wave, confetti of stars trailing behind, dreamy and playful"
+    },
+    {
+      "id": "preset:photo-styles",
+      "kind": "image",
+      "aspect": "9:16",
+      "prompt": "A collectible 1/7 scale figurine of a fictional samurai fox on a wooden desk beside a plain unmarked kraft box, soft window light, product photography"
+    },
+    {
+      "id": "preset:ad-scenes",
+      "kind": "video",
+      "aspect": "9:16",
+      "prompt": "A giant unbranded sneaker towers like a monument over a city skyline at dusk as tiny crowds gather below, aerial pull back"
+    },
+    {
+      "id": "preset:restyles",
+      "kind": "video",
+      "aspect": "9:16",
+      "prompt": "A city street rendered as 1980s VHS camcorder footage morphing into hand-drawn anime, tracking lines and colour bleed, cars passing"
+    },
+    {
+      "id": "preset:headshots",
+      "kind": "image",
+      "aspect": "9:16",
+      "prompt": "Moody creative headshot of a fictional bearded man with silver hair against a dark backdrop, Rembrandt lighting, 85mm"
+    }
+  ]
+}

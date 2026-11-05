@@ -25,6 +25,8 @@ import { characterRoutes } from './lib/characters.js';
 import { appConfig, patchAppConfig, appVersion, appendAppLog, readAppLog, clearAppLog } from './lib/appconfig.js';
 import * as tools from './lib/tools.js'; // Higgsfield-parity one-click tools (server-driven registry)
 import { qwenModels, qwenTaskPing } from './lib/providers/qwen.js';
+import * as feed from './lib/feed.js'; // server-defined Home feed + preview media
+import * as characters from './lib/characters.js';
 
 const PORT = Number(process.env.ENGINE_PORT) || 4848;
 const HOST = process.env.ENGINE_HOST || '127.0.0.1';
@@ -159,7 +161,7 @@ route('POST', '/logout', ({ req }) => {
   return { ok: true, __cookie: oidcConfig() ? clearSessionCookie() : 'engine_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' };
 });
 route('GET', '/status', ({ url }) => status(url.searchParams.has('fresh')));
-route('GET', '/catalog', async () => { await status(); return { models: publicCatalog(), providers: PROVIDERS }; });
+route('GET', '/catalog', async () => { await status(); return { models: publicCatalog().map(feed.withModelPreview), providers: PROVIDERS }; });
 route('GET', '/settings', () => publicSettings());
 
 // Film Studio Apple app: server-driven config (tabs, web fallbacks, flags, defaults, copy) + remote diagnostics.
@@ -234,8 +236,15 @@ route('POST', '/generate', ({ body }) => {
 route('GET', '/jobs/:id', ({ params }) => jobs.getJob(params.id) || Promise.reject(new HttpError(404, 'job not found')));
 
 // ---- Tools (Higgsfield-parity apps): server-driven registry rendered by the web Tools page and the Apple app ----
-route('GET', '/tools', ({ url }) => tools.listTools({ all: url.searchParams.has('all') }));
-route('GET', '/tools/:id', async ({ params }) => (await tools.listTools()).find((t) => t.id === params.id) || Promise.reject(new HttpError(404, 'no such tool')));
+route('GET', '/tools', async ({ url }) => (await tools.listTools({ all: url.searchParams.has('all') })).map(feed.withToolPreview));
+route('GET', '/tools/:id', async ({ params }) => { const t = (await tools.listTools()).find((x) => x.id === params.id); if (!t) throw new HttpError(404, 'no such tool'); return feed.withToolPreview(t); });
+
+// ---- Home feed (engine/lib/feed.js): server-defined sections, editable in DATA/feed.json without an app update ----
+route('GET', '/feed', async () => feed.buildFeed({ models: publicCatalog(), tools: await tools.listTools(), characters: characters.list(), media: listAssets() }));
+route('GET', '/feed/config', () => feed.feedConfig());
+route('PATCH', '/feed', ({ body }) => feed.patchFeed(body));
+route('GET', '/feed/previews', () => feed.previewsMap());
+route('PATCH', '/feed/previews', ({ body }) => feed.setPreviews(body));
 route('POST', '/tools/:id/run', ({ params, body }) => { const job = tools.runTool(params.id, body.inputs || body); return { jobId: job.id, job }; });
 route('GET', '/cinema/presets', () => tools.cinemaPresets());
 route('POST', '/jobs/:id/cancel', ({ params }) => jobs.cancelJob(params.id) || Promise.reject(new HttpError(404, 'job not found')));
