@@ -143,7 +143,7 @@ already-verified pipeline.
 | Lipsync Studio | `lipsync`: clip + script/voice or audio | sync-3 (fal) | ✅ Verified |
 | Higgsfield Audio: TTS | `tts` | ElevenLabs (cloned + stock voices) | ✅ Verified |
 | Higgsfield Audio: sound effects | `sfx` (text) and `video-sfx` (synced to a clip) | ElevenLabs SFX; Mirelo SFX 2.0 (fal) | ✅ Verified |
-| Higgsfield Audio: music | `music` | Eleven Music | see Verification |
+| Higgsfield Audio: music | `music` | Eleven Music | ✅ Verified |
 | Higgsfield Audio: voice swap | Long-form voice changer (existing) | ElevenLabs speech-to-speech | 🟡 not exposed as a tool |
 | Higgsfield Audio: translate + lip-sync | `dub` | VEED Dubbing (fal) | ⏸ built, not verified |
 | Subtitles | — | — | ↗ VPS agent |
@@ -171,8 +171,8 @@ Studio models (Image / Video / Cinema pickers, `POST /generate`, Long-form):
 | `apimart/kling-v3-omni` | ApiMart | audio, start + end frame, up to 4 reference images, 720p/1080p/4K |
 | `apimart/veo3.1-lite` | ApiMart | cheapest Veo 3.1, 8 s |
 | `apimart/MiniMax-H3`, `apimart/MiniMax-Hailuo-2.3`, `apimart/kling-3.0-turbo`, `apimart/seedance-2.0-fast` | ApiMart | |
-| `fal/wan-3.0` | fal | one entry → `alibaba/wan-3.0/{text,image,reference}-to-video`; up to 10 identity references ("Image 1…"), ref clips/voices |
-| `qwen/happyhorse-1.1` | Qwen Token Plan | one entry → `happyhorse-1.1-{t2v,i2v,r2v}`; r2v = up to 9 identity references ("[Image N]") |
+| `fal/wan-3.0` | fal | one entry → `alibaba/wan-3.0/{text,image,reference}-to-video`; up to 10 identity references ("Image 1…"), ref clips/voices. Reference-to-video verified (VPS run) |
+| `qwen/happyhorse-1.1` | Qwen Token Plan | one entry → `happyhorse-1.1-{t2v,i2v,r2v}`; r2v = up to 9 identity references ("[Image N]"). t2v, i2v and r2v verified (VPS runs) |
 | existing `apimart/seedance-2.0` / `-2.5` | ApiMart | now accept reference images / clips / audio when there is no start frame |
 | existing ApiMart Veo 3.1 Fast / Quality | ApiMart | Long-form "extend" now uses the native remix extension for Veo clips ApiMart rendered |
 
@@ -193,11 +193,11 @@ motion control, video edit and Veo remix; ElevenLabs sound effects and music.
 
 ## Verification
 
-- **Offline:** `node --test engine/test/parity.test.mjs` runs 19 tests and makes no network calls. It checks the request bodies against
+- **Offline:** `node --test engine/test/parity.test.mjs` runs 20 tests and makes no network calls. It checks the request bodies against
   docs.apimart.ai and fal's OpenAPI schemas (ApiMart video/image/motion/edit, Qwen HappyHorse t2v/i2v/r2v and images,
   fal Wan 3.0) and the registry contract served to the Apple app. It also runs nine tools end-to-end with every provider
   call stubbed: background removal, talking avatar from audio and from a script, motion control, Recast, product scenes,
-  extend, transitions and inpaint. All 19 pass with Homebrew ffmpeg 9 and inside the bookworm image (ffmpeg 5.1.9) that
+  extend, transitions and inpaint. All 20 pass with Homebrew ffmpeg 9 and inside the bookworm image (ffmpeg 5.1.9) that
   production uses. The bookworm run also covers the `apad` and `alphamerge` filter graphs.
 - **Real runs** on a local engine (`ENGINE_PORT=4953`, keys only in the process environment). Each output was downloaded and
   inspected (frames, duration, alpha, dimensions):
@@ -227,7 +227,25 @@ motion control, video edit and Veo remix; ElevenLabs sound effects and music.
 | Recast on Kling 3.0 Omni edit | **failed the quality bar**: clip re-rendered, person not replaced → Recast moved to PixVerse Swap | ≈$0.32 |
 | Qwen-Image 3.0 Pro, Wan 2.7 Image Pro edit (Qwen plan) | perfect sign text; green raincoat with identity kept | plan credits |
 
-<!-- RUNS-VPS -->
+- **Real runs on the VPS test container** (`studio-test-parity`, built from this branch, keys via `--env-file` only,
+  removed afterwards). Each output was probed with ffprobe and checked frame by frame (4-frame strips); audio was checked
+  with `volumedetect`, and the music track with a waveform and spectrogram:
+
+| Tool / model | Result | Cost |
+|---|---|---|
+| Recast (PixVerse Swap, person) | the man replaces the woman in her talking clip; same performance, background and audio | ≈$0.05 |
+| Click to Ad (LLM hook → NB 2.1 keyframe → Veo 3.1 Fast, 9:16) | UGC ad, product label legible, spoken line with audio, 7.9 s | NB in Gemini row + Veo 3.1 Fast (not itemised by ApiMart) |
+| Wan 3.0 reference-to-video (fal), 480p, 2 s, one reference photo | 854×480, 2.02 s, audio; same woman (hair, cardigan, earrings) walks in a park, turns and waves | ≈$0.10 |
+| HappyHorse 1.1 t2v (Qwen plan), 480P, 3 s | 848×480, 3.16 s, audio; red kite over a green hill, on-prompt | plan credits |
+| HappyHorse 1.1 i2v (Qwen plan), 480P, 3 s | 640×640 (keeps the square start frame), audio; she smiles and tilts her head, identity kept | plan credits |
+| HappyHorse 1.1 r2v (Qwen plan), 480P, 3 s, one reference photo | 848×480, audio; same woman walks down a park path and waves | plan credits |
+| Upscale Video (SeedVR2, 2×) on a 2 s 480² clip | 960², 2 s, audio kept; visibly sharper lashes, iris and skin texture, no flicker across frames | ≈$0.04 |
+| Video Background Remover (Bria VRMBG 3.0, green) on the same clip | clean green key around hair and shoulders on every frame, audio kept | ≈$0.10 |
+| Music (Eleven Music, 10 s, instrumental "warm lo-fi piano loop") | 10.0 s stereo mp3, −18 dB mean; repeating 2.5 s phrase with note onsets and broadband texture (checked by waveform and spectrogram, not by ear) | ElevenLabs credits |
+
+All three HappyHorse runs were billed to the Token Plan key, which confirms the plan is entitled to HappyHorse. HappyHorse is
+the only video model the plan includes.
+
 
 ## Backlog (ranked)
 

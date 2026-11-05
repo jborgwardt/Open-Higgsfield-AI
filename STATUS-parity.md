@@ -23,26 +23,28 @@ Run on a local Mac engine before the switch to VPS-only testing:
 ## Verified on the VPS test container (studio-test-parity)
 - `recast` (PixVerse Swap, person): the man replaces the woman in her talking clip, same performance/background/audio — ✅
 - `click-to-ad` (LLM hook → NB keyframe → Veo 3.1 Fast): 9:16 UGC ad, product label legible, spoken line with audio — ✅
+- `fal/wan-3.0` reference-to-video, 480p 2 s: same woman walks in a park and waves, with audio — ✅
+- `qwen/happyhorse-1.1` t2v / i2v / r2v, 480P 3 s, on the Token Plan: all on-prompt, identity kept, with audio — ✅
+- `video-upscale` (SeedVR2 2×, 480² → 960²): sharper detail, no flicker — ✅
+- `video-bg-remove` (Bria VRMBG, green): clean key on every frame, audio kept — ✅
+- `music` (Eleven Music, 10 s): stereo mp3, real musical content (waveform + spectrogram; not checked by ear) — ✅
 
-## Not yet verified (next, on the VPS test container)
-3. fal Wan 3.0 reference-to-video, 480p 2 s (≈$0.10)
-4. Qwen HappyHorse t2v / i2v / r2v, 3 s 480P (plan credits)
-5. Upscale Video (SeedVR2 small clip ≈$0.04), Video BG Remover (Bria 2 s ≈$0.10), Music (Eleven Music, credits)
-Anything that fails → `enabled: false` in `engine/lib/tools.js` + note in the parity doc.
+Every output was probed and inspected (frame strips, volumedetect). Nothing failed, so no tool or model was disabled.
+The container was not rebuilt for the final inspection: an rsync dry-run showed the code on the VPS matched this branch
+(only the two docs differed).
 
-## How to resume (VPS test, no keys on the Mac)
-```
-rsync -a --delete --exclude node_modules --exclude .git --exclude engine-data --exclude dist ./ root@100.64.0.4:/opt/studio-test/parity/
-ssh root@100.64.0.4 'cd /opt/studio-test/parity && docker build -t studio:parity . && docker rm -f studio-test-parity; docker run -d --name studio-test-parity -p 127.0.0.1:4962:4848 -e ENGINE_HOST=0.0.0.0 -v studio-test-parity:/data --env-file /opt/studio/.env studio:parity'
-```
-Drive it with `docker exec studio-test-parity node -e '…fetch("http://127.0.0.1:4848/engine/api/…")…'`. Loopback inside the
-container needs the maintenance Bearer token from `/data/settings.json` (`accessToken`) when the engine isn't bound to loopback.
+## Tests
+`node --test engine/test/*.test.mjs` → 20/20 on the Mac and inside `studio:parity` (bookworm, ffmpeg 5.1.9).
 
-## Test containers on the VPS (remove when done)
-- container `studio-test-parity`, volume `studio-test-parity`, image `studio:parity`, dir `/opt/studio-test/parity`
-  → `ssh root@100.64.0.4 'docker rm -f studio-test-parity; docker volume rm studio-test-parity; docker rmi studio:parity; rm -rf /opt/studio-test/parity'`
+## Still disabled (backlog)
+- `draw-to-video`, `dub` — built, never run for real (see docs/higgsfield-parity.md backlog 1–2).
 
-## Paid calls so far (estimates; ApiMart from its /v1/usage endpoint)
+## VPS test resources
+Removed: container `studio-test-parity`, volume `studio-test-parity`, image `studio:parity`, dir `/opt/studio-test/parity`.
+Left on the VPS for Justin to decide: `/opt/studio-test/parity-fx` (fixtures + frame strips) and `/opt/studio-test/parity.env`
+(holds a FAL_KEY copy, mode 600) — both created by the earlier session and not in the cleanup list.
+
+## Paid calls (estimates; ApiMart from its /v1/usage endpoint)
 | Call | Cost |
 |---|---|
 | ApiMart: Seedream 5.0 Pro edit | $0.056 |
@@ -60,5 +62,10 @@ container needs the maintenance Bearer token from `/data/settings.json` (`access
 | fal: PixVerse Swap, Mirelo SFX 3 s | $0.05 + $0.03 |
 | fal: FLUX Fill, Bria Expand, Seedream Layerize, Google VTO | ≈$0.08 + $0.04 + $0.034 + $0.075 |
 | Gemini: Nano Banana 2.1 ×9 (face swap ×2, 3D figure, relight, storyboard ×2, shots ×2, click-to-ad keyframe) | ≈$0.60 |
-| ElevenLabs TTS/SFX, Qwen plan images | subscription credits |
-| **Total** | **≈ $4.0** |
+| VPS: fal PixVerse Swap (Recast) | ≈$0.05 |
+| VPS: ApiMart Veo 3.1 Fast 8 s (Click to Ad) | not itemised by ApiMart (≈$0.15 est.) |
+| VPS: fal Wan 3.0 r2v 480p 2 s | ≈$0.10 |
+| VPS: fal SeedVR2 video 2 s, Bria VRMBG 2 s | ≈$0.04 + $0.10 |
+| ElevenLabs TTS/SFX/Music, Qwen plan images + HappyHorse ×3 | subscription credits |
+| Final session (inspection, tests, docs) | $0 — reused the outputs already rendered |
+| **Total** | **≈ $4.4** |
