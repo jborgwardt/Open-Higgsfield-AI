@@ -116,3 +116,11 @@ test('diagnostics: batch append, newest first, filters, ring buffer, clear', asy
   assert.equal((await call(local.base, 'DELETE', '/app/log')).status, 200);
   assert.equal((await call(local.base, 'GET', '/app/log')).body.length, 0);
 });
+
+test('the defaults bundled in the app match the engine defaults', async () => {
+  const fs = await import('node:fs');
+  const { OUT } = await import('./export-default-config.mjs');
+  const { body } = await call(local.base, 'GET', '/app/config');
+  const { updatedAt, ...served } = body;
+  assert.deepEqual(JSON.parse(fs.readFileSync(OUT, 'utf8')), served, 'run: node apple/scripts/export-default-config.mjs');
+});
