@@ -52,7 +52,8 @@ export async function loginRedirect(req, next = '/') {
   const verifier = b64url(crypto.randomBytes(48));
   const challenge = b64url(crypto.createHash('sha256').update(verifier).digest());
   for (const [k, v] of pending) if (Date.now() - v.at > 600000) pending.delete(k);
-  pending.set(state, { verifier, nonce, next: String(next).startsWith('/') ? next : '/', at: Date.now() });
+  // Same-site paths only ("//host" and "/\host" are protocol-relative URLs to another site).
+  pending.set(state, { verifier, nonce, next: /^\/(?![/\\])/.test(String(next)) ? String(next) : '/', at: Date.now() });
   const q = new URLSearchParams({
     response_type: 'code',
     client_id: cfg.clientId,
@@ -70,12 +71,22 @@ const decodeJwt = (t) => JSON.parse(Buffer.from(String(t).split('.')[1] || '', '
 
 /** Finish the redirect: exchange the code, check the identity, open a session. */
 export async function finishLogin(req, url) {
+  const st = pending.get(url.searchParams.get('state'));
+  if (st) pending.delete(url.searchParams.get('state'));
+  try {
+    return await completeLogin(req, url, st);
+  } catch (e) {
+    // Let the caller send a failed native (app) sign-in back to the app instead of the web UI.
+    if (st) e.next = st.next;
+    throw e;
+  }
+}
+
+async function completeLogin(req, url, st) {
   const cfg = oidcConfig();
   const doc = await discover(cfg);
   if (url.searchParams.get('error')) throw new Error(url.searchParams.get('error_description') || url.searchParams.get('error'));
-  const st = pending.get(url.searchParams.get('state'));
   if (!st) throw new Error('This sign-in link expired — start again');
-  pending.delete(url.searchParams.get('state'));
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code: url.searchParams.get('code') || '',
@@ -101,7 +112,7 @@ export async function finishLogin(req, url) {
   }
   const user = { sub: claims.sub, email: (claims.email || '').toLowerCase(), name: claims.name || claims.preferred_username || claims.email || 'You', groups: claims.groups || [] };
   authorize(cfg, user);
-  return { session: createSession(user), next: st.next };
+  return { session: createSession(isNativeNext(st.next) ? { ...user, client: 'native' } : user), next: st.next };
 }
 
 /** Allowlist by email/group if configured; otherwise the first person to sign in owns this studio. */
@@ -144,3 +155,48 @@ export function endSession(id) {
 
 export const sessionCookie = (id, secure) => `engine_session=${id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}${secure ? '; Secure' : ''}`;
 export const clearSessionCookie = () => 'engine_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0';
+
+/* ---------------- native app sign-in ---------------- */
+// The Film Studio app signs in with ASWebAuthenticationSession:
+//   /engine/auth/native?state=… → Pocket ID (passkey) → /engine/auth/callback
+//   → /engine/auth/native?state=…&handoff=… → filmstudio://auth?session=…&state=…
+// The app then sends that session as `Authorization: Bearer`. It is an ordinary session (same lifetime,
+// same allowlist/owner check) that is never set as a browser cookie, and the native route only hands out
+// a session minted by the sign-in that just happened — never an existing browser session.
+
+export const NATIVE_PATH = '/engine/auth/native';
+const NATIVE_CALLBACK = 'filmstudio://auth'; // the only place a native sign-in ever redirects to
+const HANDOFF_MS = 120000;
+const handoffs = new Map(); // sha256(code) -> { session, at }
+const sha = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
+
+export function isNativeNext(next) {
+  try { return new URL(String(next), 'http://engine.invalid').pathname === NATIVE_PATH; } catch { return false; }
+}
+
+/** The app's anti-forgery state, echoed back untouched (opaque, URL-safe, bounded). */
+export const nativeState = (v) => (/^[\w-]{1,128}$/.test(String(v ?? '')) ? String(v) : '');
+
+/** One-time, short-lived code that carries a fresh session from the callback to the native redirect. */
+export function nativeHandoff(session) {
+  for (const [k, v] of handoffs) if (Date.now() - v.at > HANDOFF_MS) handoffs.delete(k);
+  const code = b64url(crypto.randomBytes(24));
+  handoffs.set(sha(code), { session, at: Date.now() });
+  return code;
+}
+
+export function redeemHandoff(code) {
+  if (!code) return null;
+  const k = sha(code);
+  const h = handoffs.get(k);
+  handoffs.delete(k);
+  return h && Date.now() - h.at <= HANDOFF_MS && sessionFor(h.session) ? h.session : null;
+}
+
+export function nativeRedirect({ session, state, error } = {}) {
+  const q = new URLSearchParams();
+  if (session) q.set('session', session);
+  if (error) q.set('error', String(error).slice(0, 300));
+  if (nativeState(state)) q.set('state', nativeState(state));
+  return `${NATIVE_CALLBACK}?${q}`;
+}

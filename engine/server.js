@@ -14,7 +14,7 @@ import { openaiPing } from './lib/providers/openai.js';
 import { directorBackend } from './lib/director.js';
 import { hasFfmpeg } from './lib/ffmpeg.js';
 import { soundCatalog } from './lib/sound.js';
-import { oidcConfig, loginRedirect, finishLogin, sessionFor, endSession, sessionCookie, clearSessionCookie } from './lib/oidc.js';
+import { oidcConfig, loginRedirect, finishLogin, sessionFor, endSession, sessionCookie, clearSessionCookie, NATIVE_PATH, isNativeNext, nativeState, nativeHandoff, redeemHandoff, nativeRedirect } from './lib/oidc.js';
 import { fetchJSON } from './lib/http.js';
 import { apimartModels, APIMART_LLMS } from './lib/providers/apimart.js';
 import { elevenSubscription, elevenVoices, elevenAvailable, ELEVEN_TTS_MODELS } from './lib/providers/eleven.js';
@@ -30,11 +30,13 @@ function cookie(req, name) {
   return m ? decodeURIComponent(m[1]) : null;
 }
 const isLoopback = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress) && !req.headers['x-forwarded-for'];
+const bearerOf = (req) => req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || null;
 function currentUser(req) {
-  return oidcConfig() ? sessionFor(cookie(req, 'engine_session')) : null;
+  // A Pocket ID session: the browser's cookie, or the same kind of session as a Bearer token (the Apple app).
+  return oidcConfig() ? sessionFor(cookie(req, 'engine_session')) || sessionFor(bearerOf(req)) : null;
 }
 function authed(req, url) {
-  const bearer = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  const bearer = bearerOf(req);
   if (oidcConfig()) {
     // Pocket ID is the only way in; the access code is accepted only from the server itself (maintenance).
     return !!currentUser(req) || (isLoopback(req) && !!bearer && tokenMatches(bearer));
@@ -141,7 +143,11 @@ route('POST', '/login', ({ req, body }) => {
   const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
   return { ok: true, __cookie: `engine_token=${encodeURIComponent(accessToken())}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure}` };
 });
-route('POST', '/logout', ({ req }) => { endSession(cookie(req, 'engine_session')); return { ok: true, __cookie: oidcConfig() ? clearSessionCookie() : 'engine_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' }; });
+route('POST', '/logout', ({ req }) => {
+  endSession(cookie(req, 'engine_session'));
+  if (oidcConfig() && sessionFor(bearerOf(req))) endSession(bearerOf(req)); // the app signing out
+  return { ok: true, __cookie: oidcConfig() ? clearSessionCookie() : 'engine_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' };
+});
 route('GET', '/status', ({ url }) => status(url.searchParams.has('fresh')));
 route('GET', '/catalog', async () => { await status(); return { models: publicCatalog(), providers: PROVIDERS }; });
 route('GET', '/settings', () => publicSettings());
@@ -235,9 +241,35 @@ const server = http.createServer(async (req, res) => {
     if (p === '/engine/auth/callback') {
       try {
         const { session, next } = await finishLogin(req, url);
+        if (isNativeNext(next)) {
+          // App sign-in: no browser cookie; hand the fresh session to /engine/auth/native with a one-time code.
+          const u = new URL(next, 'http://engine.invalid');
+          u.searchParams.set('handoff', nativeHandoff(session));
+          return send(res, 302, '', { Location: `${NATIVE_PATH}${u.search}` });
+        }
         return send(res, 302, '', { Location: next, 'Set-Cookie': sessionCookie(session, secureReq(req)) });
       } catch (e) {
+        if (isNativeNext(e.next)) {
+          const state = nativeState(new URL(e.next, 'http://engine.invalid').searchParams.get('state'));
+          return send(res, 302, '', { Location: nativeRedirect({ error: e.message, state }) });
+        }
         return send(res, 302, '', { Location: `/?auth_error=${encodeURIComponent(e.message)}` });
+      }
+    }
+    // Native (Film Studio app) sign-in via ASWebAuthenticationSession. Only ever redirects to filmstudio://auth.
+    if (p === NATIVE_PATH) {
+      const state = nativeState(url.searchParams.get('state'));
+      const handoff = url.searchParams.get('handoff');
+      if (handoff) {
+        const session = redeemHandoff(handoff);
+        return send(res, 302, '', { Location: session ? nativeRedirect({ session, state }) : nativeRedirect({ error: 'This sign-in link expired — start again', state }) });
+      }
+      if (!oidcConfig()) return send(res, 302, '', { Location: nativeRedirect({ error: 'Pocket ID sign-in is not configured on this server', state }) });
+      // Always a fresh passkey sign-in: an existing browser session is never handed to an app.
+      try {
+        return send(res, 302, '', { Location: await loginRedirect(req, `${NATIVE_PATH}${state ? `?state=${state}` : ''}`) });
+      } catch (e) {
+        return send(res, 302, '', { Location: nativeRedirect({ error: `Pocket ID unreachable: ${e.message}`, state }) });
       }
     }
     const open = p === '/engine/api/health' || p === '/engine/api/login' || p === '/engine/api/logout';
