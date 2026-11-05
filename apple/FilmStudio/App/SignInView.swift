@@ -15,7 +15,7 @@ struct SignInView: View {
                     Image("BrandMark")
                         .resizable()
                         .frame(width: 104, height: 104)
-                        .shadow(color: .orange.opacity(0.3), radius: 28)
+                        .shadow(color: Color.lime.opacity(0.22), radius: 28) // on-palette glow (was orange)
                         .accessibilityHidden(true)
                     VStack(spacing: 10) {
                         Text("FILM STUDIO")

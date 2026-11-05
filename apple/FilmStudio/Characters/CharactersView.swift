@@ -35,6 +35,7 @@ struct CharactersView: View {
             .refreshable { await load() }
             .task(id: app.refreshTick) { await load() }
             .navigationDestination(item: $opened) { CharacterDetailView(id: $0) }
+            .onChange(of: app.requestNewCharacter, initial: true) { _, v in if v { creating = true; app.requestNewCharacter = false } }
             .sheet(isPresented: $creating) {
                 NewCharacterSheet { c in
                     Task { await load(); opened = c?.id }

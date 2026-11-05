@@ -25,6 +25,8 @@ final class AppModel {
     /// nil = unknown yet, false = the server doesn't have the Characters API (404).
     var charactersAvailable: Bool?
     var sessionExpired = false
+    /// Signed in, but the server didn't answer at launch: Home runs from the cached feed / catalog.
+    var isOffline = false
     var signInError: String?
     var isSigningIn = false
     /// Bumped to make every visible screen reload (pull to refresh everywhere, ⌘R, after re-auth).
@@ -35,6 +37,13 @@ final class AppModel {
     /// Cross-screen requests (handled by the window that shows the target screen).
     var requestedTab: String?
     var requestNewFilm = false
+    var requestNewCharacter = false
+    /// > 0 while a full-screen viewer is pushed: the floating tab bar steps aside.
+    var immersiveDepth = 0
+    /// Tabs the current window can switch to (iPhone: only the ones in the tab bar). Set by MainView.
+    @ObservationIgnored var reachableTabs: Set<String> = []
+    /// Bumped when the selected tab is tapped again: its root scrolls back to the top.
+    var scrollToTopTick: [String: Int] = [:]
     var pendingStartFrame: UploadedAsset?
     var webSheet: WebSheetRequest?
     /// Film directors and the server-side choice (no default — the user must pick).
@@ -117,6 +126,7 @@ final class AppModel {
         do {
             let h = try await client.health()
             health = h
+            isOffline = false
             if h.authed {
                 phase = .ready
                 await afterSignIn()
@@ -124,8 +134,23 @@ final class AppModel {
                 phase = .signIn
             }
         } catch {
+            // Offline with a session and a cached Home: open it instead of a dead end; retried on foreground.
+            if case APIError.transport = error, token != nil, feed != nil || catalog != nil {
+                isOffline = true
+                phase = .ready
+                return
+            }
             phase = .unreachable(error.localizedDescription)
         }
+    }
+
+    /// Offline banner "Retry" / foreground: try the server again without leaving the cached screens.
+    func retryOnline() async {
+        guard isOffline else { return }
+        guard let h = try? await client.health() else { return }
+        health = h
+        isOffline = false
+        if h.authed { await afterSignIn(); refreshTick += 1 } else { phase = .signIn }
     }
 
     private func afterSignIn() async {
@@ -152,7 +177,9 @@ final class AppModel {
     }
 
     func foregrounded() async {
-        if phase == .ready {
+        if isOffline {
+            await retryOnline()
+        } else if phase == .ready {
             await refreshConfig()
             await diagnostics.flush()
         } else if case .unreachable = phase {
@@ -292,18 +319,25 @@ final class AppModel {
         isSigningIn = true
         signInError = nil
         defer { isSigningIn = false }
-        do { try await adopt(token: accessCode.trimmingCharacters(in: .whitespacesAndNewlines)) } catch { signInError = error.localizedDescription }
+        do { try await adopt(token: accessCode.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        catch let e as APIError where e.isUnauthorized { signInError = "Wrong access code. Check it and try again." }
+        catch { signInError = error.localizedDescription }
     }
 
     private func adopt(token: String) async throws {
         let previous = tokens.token(for: serverURL)
         tokens.setToken(token, for: serverURL)
-        let h = try await client.health()
+        let h: Health
+        do { h = try await client.health() } catch {
+            tokens.setToken(previous, for: serverURL)
+            throw error
+        }
         guard h.authed else {
             tokens.setToken(previous, for: serverURL)
             throw APIError.unauthorized("The studio did not accept this sign-in.")
         }
         health = h
+        isOffline = false
         phase = .ready
         await afterSignIn()
         refreshTick += 1

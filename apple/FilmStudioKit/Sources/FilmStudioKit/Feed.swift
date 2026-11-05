@@ -74,6 +74,8 @@ public struct FeedAction: Sendable, Hashable, Encodable {
     }
 
     public func param(_ key: String) -> String? { params[key]?.string?.nonEmpty }
+    /// `{ new: true }` style switches (also "1" / "true" strings).
+    public func flag(_ key: String) -> Bool { params[key]?.isTruthy ?? false }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: AnyKey.self)
@@ -278,8 +280,8 @@ public enum FeedBuilder {
                          action: FeedAction(type: "character", params: ["id": .string(c.id)]))
             }, more: FeedAction(type: "characters")))
         }
-        sections.append(FeedSection(id: "recent", title: "Recent", style: .shelf, items: input.media.prefix(12).map { m in
-            FeedItem(id: "media-\(m.id)", kind: "media", title: m.prompt.nonEmpty.map { String($0.prefix(60)) } ?? m.model, subtitle: m.model,
+        sections.append(FeedSection(id: "recent", title: "Recent", style: .shelf, items: input.media.filter(\.isCreation).prefix(12).map { m in
+            FeedItem(id: "media:\(m.id)", kind: "media", title: m.prompt.nonEmpty.map { String($0.prefix(60)) } ?? m.model, subtitle: m.model,
                      preview: m.isVideo ? MediaPreview(url: m.url, poster: m.thumb, kind: "video") : MediaPreview(url: m.url, kind: "image"), aspect: 1,
                      action: FeedAction(type: "media", params: ["id": .string(m.id)]))
         }, more: FeedAction(type: "library")))

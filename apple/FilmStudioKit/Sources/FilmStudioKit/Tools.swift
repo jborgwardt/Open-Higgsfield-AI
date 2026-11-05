@@ -17,6 +17,8 @@ public struct Tool: Decodable, Sendable, Identifiable, Hashable {
     public var thumbnail: String?
     /// Example media (previewUrl / previewPoster / previewKind).
     public var preview: MediaPreview?
+    /// Either/or inputs: at least one key of each group must be filled ("Photo or Saved character").
+    public var oneOf: [[String]] = []
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
@@ -32,6 +34,7 @@ public struct Tool: Decodable, Sendable, Identifiable, Hashable {
         output = c.string("output", default: "image")
         thumbnail = c.string("thumbnail") ?? c.string("thumb") ?? c.string("image") ?? c.string("coverUrl") ?? c.string("preview") ?? c.json("example")?["image"]?.string
         preview = MediaPreview(c, fallbackStill: thumbnail)
+        oneOf = (c.json("oneOf")?.array ?? []).map { ($0.array ?? []).compactMap(\.string) }.filter { $0.count > 1 }
     }
 
     /// Group by category, keeping the server's order.
@@ -44,7 +47,18 @@ public struct Tool: Decodable, Sendable, Identifiable, Hashable {
 
     /// Validates required inputs; returns the labels that are missing.
     public func missingInputs(in values: [String: JSONValue]) -> [String] {
-        inputs.filter { $0.required && !$0.kind.isPassive && !(values[$0.key]?.isFilled ?? false) }.map(\.label)
+        let filled = { (k: String) in values[k]?.isFilled ?? false }
+        var out = inputs.filter { $0.required && !$0.kind.isPassive && !filled($0.key) }.map(\.label)
+        for group in oneOf where !group.contains(where: filled) {
+            let labels = group.enumerated().map { i, k -> String in
+                var l = inputs.first { $0.key == k }?.label ?? k
+                guard i > 0 else { return l }
+                if l.lowercased().hasPrefix("or ") { l = String(l.dropFirst(3)) }
+                return l.prefix(1).lowercased() + l.dropFirst()
+            }
+            out.append(labels.joined(separator: " or "))
+        }
+        return out
     }
 
     /// Initial values from each input's default.

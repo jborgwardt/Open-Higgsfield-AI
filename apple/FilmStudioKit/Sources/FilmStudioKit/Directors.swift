@@ -44,14 +44,15 @@ public struct DirectorCatalog: Sendable, Hashable {
 
     public init(options: [DirectorOption], current: DirectorChoice?) { self.options = options; self.current = current }
 
-    /// Accepts `[...]`, `{ directors: [...] }`, `{ options: [...] }`, or an object keyed by provider, plus
-    /// an optional current choice under `current` / `selected` / `directorProvider`+`directorModel`.
+    /// Accepts `[...]`, `{ providers: [...] }` (the engine's GET /directors), `{ directors: [...] }`, `{ options: [...] }`,
+    /// or an object keyed by provider, plus an optional current choice under `current` / `selected`(+`model`) /
+    /// `directorProvider`+`directorModel`.
     public static func parse(_ v: JSONValue) -> DirectorCatalog {
         var list: [DirectorOption] = []
         if let a = v.array {
             list = a.compactMap { DirectorOption(json: $0) }
         } else if let o = v.object {
-            if let a = (o["directors"] ?? o["options"] ?? o["available"])?.array {
+            if let a = (o["providers"] ?? o["directors"] ?? o["options"] ?? o["available"])?.array {
                 list = a.compactMap { DirectorOption(json: $0) }
             } else if let keyed = (o["directors"] ?? o["options"])?.object {
                 list = keyed.compactMap { DirectorOption(json: $0.value, key: $0.key) }.sorted { $0.label < $1.label }
@@ -65,7 +66,7 @@ public struct DirectorCatalog: Sendable, Hashable {
         if let c = (o["current"] ?? o["selected"] ?? o["chosen"])?.object {
             return DirectorChoice(provider: c["provider"]?.string ?? c["id"]?.string ?? "", model: c["model"]?.string ?? "")
         }
-        if let s = (o["current"] ?? o["selected"])?.string { return DirectorChoice(provider: s) }
+        if let s = (o["current"] ?? o["selected"])?.string { return DirectorChoice(provider: s, model: o["model"]?.string ?? o["directorModel"]?.string ?? "") }
         if let p = o["directorProvider"]?.string { return DirectorChoice(provider: p, model: o["directorModel"]?.string ?? "") }
         return nil
     }
@@ -96,7 +97,7 @@ public struct DirectorCatalog: Sendable, Hashable {
             DirectorOption(id: "google", label: "Gemini", available: has("google"), note: "Gemini API key"),
             DirectorOption(id: "apimart", label: "ApiMart", available: has("apimart"), models: apimartModels),
             DirectorOption(id: "openai", label: "Local LLM", available: llm?["online"]?.isTruthy ?? false, models: llmModels),
-            DirectorOption(id: "local", label: "No AI (split my script)", available: true, note: "Splits the script into shots without an LLM"),
+            DirectorOption(id: "split", label: "No AI (split my script)", available: true, note: "Splits the script into shots without an LLM"),
         ]
         return DirectorCatalog(options: options, current: nil)
     }
@@ -127,9 +128,14 @@ public extension APIClient {
         return result
     }
 
-    /// Persists the director choice on the server (POST /settings).
+    /// Persists the director choice on the server: POST /directors (validates the id), else POST /settings on older engines.
     func setDirector(_ choice: DirectorChoice) async throws {
-        try await call("POST", "/settings", json: ["directorProvider": .string(choice.provider), "directorModel": .string(choice.model)])
+        let provider = choice.provider == "local" ? "split" : choice.provider
+        do {
+            try await call("POST", "/directors", json: ["provider": .string(provider), "model": .string(choice.model)])
+        } catch let e as APIError where e.isMissingRoute {
+            try await call("POST", "/settings", json: ["directorProvider": .string(provider), "directorModel": .string(choice.model)])
+        }
     }
 }
 

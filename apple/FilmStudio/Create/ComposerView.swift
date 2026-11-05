@@ -184,7 +184,7 @@ struct ComposerView: View {
                 MediaBadge(text: "Ready · tap to open", lime: true)
             } else {
                 if let badge = model.map({ app.catalog?.providerLabel($0.provider) ?? $0.provider }), stageTitle == nil { MediaBadge(text: badge) }
-                DisplayTitle(stageTitle ?? model?.label ?? (app.catalog == nil ? "Loading models" : "No \(kind) models"), size: 40)
+                DisplayTitle(stageTitle ?? model?.displayName ?? (app.catalog == nil ? "Loading models" : "No \(kind) models"), size: 40)
                     .foregroundStyle(.white)
                 if let sub = (stageSubtitle ?? model?.blurb)?.nonEmpty {
                     Text(sub).font(.subheadline).foregroundStyle(Color.textSecondary).lineLimit(2)
@@ -263,10 +263,10 @@ struct ComposerView: View {
                 .buttonStyle(.lime(.large, fullWidth: true))
                 .disabled(!canGenerate)
                 .keyboardShortcut(.return, modifiers: .command)
-                .accessibilityHint(model?.requiresStartImage == true && startFrame == nil ? "\(model?.label ?? "This model") needs a start frame" : "")
+                .accessibilityHint(model?.requiresStartImage == true && startFrame == nil ? "\(model?.displayName ?? "This model") needs a start frame" : "")
             }
             if let m = model, m.requiresStartImage, startFrame == nil {
-                Text("\(m.label) needs a start frame — tap + Start frame.").font(.caption).foregroundStyle(Color.textSecondary)
+                Text("\(m.displayName) needs a start frame — tap + Start frame.").font(.caption).foregroundStyle(Color.textSecondary)
             }
         }
         .padding(16)
@@ -290,10 +290,10 @@ struct ComposerView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 Button { pickingModel = true } label: {
-                    StudioChip(title: model?.label ?? "Model", systemImage: mode.symbol, selected: true, showsChevron: true)
+                    StudioChip(title: model?.displayName ?? "Model", systemImage: mode.symbol, selected: true, showsChevron: true)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Model: \(model?.label ?? "none")")
+                .accessibilityLabel("Model: \(model?.displayName ?? "none")")
                 if let m = model {
                     if !m.aspects.isEmpty {
                         optionMenu(title: aspect, icon: "aspectratio", options: m.aspects.map { ($0, $0) }) { aspect = $0 }
@@ -464,7 +464,7 @@ struct ComposerView: View {
         Platform.impact()
         promptFocused = false
         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-            currentRun = app.generations.start(title: m.label, subtitle: request.prompt, kind: m.kind, source: "create", app: app) {
+            currentRun = app.generations.start(title: m.displayName, subtitle: request.prompt, kind: m.kind, source: "create", app: app) {
                 try await client.generate(request)
             }
         }
@@ -576,8 +576,8 @@ private struct ModelCard: View {
                 .overlay(alignment: .topTrailing) {
                     if selected { Image(systemName: "checkmark.circle.fill").font(.title3).foregroundStyle(Color.onLime, Color.lime).padding(7) }
                 }
-            Text(model.label.uppercased()).font(.display(19, weight: .heavy)).foregroundStyle(.white).lineLimit(2)
-            if !model.blurb.isEmpty { Text(model.blurb).font(.caption).foregroundStyle(Color.textSecondary).lineLimit(2) }
+            Text(model.displayName.uppercased()).font(.display(19, weight: .heavy)).foregroundStyle(.white).lineLimit(2, reservesSpace: true)
+            Text(model.blurb.nonEmpty ?? " ").font(.caption).foregroundStyle(Color.textSecondary).lineLimit(2, reservesSpace: true)
             Text(capabilities).font(.caption2.weight(.medium)).foregroundStyle(Color.textTertiary).lineLimit(1)
         }
         .contentShape(Rectangle())

@@ -12,6 +12,10 @@ struct BriefEditor: View {
     @State private var saving = false
     @State private var error: String?
     @State private var ready = false
+    @State private var confirmDiscard = false
+    @FocusState private var focused: Field?
+    private enum Field: Hashable { case title, script, style }
+    private var dirty: Bool { ready && brief != original }
 
     private var isNew: Bool { production == nil }
     private var videoModel: ModelInfo? { app.catalog?.model(brief.videoModel) }
@@ -26,10 +30,12 @@ struct BriefEditor: View {
             ScreenGate(id: "newFilm", title: isNew ? "New Film" : "Brief") {
                 Form {
                     Section("Story") {
-                        TextField("Title", text: $brief.title)
+                        TextField("Title", text: $brief.title).focused($focused, equals: .title).submitLabel(.next)
+                            .onSubmit { focused = .script }
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Script").font(.caption).foregroundStyle(.secondary)
                             TextEditor(text: $brief.script)
+                                .focused($focused, equals: .script)
                                 .frame(minHeight: 180)
                                 .font(.body)
                                 .scrollContentBackground(.hidden)
@@ -42,6 +48,7 @@ struct BriefEditor: View {
                         }
                         TextField("Visual style (optional) — e.g. 35 mm film, soft dawn light, muted greens", text: $brief.style, axis: .vertical)
                             .lineLimit(1...3)
+                            .focused($focused, equals: .style)
                     }
 
                     Section {
@@ -83,6 +90,10 @@ struct BriefEditor: View {
                     Section {
                         Toggle("Assemble automatically", isOn: $brief.autoAssemble)
                         Toggle("Fade between scenes", isOn: $brief.sceneFades)
+                        Toggle("Screen each cut with Gemini", isOn: $brief.autoScreen)
+                        Toggle("Check character likeness", isOn: $brief.likenessQA)
+                    } footer: {
+                        Text("Screening and likeness checks are paid Gemini calls. Turn them off for free or offline films.")
                     }
 
                     if let error { Section { Text(error).foregroundStyle(.red) } }
@@ -90,10 +101,27 @@ struct BriefEditor: View {
                 .studioForm()
                 .scrollDismissesKeyboard(.interactively)
             }
+            // A drag-down never throws a typed script away (QA-07).
+            .interactiveDismissDisabled(dirty)
+            .onChange(of: brief.videoModel) { _, id in
+                // Picking a free / offline video model for a new film turns the paid checks off with it.
+                if isNew, ready, ["local", "handoff"].contains(app.catalog?.model(id)?.provider ?? "") { brief.autoScreen = false; brief.likenessQA = false }
+            }
+            .confirmationDialog("Discard this film?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+                Button("Discard", role: .destructive) { dismiss() }
+                Button("Keep Editing", role: .cancel) {}
+            } message: { Text("The script and settings you entered will be lost.") }
             .navigationTitle(isNew ? "New Film" : "Brief")
             .inlineTitle()
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { if dirty { confirmDiscard = true } else { dismiss() } } }
+                #if os(iOS)
+                // The script editor's keyboard covers most of the form: always offer a way out of it.
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focused = nil }.fontWeight(.semibold)
+                }
+                #endif
                 ToolbarItem(placement: .confirmationAction) {
                     if saving { ProgressView() } else {
                         Button(isNew ? "Create" : "Save") { Task { await save() } }
@@ -192,6 +220,10 @@ struct BriefEditor: View {
         if let v = f["autoAssemble"]?.bool { b.autoAssemble = v }
         b.videoModel = app.catalog?.pick(kind: "video", preferred: app.config.defaultList("videoModels"), hiddenProviders: app.hiddenProviders)?.id ?? ""
         b.imageModel = app.catalog?.pick(kind: "image", preferred: app.config.defaultList("imageModels"), hiddenProviders: app.hiddenProviders)?.id ?? ""
+        // Paid checks: server default if it says so, otherwise off for free / offline video models (QA-08).
+        let freeVideo = ["local", "handoff"].contains(app.catalog?.model(b.videoModel)?.provider ?? "")
+        b.autoScreen = f["autoScreen"]?.bool ?? !freeVideo
+        b.likenessQA = f["likenessQA"]?.bool ?? !freeVideo
         if let m = app.catalog?.model(b.videoModel), !m.durations.isEmpty, !m.durations.contains(b.clipSeconds) {
             b.clipSeconds = m.durations.min(by: { abs($0 - b.clipSeconds) < abs($1 - b.clipSeconds) }) ?? b.clipSeconds
         }

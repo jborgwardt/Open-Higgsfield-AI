@@ -86,6 +86,10 @@ public struct Brief: Sendable, Hashable {
     public var keyframes = true
     public var sceneFades = true
     public var autoAssemble = true
+    /// Gemini watches each new master and writes notes (a paid call).
+    public var autoScreen = true
+    /// Score character shots against the references (a paid vision call per shot).
+    public var likenessQA = true
     public var music = "off"
     public var musicModel = ""
     public var musicPrompt = ""
@@ -109,6 +113,7 @@ public struct Brief: Sendable, Hashable {
         videoModel = s("videoModel", videoModel); imageModel = s("imageModel", imageModel)
         continuity = s("continuity", continuity); keyframes = b("keyframes", keyframes)
         sceneFades = b("sceneFades", sceneFades); autoAssemble = b("autoAssemble", autoAssemble)
+        autoScreen = b("autoScreen", autoScreen); likenessQA = b("likenessQA", likenessQA)
         music = s("music", music); musicModel = s("musicModel", musicModel); musicPrompt = s("musicPrompt", musicPrompt)
         musicVolume = n("musicVolume", musicVolume); narration = b("narration", narration)
         narratorStyle = s("narratorStyle", narratorStyle); voiceProvider = s("voiceProvider", voiceProvider); voice = s("voice", voice)
@@ -123,6 +128,7 @@ public struct Brief: Sendable, Hashable {
             "aspect": .string(aspect), "resolution": .string(resolution),
             "videoModel": .string(videoModel), "imageModel": .string(imageModel),
             "continuity": .string(continuity), "keyframes": .bool(keyframes), "sceneFades": .bool(sceneFades), "autoAssemble": .bool(autoAssemble),
+            "autoScreen": .bool(autoScreen), "likenessQA": .bool(likenessQA),
             "music": .string(music), "musicModel": .string(musicModel), "musicPrompt": .string(musicPrompt), "musicVolume": .number(musicVolume),
             "narration": .bool(narration), "narratorStyle": .string(narratorStyle), "voiceProvider": .string(voiceProvider), "voice": .string(voice),
         ]

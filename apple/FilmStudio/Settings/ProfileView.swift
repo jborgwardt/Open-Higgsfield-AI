@@ -15,9 +15,11 @@ struct ProfileView: View {
                         .frame(width: 64, height: 64)
                         .background(Color.lime, in: Circle())
                     VStack(alignment: .leading, spacing: 3) {
-                        DisplayTitle(app.health?.user?.name ?? "Film Studio", size: 26, lineLimit: 1).foregroundStyle(.white)
-                        Text(app.health?.user?.email ?? app.serverURL.host ?? "").font(.subheadline).foregroundStyle(Color.textSecondary).lineLimit(1)
-                        Text(app.serverURL.host ?? app.serverURL.absoluteString).font(.caption.monospaced()).foregroundStyle(Color.textTertiary)
+                        // Access-code mode has no user: say how you're signed in instead of repeating the host (QA-22).
+                        DisplayTitle(app.health?.user?.name.nonEmpty ?? "Your studio", size: 26, lineLimit: 1).foregroundStyle(.white)
+                        Text(app.health?.user?.email.nonEmpty ?? (app.health?.mode == "code" ? "Signed in with an access code" : "Signed in"))
+                            .font(.subheadline).foregroundStyle(Color.textSecondary).lineLimit(1)
+                        Text(app.serverURL.host ?? app.serverURL.absoluteString).font(.caption.monospaced()).foregroundStyle(Color.textTertiary).lineLimit(1)
                     }
                 }
                 .padding(.vertical, 6)
@@ -50,7 +52,7 @@ struct ProfileView: View {
     }
 
     private var initials: String {
-        let name = app.health?.user?.name ?? "FS"
+        let name = app.health?.user?.name.nonEmpty ?? "FS"
         let parts = name.split(separator: " ").prefix(2).compactMap(\.first)
         return parts.isEmpty ? "FS" : String(parts).uppercased()
     }
@@ -65,7 +67,7 @@ struct ProfileView: View {
                 .frame(width: 36, height: 36).background(Color.surfaceHigh, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.body.weight(.semibold)).foregroundStyle(.white)
-                Text(subtitle).font(.caption).foregroundStyle(Color.textSecondary).lineLimit(1)
+                Text(subtitle).font(.caption).foregroundStyle(Color.textSecondary).lineLimit(3)
             }
         }
     }

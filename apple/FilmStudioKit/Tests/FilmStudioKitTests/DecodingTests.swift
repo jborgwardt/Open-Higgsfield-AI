@@ -134,6 +134,18 @@ private func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
         #expect(Tool.grouped(tools).map(\.category) == ["Enhance", "Characters"])
     }
 
+    /// Talking Avatar: Run stays disabled until a photo or character AND a script or audio are set (QA-16).
+    @Test func eitherOrInputs() throws {
+        let t = try decode(Tool.self, #"""
+        {"id":"talking-avatar","inputs":[{"key":"image","type":"image","label":"Photo"},{"key":"character","type":"character","label":"Saved character"},
+          {"key":"text","type":"longtext","label":"Script"},{"key":"audio","type":"audio","label":"Or upload audio"}],
+         "oneOf":[["image","character"],["text","audio"]]}
+        """#)
+        #expect(t.missingInputs(in: [:]) == ["Photo or saved character", "Script or upload audio"])
+        #expect(t.missingInputs(in: ["character": "ch_1", "text": "Hello"]).isEmpty)
+        #expect(t.missingInputs(in: ["image": "a_1"]) == ["Script or upload audio"])
+    }
+
     @Test func soundAndStatus() throws {
         let s = try decode(SoundCatalog.self, #"{"music":[{"id":"google/lyria-3.5","label":"Lyria","available":false}],"voice":[{"id":"eleven","label":"ElevenLabs","available":true,"voices":[{"id":"v1","name":"Justin — clone"}],"defaultVoice":"v1"},{"id":"local","label":"Mac voice","available":true,"voices":["Samantha","Daniel"]}]}"#)
         #expect(s.voice[1].voices.map(\.id) == ["Samantha", "Daniel"])

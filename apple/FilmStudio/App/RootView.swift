@@ -78,7 +78,8 @@ struct MainView: View {
         content
             .environment(\.heroNamespace, ns)
             .focusedSceneValue(\.tabSelection, $tab)
-            .onChange(of: compact, initial: true) { _, c in app.compactWindow = c }
+            .onChange(of: compact, initial: true) { _, c in app.compactWindow = c; app.reachableTabs = Set((c ? barTabs : tabs).map(\.id)) }
+            .onChange(of: tabs.map(\.id)) { _, _ in app.reachableTabs = Set((compact ? barTabs : tabs).map(\.id)) }
             .onChange(of: app.requestedTab, initial: true) { _, t in
                 guard let t else { return }
                 app.requestedTab = nil
@@ -108,6 +109,11 @@ struct MainView: View {
     }
 
     #if os(iOS)
+    private var immersive: Bool { app.immersiveDepth > 0 }
+    /// Landscape iPhone (compact height): a slimmer bar so it doesn't eat a quarter of the screen (QA-14).
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    private var barHeight: CGFloat { verticalSizeClass == .compact ? 50 : StudioTabBar.height }
+
     private var phoneTabs: some View {
         @Bindable var app = app
         let list = barTabs
@@ -115,19 +121,23 @@ struct MainView: View {
             ForEach(list) { t in
                 Tab(value: t.id) {
                     NavigationStack { TabRoot(tab: t) }
-                        .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: StudioTabBar.height + 8) }
+                        .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: immersive ? 0 : barHeight + 8) }
                         .toolbarVisibility(.hidden, for: .tabBar)
                 }
             }
         }
         .overlay(alignment: .bottom) {
-            VStack(spacing: 8) {
-                WorkingPill(tab: $tab, tabs: list.map(\.id))
-                StudioTabBar(tabs: list, selection: $tab) { app.openComposer() }
+            if !immersive {
+                VStack(spacing: 8) {
+                    WorkingPill(tab: $tab, tabs: list.map(\.id))
+                    StudioTabBar(tabs: list, selection: $tab, height: barHeight) { app.openComposer() }
+                }
+                .padding(.bottom, 2)
+                .ignoresSafeArea(.keyboard)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .padding(.bottom, 2)
-            .ignoresSafeArea(.keyboard)
         }
+        .animation(.snappy, value: immersive)
         .fullScreenCover(item: $app.composer) { req in
             NavigationStack { ComposerView(request: req, dismissable: true) }
                 .environment(app)
@@ -161,6 +171,8 @@ struct MainView: View {
             }
             .navigationTitle("Film Studio")
             .scrollContentBackground(.hidden)
+            // Selected row: white on dark grey, not white on lime (unreadable, QA-13).
+            .tint(Color(white: 0.26))
             #if os(macOS)
             .navigationSplitViewColumnWidth(min: 190, ideal: 220)
             #endif
@@ -200,7 +212,9 @@ struct StudioTabBar: View {
     static let height: CGFloat = 66
     let tabs: [AppConfig.Tab]
     @Binding var selection: String
+    var height: CGFloat = StudioTabBar.height
     let create: () -> Void
+    private var slim: Bool { height < Self.height }
     @Environment(AppModel.self) private var app
     @Environment(\.heroNamespace) private var ns
 
@@ -212,7 +226,8 @@ struct StudioTabBar: View {
             ForEach(tabs.dropFirst(half)) { item($0) }
         }
         .padding(.horizontal, 6)
-        .frame(height: Self.height)
+        .frame(height: height)
+        .frame(maxWidth: slim ? 560 : .infinity)
         .studioGlass(Capsule(), tint: .black.opacity(0.45))
         .padding(.horizontal, 14)
     }
@@ -221,12 +236,16 @@ struct StudioTabBar: View {
         let on = selection == t.id
         return Button {
             if selection != t.id { Platform.selection() }
+            else { app.scrollToTopTick[t.id, default: 0] += 1 } // re-tap: back to the top (QA-10)
             withAnimation(.snappy) { selection = t.id }
         } label: {
             VStack(spacing: 3) {
                 Image(systemName: t.displaySymbol).symbolVariant(on ? .fill : .none).font(.system(size: 19, weight: .semibold))
                     .frame(height: 24)
-                Text(t.displayTitle).font(.system(size: 10, weight: .semibold))
+                if !slim {
+                    // Scales with Dynamic Type up to a point the bar can hold (QA-15).
+                    Text(t.displayTitle).font(.caption2.weight(.semibold)).dynamicTypeSize(...DynamicTypeSize.xxLarge).lineLimit(1).minimumScaleFactor(0.8)
+                }
             }
             .foregroundStyle(on ? Color.white : Color.white.opacity(0.55))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -245,7 +264,7 @@ struct StudioTabBar: View {
             Image(systemName: "sparkle")
                 .font(.system(size: 24, weight: .heavy))
                 .foregroundStyle(Color.onLime)
-                .frame(width: 64, height: 50)
+                .frame(width: 64, height: slim ? 40 : 50)
                 .background(Capsule().fill(Color.lime))
                 .shadow(color: Color.lime.opacity(0.35), radius: 12)
         }
@@ -326,6 +345,10 @@ struct BannerStack: View {
     @Environment(AppModel.self) private var app
     var body: some View {
         VStack(spacing: 0) {
+            if app.isOffline {
+                BannerView(icon: "wifi.slash", title: "Offline", message: "Showing your last Home. New generations need the studio.", tint: .orange,
+                           actionTitle: "Retry", action: { Task { await app.retryOnline() } })
+            }
             if let n = app.config.notice, n.isCritical || app.dismissedNotice != n.id {
                 BannerView(
                     icon: n.level == "info" ? "info.circle.fill" : "exclamationmark.triangle.fill",
@@ -364,7 +387,9 @@ struct UnreachableView: View {
             ContentUnavailableView {
                 Label("Can't reach the studio", systemImage: "wifi.exclamationmark")
             } description: {
-                Text("\(message)\n\(app.serverURL.host ?? app.serverURL.absoluteString)")
+                // The title already says "can't reach"; don't repeat the transport message.
+                let detail = message.localizedCaseInsensitiveContains("reach the studio") ? "The server didn't answer. Check your connection or the server address." : message
+                Text("\(detail)\n\(app.serverURL.host ?? app.serverURL.absoluteString)")
             } actions: {
                 Button("Try Again") { Task { await app.start() } }.buttonStyle(.lime)
                 NavigationLink("Server Settings") { Form { ServerSection() }.studioForm().navigationTitle("Server") }

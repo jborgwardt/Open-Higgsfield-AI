@@ -54,6 +54,8 @@ public struct MediaItem: Decodable, Sendable, Identifiable, Hashable {
     public var prompt: String
     public var createdAt: String
     public var resolution: String
+    /// upload | film (a shot clip / keyframe of a production) | master | generated ("" on older engines).
+    public var origin: String
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
@@ -68,10 +70,13 @@ public struct MediaItem: Decodable, Sendable, Identifiable, Hashable {
         prompt = c.string("prompt", default: "")
         createdAt = c.string("createdAt", default: "")
         resolution = c.string("resolution", default: "")
+        origin = c.string("origin", default: model == "upload" ? "upload" : "")
     }
-    public init(id: String, url: String, thumb: String = "", kind: String = "images", model: String = "", prompt: String = "", createdAt: String = "", resolution: String = "") {
-        self.id = id; self.url = url; self.thumb = thumb; self.kind = kind; self.model = model; self.prompt = prompt; self.createdAt = createdAt; self.resolution = resolution
+    public init(id: String, url: String, thumb: String = "", kind: String = "images", model: String = "", prompt: String = "", createdAt: String = "", resolution: String = "", origin: String = "") {
+        self.id = id; self.url = url; self.thumb = thumb; self.kind = kind; self.model = model; self.prompt = prompt; self.createdAt = createdAt; self.resolution = resolution; self.origin = origin
     }
+    /// Uploads and film parts stay out of the main Library grid and Home (QA-09).
+    public var isCreation: Bool { origin != "upload" && origin != "film" }
     public var isVideo: Bool { kind.hasPrefix("video") }
     /// The still to show in a grid: the poster for videos, the image itself otherwise.
     public var previewURL: String { thumb.isEmpty ? (isVideo ? "" : url) : thumb }
@@ -144,6 +149,13 @@ public struct ModelInfo: Decodable, Sendable, Identifiable, Hashable {
         refs = c.int("refs") ?? 0
     }
     public var isVideo: Bool { kind == "video" }
+    /// The product name without the provider plumbing: "Veo 3.1 Quality (ApiMart)" → "Veo 3.1 Quality" (QA-23).
+    public var displayName: String { ModelInfo.productName(label) }
+    public static func productName(_ label: String) -> String {
+        guard label.hasSuffix(")"), let open = label.lastIndex(of: "(") else { return label }
+        let name = label[..<open].trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? label : name
+    }
     /// How many input images the model takes (start frame for video, references for images).
     public var acceptsStartImage: Bool { isVideo ? caps.i2v : refs > 0 }
     public var requiresStartImage: Bool { isVideo && caps.i2v && !caps.t2v }

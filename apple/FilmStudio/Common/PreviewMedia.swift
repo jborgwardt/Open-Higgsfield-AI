@@ -111,7 +111,7 @@ struct PreviewMediaView: View {
             } else if preview?.video == nil {
                 placeholder
             } else {
-                Color.surface
+                Color.surface.shimmer(!shouldPlay)
             }
             if let video = preview?.video, shouldPlay {
                 LoopingVideo(url: video, cache: cacheVideo)

@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 // Film Studio design language (Higgsfield-style): pure black canvas, one electric-lime accent, white text,
 // muted greys, big bold UPPERCASE condensed display type over media. Liquid Glass only for floating chrome.
@@ -20,11 +23,19 @@ extension Color {
 extension Font {
     /// Display headlines: heavy, compressed, set in uppercase by `DisplayTitle`.
     static func display(_ size: CGFloat, weight: Font.Weight = .black) -> Font {
-        .system(size: size, weight: weight).width(.compressed)
+        .system(size: scaled(size, max: 1.5), weight: weight).width(.compressed)
     }
     /// Condensed labels (chips, badges, section kickers).
     static func label(_ size: CGFloat = 13, weight: Font.Weight = .bold) -> Font {
-        .system(size: size, weight: weight).width(.condensed)
+        .system(size: scaled(size, max: 1.8), weight: weight).width(.condensed)
+    }
+    /// Follows Dynamic Type like the text styles do, capped so big headlines still fit (QA-15).
+    static func scaled(_ size: CGFloat, max factor: CGFloat) -> CGFloat {
+        #if os(iOS)
+        min(UIFontMetrics(forTextStyle: .title2).scaledValue(for: size), size * factor)
+        #else
+        size
+        #endif
     }
 }
 

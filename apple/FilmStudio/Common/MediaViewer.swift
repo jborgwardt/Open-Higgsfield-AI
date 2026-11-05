@@ -18,51 +18,72 @@ struct MediaViewer: View {
     @State private var upscale: Tool?
     @Environment(\.horizontalSizeClass) private var sizeClass
 
+    @State private var expanded = false
+
+    /// "1280×720" → 16:9; unknown → 16:9 for clips, square for stills.
+    private var aspect: CGFloat {
+        let parts = item.resolution.split(whereSeparator: { $0 == "×" || $0 == "x" }).compactMap { Double($0) }
+        if parts.count == 2, parts[0] > 0, parts[1] > 0 { return parts[0] / parts[1] }
+        return isAudio ? 3 : item.isVideo ? 16 / 9 : 1
+    }
+
     var body: some View {
+        // Immersive: the media fills the screen on black, prompt + actions float over a scrim, and the floating
+        // tab bar steps aside so nothing covers the action bar (QA-04).
         ScreenGate(id: "mediaViewer", params: ["id": item.id], title: "Media") {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    media
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    info.padding(.horizontal, 4)
-                }
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-                .padding(.bottom, 120)
-                .frame(maxWidth: 1100)
-                .frame(maxWidth: .infinity)
+            ZStack {
+                Color.black.ignoresSafeArea()
+                media
+                    .aspectRatio(aspect, contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.bottom, 150)
             }
-            .studioCanvas()
             .navigationTitle(item.isVideo ? "Video" : isAudio ? "Audio" : "Image")
             .inlineTitle()
+            #if os(iOS)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar { ToolbarItem(placement: .principal) { Text("") } }
+            #endif
             .toolbar { toolbar }
             .overlay(alignment: .bottom) {
-                GlassEffectContainer(spacing: 12) {
-                    VStack(spacing: 12) {
-                        if let message {
-                            Text(message).font(.subheadline.weight(.medium)).padding(.horizontal, 16).padding(.vertical, 10)
-                                .studioGlass()
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-                        if scale > 1 {
-                            Button {
-                                withAnimation(.spring) { scale = 1; baseScale = 1 }
-                            } label: {
-                                Label("Fit", systemImage: "arrow.down.right.and.arrow.up.left").font(.subheadline.weight(.semibold))
-                            }
-                            .buttonStyle(.glass)
-                            .transition(.scale.combined(with: .opacity))
-                        }
-                        actionBar
+                VStack(alignment: .leading, spacing: 12) {
+                    if let message {
+                        Text(message).font(.subheadline.weight(.medium)).padding(.horizontal, 16).padding(.vertical, 10)
+                            .studioGlass()
+                            .frame(maxWidth: .infinity)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
+                    if scale > 1 {
+                        Button {
+                            withAnimation(.spring) { scale = 1; baseScale = 1 }
+                        } label: {
+                            Label("Fit", systemImage: "arrow.down.right.and.arrow.up.left").font(.subheadline.weight(.semibold))
+                        }
+                        .buttonStyle(.glass)
+                        .frame(maxWidth: .infinity)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                    info
+                    GlassEffectContainer(spacing: 12) { actionBar }
+                        .frame(maxWidth: .infinity)
                 }
-                .padding(.bottom, 16)
+                .padding(.horizontal, 16)
+                .padding(.top, 40)
+                .padding(.bottom, 12)
+                .frame(maxWidth: 900)
+                .frame(maxWidth: .infinity)
+                .background(alignment: .bottom) {
+                    LinearGradient(colors: [.clear, .black.opacity(0.85), .black], startPoint: .top, endPoint: .bottom)
+                        .ignoresSafeArea(edges: .bottom)
+                        .allowsHitTesting(false)
+                }
             }
             .navigationDestination(item: $upscale) { t in
                 ToolRunView(tool: t, prefillAsset: UploadedAsset(id: item.id, url: item.url, kind: item.isVideo ? "video" : "image"))
             }
             .task { if app.tools.isEmpty { await app.loadTools() } }
+            .onAppear { app.immersiveDepth += 1 }
+            .onDisappear { app.immersiveDepth = max(0, app.immersiveDepth - 1) }
             .confirmationDialog("Remove from the library?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Remove", role: .destructive) { Task { await onDelete?(); dismiss() } }
             } message: { Text("The file stays on the studio server; it's only hidden from the library.") }
@@ -152,8 +173,6 @@ struct MediaViewer: View {
     @ViewBuilder private var media: some View {
         if item.isVideo || isAudio {
             EngineVideoPlayer(url: item.url)
-                .aspectRatio(isAudio ? 3 : 16 / 9, contentMode: .fit)
-                .frame(minHeight: isAudio ? 120 : 220)
         } else {
             AuthedImage(url: item.url, maxPixelSize: 3072, contentMode: .fit)
                 .scaleEffect(scale)
@@ -161,33 +180,29 @@ struct MediaViewer: View {
                     .onChanged { scale = max(1, min(6, baseScale * $0.magnification)) }
                     .onEnded { _ in baseScale = scale })
                 .onTapGesture(count: 2) { withAnimation(.spring) { scale = scale > 1 ? 1 : 2.5; baseScale = scale } }
-                .frame(minHeight: 240)
                 .accessibilityLabel(item.prompt.isEmpty ? "Image" : item.prompt)
         }
     }
 
     private var info: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if !item.prompt.isEmpty {
-                Text(item.prompt).font(.body).textSelection(.enabled)
-            }
+        VStack(alignment: .leading, spacing: 6) {
             if let m = app.catalog?.model(item.model) {
-                Text(m.label.uppercased()).font(.display(22, weight: .heavy)).foregroundStyle(.white)
+                Text(m.displayName.uppercased()).font(.display(22, weight: .heavy)).foregroundStyle(.white).lineLimit(1)
+            } else if !item.model.isEmpty {
+                Text(item.model.uppercased()).font(.display(22, weight: .heavy)).foregroundStyle(.white).lineLimit(1)
             }
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
-                if !item.model.isEmpty { row("Model", app.catalog?.model(item.model)?.label ?? item.model) }
-                if let d = item.date { row("Created", d.formatted(date: .abbreviated, time: .shortened)) }
-                if !item.resolution.isEmpty { row("Size", item.resolution) }
+            if !item.prompt.isEmpty {
+                Text(item.prompt).font(.subheadline).foregroundStyle(.white.opacity(0.82))
+                    .lineLimit(expanded ? 12 : 2)
+                    .textSelection(.enabled)
+                    .onTapGesture { withAnimation(.snappy) { expanded.toggle() } }
             }
-            .font(.subheadline)
+            let facts = [item.date?.formatted(date: .abbreviated, time: .shortened), item.resolution.nonEmpty].compactMap { $0 }
+            if !facts.isEmpty {
+                Text(facts.joined(separator: " · ")).font(.caption.monospacedDigit()).foregroundStyle(Color.textTertiary)
+            }
         }
-    }
-
-    private func row(_ k: String, _ v: String) -> some View {
-        GridRow {
-            Text(k).foregroundStyle(.secondary)
-            Text(v).textSelection(.enabled)
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {

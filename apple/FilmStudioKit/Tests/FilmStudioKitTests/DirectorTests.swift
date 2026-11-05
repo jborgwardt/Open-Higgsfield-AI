@@ -52,7 +52,19 @@ private func json(_ s: String) throws -> JSONValue { try JSONDecoder().decode(JS
         let c = DirectorCatalog.synthesized(from: s)
         #expect(c.option("xai")?.available == true && c.option("google")?.available == false)
         #expect(c.option("apimart")?.models.count == 2)
-        #expect(c.option("local")?.available == true)
+        #expect(c.option("split")?.available == true && c.option("local") == nil)
+    }
+
+    /// The engine's real GET /directors shape (QA-02).
+    @Test func engineProvidersShape() throws {
+        let v = try json(#"{"selected":"split","model":"","providers":[{"id":"claude","label":"Claude (your subscription)","note":"","defaultModel":"opus","available":true,"detail":"","models":[{"id":"opus","label":"opus"}]},{"id":"qwen","label":"Qwen Cloud Token Plan","available":false,"detail":"set QWEN_API_KEY","models":[]},{"id":"split","label":"No AI (split my script)","available":true,"models":[]}]}"#)
+        let c = DirectorCatalog.parse(v)
+        #expect(c.options.map(\.id) == ["claude", "qwen", "split"])
+        #expect(c.option("claude")?.defaultModel == "opus" && c.option("qwen")?.available == false)
+        #expect(c.current == DirectorChoice(provider: "split", model: ""))
+        #expect(c.describe(c.current) == "No AI (split my script)")
+        let none = DirectorCatalog.parse(try json(#"{"selected":null,"model":"","providers":[{"id":"split","label":"No AI"}]}"#))
+        #expect(none.current == nil && none.options.count == 1)
     }
 }
 
@@ -93,9 +105,20 @@ extension NetworkTests {
         StubProtocol.reset { _, _ in .init(body: #"{"settings":{},"status":{}}"#) }
         try await client().setDirector(DirectorChoice(provider: "apimart", model: "claude-opus-5"))
         let (req, body) = try #require(StubProtocol.last)
-        #expect(req.httpMethod == "POST" && req.url!.path == "/engine/api/settings")
+        #expect(req.httpMethod == "POST" && req.url!.path == "/engine/api/directors")
         let o = try JSONDecoder().decode([String: JSONValue].self, from: body)
-        #expect(o == ["directorProvider": "apimart", "directorModel": "claude-opus-5"])
+        #expect(o == ["provider": "apimart", "model": "claude-opus-5"])
+    }
+
+    @Test func persistsChoiceOnOldEngine() async throws {
+        StubProtocol.reset { req, _ in
+            req.url!.path == "/engine/api/directors" ? .init(status: 404, body: #"{"error":"no such route"}"#) : .init(body: #"{"settings":{}}"#)
+        }
+        try await client().setDirector(DirectorChoice(provider: "local"))
+        let (req, body) = try #require(StubProtocol.last)
+        #expect(req.url!.path == "/engine/api/settings")
+        let o = try JSONDecoder().decode([String: JSONValue].self, from: body)
+        #expect(o == ["directorProvider": "split", "directorModel": ""])
     }
 }
 }

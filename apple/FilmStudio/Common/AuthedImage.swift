@@ -20,7 +20,9 @@ struct AuthedImage: View {
                     .aspectRatio(contentMode: contentMode)
                     .transition(.opacity)
             } else {
+                // Quiet tiles shimmer while the poster is on its way, so they read as loading, not empty (QA-12).
                 Rectangle().fill(quiet ? Color.surface : Color.tileBackground)
+                    .shimmer(quiet && !failed && url?.nonEmpty != nil)
                     .overlay {
                         if quiet { EmptyView() }
                         else if failed { Image(systemName: "photo").font(.title2).foregroundStyle(.tertiary) }

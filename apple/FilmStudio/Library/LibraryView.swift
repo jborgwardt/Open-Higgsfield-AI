@@ -5,12 +5,13 @@ import FilmStudioKit
 /// Generations in flight sit at the top as shimmering placeholders.
 struct LibraryView: View {
     enum Filter: String, CaseIterable, Identifiable {
-        case all = "All", videos = "Videos", images = "Images", films = "Films", characters = "Characters"
+        case all = "All", videos = "Videos", images = "Images", films = "Films", characters = "Characters", uploads = "Uploads"
         var id: String { rawValue }
     }
 
     @Environment(AppModel.self) private var app
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.heroNamespace) private var ns
     @State private var state: Loadable<[MediaItem]> = .loading
     @State private var films: [ProductionSummary] = []
@@ -28,6 +29,7 @@ struct LibraryView: View {
             switch f {
             case .films: app.config.isOn("films")
             case .characters: app.config.isOn("characters") && app.charactersAvailable == true
+            case .uploads: state.value?.contains { $0.origin == "upload" } ?? false
             default: true
             }
         }
@@ -36,9 +38,10 @@ struct LibraryView: View {
     private var items: [MediaItem] {
         (state.value ?? []).filter { item in
             switch filter {
-            case .videos: guard item.isVideo else { return false }
-            case .images: guard !item.isVideo, item.kind != "audio" else { return false }
-            default: break
+            case .uploads: guard item.origin == "upload" else { return false }
+            case .videos: guard item.isVideo, item.isCreation else { return false }
+            case .images: guard !item.isVideo, item.kind != "audio", item.isCreation else { return false }
+            default: guard item.isCreation else { return false }
             }
             return search.isEmpty || item.prompt.localizedCaseInsensitiveContains(search) || item.model.localizedCaseInsensitiveContains(search)
         }
@@ -53,13 +56,16 @@ struct LibraryView: View {
 
     var body: some View {
         ScreenGate(id: "library", title: "Library") {
+            ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    header
+                    header.id("top")
                     chips
                     content
                 }
                 .padding(.bottom, 24)
+            }
+            .onChange(of: app.scrollToTopTick["library"]) { _, _ in withAnimation(.snappy) { proxy.scrollTo("top", anchor: .top) } }
             }
             .studioCanvas()
             #if os(iOS)
@@ -146,7 +152,7 @@ struct LibraryView: View {
         }
     }
 
-    private var columns: Int { sizeClass == .regular || Platform.isMac ? 4 : 2 }
+    private var columns: Int { sizeClass == .regular || verticalSizeClass == .compact || Platform.isMac ? 4 : 2 }
 
     /// Greedy masonry: each tile goes to the currently shortest column.
     private var masonry: some View {
@@ -189,7 +195,11 @@ struct LibraryView: View {
         .buttonStyle(PressScale())
         .zoomSource("lib-\(item.id)", in: ns)
         .contextMenu { menu(for: item) } preview: {
-            AuthedImage(url: item.previewURL, maxPixelSize: 900, contentMode: .fit).frame(minWidth: 280, minHeight: 200)
+            // Context-menu previews are hosted outside this view tree and don't inherit the environment (QA-01).
+            AuthedImage(url: item.previewURL, maxPixelSize: 900, contentMode: .fill)
+                .aspectRatio(Cell.media(item).aspect, contentMode: .fit)
+                .frame(width: 300)
+                .environment(app)
         }
         .accessibilityLabel("\(item.isVideo ? "Video" : "Image"): \(item.prompt.isEmpty ? item.model : item.prompt)")
     }

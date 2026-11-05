@@ -21,9 +21,10 @@ struct HomeView: View {
 
     var body: some View {
         ScreenGate(id: "explore", title: "Home") {
+            ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 34) {
-                    header
+                    header.id("top")
                     if let feed = app.feed, !feed.isEmpty {
                         ForEach(feed.sections) { section($0) }
                     } else if loading || app.feed == nil {
@@ -35,6 +36,8 @@ struct HomeView: View {
                 .padding(.bottom, 24)
                 .frame(maxWidth: 1500)
                 .frame(maxWidth: .infinity)
+            }
+            .onChange(of: app.scrollToTopTick["explore"]) { _, _ in withAnimation(.snappy) { proxy.scrollTo("top", anchor: .top) } }
             }
             .studioCanvas()
             #if os(iOS)
@@ -108,7 +111,8 @@ struct HomeView: View {
     }
 
     private func act(_ a: FeedAction, item: FeedItem?) {
-        let tabs = Set(app.config.visibleTabs.map(\.id))
+        // Only tabs this window can actually switch to (on iPhone Films and Tools aren't in the bar): push otherwise.
+        let tabs = app.reachableTabs.isEmpty ? Set(app.config.visibleTabs.map(\.id)) : app.reachableTabs
         switch a.type {
         case "create", "model":
             app.openComposer(ComposerRequest(
@@ -119,19 +123,29 @@ struct HomeView: View {
             app.openComposer(ComposerRequest(model: a.model, prompt: a.param("prompt"), params: a.params, title: item?.title, subtitle: item?.subtitle, preview: item?.preview, sourceID: item?.id))
         case "tool", "preset":
             Task { await openTool(a) }
-        case "tools": route = .allTools
-        case "films": if tabs.contains("films") { app.requestedTab = "films" } else { route = .films }
-        case "characters": if tabs.contains("characters") { app.requestedTab = "characters" } else { route = .characters }
-        case "character": if let id = a.param("id") { route = .character(id) }
-        case "library": if tabs.contains("library") { app.requestedTab = "library" }
-        case "media":
-            if let id = a.param("id"), let m = app.recentMedia.first(where: { $0.id == id }) { route = .media(m) }
+        case "tools": if tabs.contains("tools") { app.requestedTab = "tools" } else { route = .allTools }
+        case "films":
+            if a.flag("new") { app.requestNewFilm = true } // FilmsView opens the brief as soon as it appears
+            if tabs.contains("films") { app.requestedTab = "films" } else { route = .films }
+        case "characters", "character":
+            if let id = a.param("id") { route = .character(id); break }
+            if a.flag("new") { app.requestNewCharacter = true }
+            if tabs.contains("characters") { app.requestedTab = "characters" } else { route = .characters }
+        case "library", "media":
+            if let id = a.param("assetId") ?? a.param("id") { Task { await openMedia(id) } }
             else if tabs.contains("library") { app.requestedTab = "library" }
         case "web": app.webSheet = .init(path: a.param("path") ?? "/", title: item?.title ?? "")
         case "tab": if let t = a.param("tab"), tabs.contains(t) { app.requestedTab = t }
         default:
             if a.model != nil { app.openComposer(ComposerRequest(model: a.model, params: a.params, sourceID: item?.id)) }
         }
+    }
+
+    /// Recent tiles open the item itself (the library list is fetched if Home came from the server feed).
+    private func openMedia(_ id: String) async {
+        if let m = app.recentMedia.first(where: { $0.id == id }) { route = .media(m); return }
+        if let list = try? await app.fetchMedia(), let m = list.first(where: { $0.id == id }) { route = .media(m); return }
+        if app.reachableTabs.contains("library") { app.requestedTab = "library" }
     }
 
     private func openTool(_ a: FeedAction) async {
@@ -151,7 +165,7 @@ struct HomeView: View {
         case .allTools: ToolsView()
         case .character(let id): CharacterDetailView(id: id)
         case .characters: CharactersView()
-        case .media(let item): MediaViewer(item: item).zoomTransition("media-\(item.id)", in: ns)
+        case .media(let item): MediaViewer(item: item).zoomTransition("media:\(item.id)", in: ns) // = the feed tile's id
         case .films: FilmsView()
         }
     }
@@ -163,8 +177,11 @@ private struct HeroCarousel: View {
     let section: FeedSection
     let open: (FeedItem) -> Void
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.heroNamespace) private var ns
     @State private var current: String?
+    /// Two cards side by side on iPad and in iPhone landscape, so a hero never fills the whole screen (QA-14).
+    private var perPage: Int { sizeClass == .regular || verticalSizeClass == .compact ? 2 : 1 }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -173,7 +190,7 @@ private struct HeroCarousel: View {
                     ForEach(section.items) { item in
                         Button { open(item) } label: { HeroCard(item: item) }
                             .buttonStyle(PressScale())
-                            .containerRelativeFrame(.horizontal, count: sizeClass == .regular ? 2 : 1, spacing: 12)
+                            .containerRelativeFrame(.horizontal, count: perPage, spacing: 12)
                             .zoomSource(item.id, in: ns)
                             .id(item.id)
                     }
@@ -274,11 +291,12 @@ private struct ShelfTile: View {
                 Text(item.title.uppercased()).font(.display(17, weight: .heavy)).foregroundStyle(.white).lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if !item.subtitle.isEmpty {
-                    Text(item.subtitle).font(.caption).foregroundStyle(Color.textSecondary).lineLimit(1)
+                    Text(item.subtitle).font(.caption).foregroundStyle(Color.textSecondary).lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .frame(width: width, alignment: .leading)
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge) // captions under a fixed-width tile can't grow forever
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
@@ -302,33 +320,57 @@ private struct PortraitGrid: View {
         let shown = expanded ? section.items : Array(section.items.prefix(limit))
         VStack(alignment: .leading, spacing: 12) {
             StudioSectionHeader(title: section.title, subtitle: section.subtitle, action: more)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 150 : 104), spacing: 8)], spacing: 8) {
-                ForEach(shown) { item in
-                    Button { open(item) } label: {
-                        Color.clear
-                            .aspectRatio(item.aspect ?? 9 / 16, contentMode: .fit)
-                            .overlay { PreviewMediaView(preview: item.preview, seed: item.id, symbol: item.sfSymbol, maxPixelSize: 600) }
-                            .bottomScrim(0.85, height: 0.5)
-                            .overlay(alignment: .bottomLeading) {
-                                Text(item.title.uppercased()).font(.display(16, weight: .heavy)).foregroundStyle(.white).lineLimit(2).padding(10)
-                            }
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(item.title)
-                            .accessibilityAddTraits(.isButton)
-                    }
-                    .buttonStyle(PressScale())
-                    .zoomSource(item.id, in: ns)
+            if Set(shown.map { $0.aspect ?? 9 / 16 }).count > 1 {
+                masonry(shown)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: sizeClass == .regular ? 150 : 104), spacing: 8)], spacing: 8) {
+                    ForEach(shown) { tile($0) }
                 }
+                .padding(.horizontal, 16)
             }
-            .padding(.horizontal, 16)
             if section.items.count > limit {
                 Button(expanded ? "Show less" : "Show all \(section.items.count)") { withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) { expanded.toggle() } }
                     .buttonStyle(.darkPill)
                     .frame(maxWidth: .infinity)
             }
         }
+    }
+
+    /// Mixed aspect ratios (Recent): greedy masonry columns, so 9:16 clips don't leave black gaps (QA-11).
+    private func masonry(_ items: [FeedItem]) -> some View {
+        let cols = sizeClass == .regular ? 4 : 2
+        var heights = Array(repeating: 0.0, count: cols)
+        var buckets = Array(repeating: [FeedItem](), count: cols)
+        for item in items {
+            let i = heights.indices.min { heights[$0] < heights[$1] } ?? 0
+            buckets[i].append(item)
+            heights[i] += 1 / max(0.3, item.aspect ?? 9 / 16)
+        }
+        return HStack(alignment: .top, spacing: 8) {
+            ForEach(0..<cols, id: \.self) { c in
+                VStack(spacing: 8) { ForEach(buckets[c]) { tile($0) } }
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func tile(_ item: FeedItem) -> some View {
+        Button { open(item) } label: {
+            Color.clear
+                .aspectRatio(item.aspect ?? 9 / 16, contentMode: .fit)
+                .overlay { PreviewMediaView(preview: item.preview, seed: item.id, symbol: item.sfSymbol, maxPixelSize: 600) }
+                .bottomScrim(0.85, height: 0.5)
+                .overlay(alignment: .bottomLeading) {
+                    Text(item.title.uppercased()).font(.display(16, weight: .heavy)).foregroundStyle(.white).lineLimit(2).padding(10)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(item.title)
+                .accessibilityAddTraits(.isButton)
+        }
+        .buttonStyle(PressScale())
+        .zoomSource(item.id, in: ns)
     }
 }
 

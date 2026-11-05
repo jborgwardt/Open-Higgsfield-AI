@@ -34,7 +34,9 @@ struct FilmsView: View {
                             } else {
                                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 12)], spacing: 14) {
                                     ForEach(list) { p in
-                                        NavigationLink(value: p.id) { FilmCard(p: p) }
+                                        // A button + navigationDestination(item:): value links don't fire when Films itself
+                                        // was pushed with a destination link (Profile → Films on iPhone, QA-05).
+                                        Button { opened = p.id } label: { FilmCard(p: p) }
                                             .buttonStyle(PressScale())
                                             .contextMenu {
                                                 Button("Delete Film…", systemImage: "trash", role: .destructive) { pendingDelete = p }
@@ -51,13 +53,17 @@ struct FilmsView: View {
             .studioCanvas()
             .navigationTitle("Films")
             .inlineTitle()
-            .navigationDestination(for: String.self) { id in FilmDetailView(id: id) }
             .navigationDestination(item: $opened) { id in FilmDetailView(id: id) }
             .toolbar {
+                #if os(iOS)
+                // The big FILMS header is the title; the lime "New film" is the create action.
+                ToolbarItem(placement: .principal) { Text("") }
+                #else
                 ToolbarItem(placement: .trailing) {
                     Button("New Film", systemImage: "plus") { creating = true }.keyboardShortcut("n", modifiers: [.command, .shift])
                         .tint(.lime)
                 }
+                #endif
                 ToolbarItem(placement: .trailing) {
                     Menu {
                         Button("Refresh", systemImage: "arrow.clockwise") { Task { await load() } }
@@ -138,6 +144,7 @@ struct FilmDetailView: View {
     @State private var playMaster = false
     @State private var actionError: String?
     @State private var askDirector = false
+    @State private var confirmReplan = false
 
     var body: some View {
         ScreenGate(id: "filmDetail", params: ["id": id], title: production?.title ?? "Film") {
@@ -152,6 +159,9 @@ struct FilmDetailView: View {
                 ToolbarItem(placement: .trailing) {
                     Menu {
                         Button("Edit Brief…", systemImage: "slider.horizontal.3") { editingBrief = true }.disabled(production == nil)
+                        if let p = production, !p.shots.isEmpty, p.status != .running, p.status != .planning {
+                            Button("Re-plan from the Script…", systemImage: "arrow.triangle.2.circlepath") { confirmReplan = true }
+                        }
                         Button("Refresh", systemImage: "arrow.clockwise") { Task { await load() } }
                         OpenOnWebButton(path: (app.config.presentation(for: "filmDetail").path ?? app.config.presentation(for: "films").path ?? "/").replacingOccurrences(of: "{id}", with: id), title: production?.title ?? "Film")
                     } label: { Label("More", systemImage: "ellipsis.circle") }
@@ -176,6 +186,9 @@ struct FilmDetailView: View {
             .sheet(isPresented: $askDirector) {
                 DirectorSheet { Task { await plan() } }.environment(app)
             }
+            .confirmationDialog("Re-plan this film?", isPresented: $confirmReplan, titleVisibility: .visible) {
+                Button("Re-plan", role: .destructive) { Task { await plan() } }
+            } message: { Text("The director writes a new shot list from the script. Shots rendered so far are replaced.") }
             .alert("Couldn't do that", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(actionError ?? "") }
@@ -269,7 +282,7 @@ struct FilmDetailView: View {
                 } else if p.status == .running || p.running {
                     actionButton("Pause", "pause.fill", prominent: false) { try await app.client.productionAction(id, "pause") }
                 } else if !p.shots.allSatisfy({ $0.status == .done || $0.status == .skipped }) {
-                    actionButton(p.doneCount > 0 ? "Resume Rendering" : "Start Rendering", "play.fill", prominent: true) { try await app.client.productionAction(id, "start") }
+                    actionButton(p.doneCount > 0 ? "Resume" : "Render", "play.fill", prominent: true) { try await app.client.productionAction(id, "start") }
                 }
                 if p.doneCount > 0 {
                     actionButton(p.master == nil ? "Assemble" : "Re-assemble", "film.stack", prominent: p.master == nil && p.shots.allSatisfy { $0.status == .done || $0.status == .skipped }, disabled: !p.canAssemble) { try await app.client.productionAction(id, "assemble") }
@@ -280,12 +293,6 @@ struct FilmDetailView: View {
         .listRowInsets(EdgeInsets())
         if p.brief.script.trimmingCharacters(in: .whitespaces).isEmpty, p.shots.isEmpty {
             Button("Write the script…") { editingBrief = true }
-        }
-        if !p.shots.isEmpty, canPlan {
-            Button("Re-plan from the script…", systemImage: "arrow.triangle.2.circlepath", role: .destructive) {
-                Task { await plan() }
-            }
-            .font(.callout)
         }
         if p.shots.isEmpty || canPlan {
             LabeledContent("Director", value: app.directors.map { $0.describe($0.current) } ?? "…")
@@ -458,14 +465,18 @@ struct ShotSheet: View {
         if prompt != shot.prompt { body["prompt"] = .string(prompt) }
         if narration != shot.narration { body["narration"] = .string(narration) }
         if reset { body["reset"] = true; body["keepKeyframe"] = true }
-        await patch(body)
+        await patch(body, render: reset)
     }
 
-    private func patch(_ body: [String: JSONValue]) async {
+    /// `render`: after a reset, start the queue too, so the shot doesn't sit "Queued" until Resume (QA-21).
+    private func patch(_ body: [String: JSONValue], render: Bool = false) async {
         guard !body.isEmpty else { dismiss(); return }
         busy = true
         do {
-            let p = try await app.client.updateShot(productionID, shot.id, body)
+            var p = try await app.client.updateShot(productionID, shot.id, body)
+            if render, !p.running, p.status != .running, p.status != .planning {
+                p = try await app.client.productionAction(productionID, "start")
+            }
             onChange(p)
             dismiss()
         } catch {
