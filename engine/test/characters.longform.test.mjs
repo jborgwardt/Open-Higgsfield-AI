@@ -59,7 +59,7 @@ test('long-form: identity lock + likeness QA re-renders a drifting shot once and
   const ch = await import('../lib/characters.js');
   const plan = ch.identityModels(ch.resolveCharacters(['ch_j']));
   assert.ok(plan.length >= 2, 'needs two reference models connected');
-  let p = await lf.createProduction({ title: 'Test', videoModel: 'apimart/veo3.1-quality', imageModel: 'local/plate', characters: [{ characterId: 'ch_j' }], clipSeconds: 5, autoAssemble: false });
+  let p = await lf.createProduction({ title: 'Test', videoModel: 'apimart/veo3.1-quality', imageModel: 'local/plate', characters: [{ characterId: 'ch_j' }], clipSeconds: 5, autoAssemble: false, likenessRetry: true });
   await lf.addShot(p.id, null, { title: 'Turn', prompt: 'Justin, in profile at a window, turns to the camera and smiles.' });
   await lf.start(p.id);
   for (let i = 0; i < 100; i++) {

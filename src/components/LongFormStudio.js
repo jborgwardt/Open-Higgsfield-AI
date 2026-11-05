@@ -190,7 +190,8 @@ export function LongFormStudio() {
           <div class="col" style="gap:6px">
             <label class="toggle"><input type="checkbox" data-b="keyframes" ${b.keyframes ? 'checked' : ''}/> Generate a keyframe for every cut (better consistency)</label>
             <label class="toggle" title="Real people from the Characters page render with reference-to-video models (Veo 3.1 Fast ref, Kling…) instead of a single still that has to invent the face"><input type="checkbox" data-b="identityLock" ${b.identityLock !== false ? 'checked' : ''}/> Identity lock for real people</label>
-            <label class="toggle" title="Frames every 0.5 s are compared with the character's photos; a drifting shot is re-rendered once with the next model"><input type="checkbox" data-b="likenessQA" ${b.likenessQA !== false ? 'checked' : ''}/> Check likeness after every character shot</label>
+            <label class="toggle" title="An AI judge compares face crops every 0.5 s with the character's photos. Advisory: it is not always right."><input type="checkbox" data-b="likenessQA" ${b.likenessQA !== false ? 'checked' : ''}/> Estimate likeness after every character shot</label>
+            ${b.likenessQA !== false ? `<label class="toggle" title="Spends one extra render on shots whose estimate drops below 6/10 and keeps the better one"><input type="checkbox" data-b="likenessRetry" ${b.likenessRetry ? 'checked' : ''}/> Re-render once if the estimate looks off (experimental)</label>` : ''}
             <label class="toggle"><input type="checkbox" data-b="sceneFades" ${b.sceneFades ? 'checked' : ''}/> Fade between scenes</label>
             <label class="toggle"><input type="checkbox" data-b="autoAssemble" ${b.autoAssemble ? 'checked' : ''}/> Assemble the master automatically</label>
           </div>
@@ -213,7 +214,7 @@ export function LongFormStudio() {
               <button class="cont ${s.continuity === 'continue' ? 'c' : ''}" data-a="cont" data-id="${s.id}" title="Toggle: continue from previous shot / hard cut">${s.continuity === 'continue' ? '↳ continue' : '✂ cut'}</button>
               <span class="chip ${cls}"><i></i>${label}</span>
               ${s.model ? `<span class="dim" style="font-size:11px">${esc(m?.label || s.model)}</span>` : ''}
-              ${Number.isFinite(s.likeness?.min) ? `<span class="chip ${s.likeness.pass ? 'ok' : 'bad'}" title="Likeness vs the character photos, frames every ${s.likeness.every || 0.5}s${s.identityTries?.length > 1 ? ` · best of ${s.identityTries.length} renders` : ''}${s.identity?.model ? ` · ${s.identity.model} (${s.identity.mode})` : ''}"><i></i>Likeness ${s.likeness.score}/10${s.likeness.pass ? '' : ` · ${s.likeness.min} at ${s.likeness.minAt}s`}</span>` : ''}
+              ${Number.isFinite(s.likeness?.min) ? `<span class="chip ${s.likeness.pass ? 'ok' : 'warn'}" title="AI likeness estimate (advisory) vs the character photos, frames every ${s.likeness.every || 0.5}s${s.identityTries?.length > 1 ? ` · best of ${s.identityTries.length} renders` : ''}${s.identity?.model ? ` · ${s.identity.model} (${s.identity.mode})` : ''}"><i></i>Likeness ${s.likeness.score}/10${s.likeness.pass ? '' : ` · ${s.likeness.min} at ${s.likeness.minAt}s`}</span>` : ''}
             </div>
             ${editing ? `<textarea data-edit="${s.id}" rows="5">${esc(s.prompt)}</textarea>${S.p.brief.narration ? `<input type="text" data-edit-narr="${s.id}" value="${esc(s.narration || '')}" placeholder="Narration for this shot (optional)" style="margin-top:6px"/>` : ''}<div class="row" style="margin-top:6px"><button class="btn sm primary" data-a="save-prompt" data-id="${s.id}">Save</button><button class="btn sm ghost" data-a="cancel-edit">Cancel</button><select data-shot-model="${s.id}" style="width:auto;margin-left:auto">${`<option value="">Production model</option>${modelOptions('video', s.model, { includeHandoff: true })}`}</select></div>` : `<div class="p" data-a="edit" data-id="${s.id}" title="Click to edit">${esc(s.prompt)}</div>`}
             ${S.p.brief.narration && s.narration && !editing ? `<div class="msg" style="color:#cfe3ff">🎙 ${esc(s.narration)}</div>` : ''}
@@ -428,7 +429,7 @@ export function LongFormStudio() {
             }
             // Voice ids belong to one provider (an ElevenLabs id means nothing to Gemini).
             if (el.dataset.b === 'voiceProvider') patchBrief({ voice: '' });
-            if (['videoModel', 'clipSeconds', 'targetMinutes', 'music', 'narration', 'voiceProvider'].includes(el.dataset.b)) renderSide();
+            if (['videoModel', 'clipSeconds', 'targetMinutes', 'music', 'narration', 'voiceProvider', 'likenessQA'].includes(el.dataset.b)) renderSide();
         }
     });
 

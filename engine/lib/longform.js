@@ -66,7 +66,8 @@ const DEFAULT_BRIEF = {
   continuity: 'extend', // extend | lastframe | cut
   keyframes: true, // generate a keyframe for every "cut" shot
   identityLock: true, // real people: reference-to-video models first, never a lone still that must invent the face
-  likenessQA: true, // score every character shot against the references; re-render once with the next strategy if it drifts
+  likenessQA: true, // score every character shot against the references (advisory: shot.likeness)
+  likenessRetry: false, // opt-in: re-render once with the next identity model when the score drops below threshold
   characters: [], // { characterId } from the Characters page, or inline { name, description, refAssetId, refAssetIds: [] }
   sceneFades: true,
   autoAssemble: true,
@@ -456,7 +457,8 @@ async function runShot(id, sid, signal) {
       updateAsset(r.asset.id, { likeness });
     }
     const tries = [...(getProduction(id).shots.find((x) => x.id === sid)?.identityTries || []), { ...result, likeness }];
-    if (likeness?.pass === false && attempt + 1 < plan.length && tries.length < 2) {
+    // The vision judge is advisory (it was not consistent enough on real tests to spend money on by default).
+    if (p.brief.likenessRetry === true && likeness?.pass === false && attempt + 1 < plan.length && tries.length < 2) {
       const next = plan[attempt + 1].model;
       await setShot(id, sid, { status: 'pending', identityAttempt: attempt + 1, identityTries: tries, likeness, message: `Likeness ${likeness.min}/10 at ${likeness.minAt}s — re-rendering with ${next.label}` });
       await mutate(id, (x) => log(x, `Shot ${s.index + 1}: likeness ${likeness.min}/10 at ${likeness.minAt}s on ${m.label} — re-rendering once with ${next.label}`));
@@ -465,7 +467,7 @@ async function runShot(id, sid, signal) {
     const best = tries.reduce((a, t) => (tryScore(t) > tryScore(a) ? t : a));
     await setShot(id, sid, {
       ...best, status: 'done', identityTries: tries, finishedAt: now(),
-      message: inputs.extend ? 'Extended from previous shot' : best.likeness?.pass === false ? `Likeness ${best.likeness.min}/10 at ${best.likeness.minAt}s — kept the better of ${tries.length} renders` : '',
+      message: inputs.extend ? 'Extended from previous shot' : best.likeness?.pass === false ? `Likeness ${best.likeness.min}/10 at ${best.likeness.minAt}s${tries.length > 1 ? ` — kept the better of ${tries.length} renders` : ' (advisory estimate)'}` : '',
     });
   } catch (e) {
     if (signal.aborted) return;

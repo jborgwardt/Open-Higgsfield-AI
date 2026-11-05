@@ -448,9 +448,10 @@ export function characterVoice(ref) {
 // Identity lock. A first-frame-only model (one still → video) has to invent the face whenever the head turns or the
 // take runs on, so a real person drifts into a stranger. For people built from real photos, prefer models that keep
 // the references in view for the whole clip. Any catalog video model with caps.refs qualifies (so new providers light
-// up by themselves); this list only sets the order — measured on the same real-person test shot where we have data
-// (Veo 3.1 Fast ref and Kling V4 ref held the face, first-frame Veo drifted into another man), recommended otherwise.
-const IDENTITY_RANK = ['apimart/veo3.1-fast', 'qwen/happyhorse-1.1-r2v', 'apimart/kling-v4', 'xai/grok-imagine-video-1.5', 'apimart/kling-v3-omni', 'fal/wan-3.0-prime-r2v', 'fal/wan-3.0-r2v', 'apimart/wan2.7-r2v', 'xai/grok-imagine-video'];
+// up by themselves); this list only sets the order. Measured on one real-person test shot (profile → turn to camera):
+// Veo 3.1 Fast ref 7.0/10 ($0.13 / 8 s), Kling 3.0 Omni ref 7.0 ($0.32 / 5 s), Kling V4 ref 5.6 ($0.67 / 5 s), while
+// first-frame Veo Fast / Quality drifted into another man (4.4 / 4.0). HappyHorse, Grok and Wan R2V are unmeasured here.
+const IDENTITY_RANK = ['apimart/veo3.1-fast', 'qwen/happyhorse-1.1-r2v', 'apimart/kling-v3-omni', 'apimart/kling-v4', 'xai/grok-imagine-video-1.5', 'fal/wan-3.0-prime-r2v', 'fal/wan-3.0-r2v', 'apimart/wan2.7-r2v', 'xai/grok-imagine-video'];
 // Gemini Omni refuses real people's likeness outright (INVALID_ARGUMENT); anything else is better than failing.
 const REAL_FACE_FALLBACK = ['apimart/veo3.1-quality', 'apimart/kling-v3', 'apimart/seedance-2.5', 'apimart/seedance-2.0'];
 // Gemini Omni under any provider (Gemini API, Venice, ApiMart…) — refused real likeness on the Gemini API; assume the same.
