@@ -1,22 +1,16 @@
 // End-to-end test of the engine's native (Film Studio app) sign-in against a fake OIDC provider.
 //   node --test apple/scripts/test-native-auth.mjs
-// Starts a throwaway engine (temp data dir, no provider keys) with OIDC pointed at the fake provider,
+// Starts a throwaway engine (harness.mjs: temp data dir, no provider keys) with OIDC pointed at the fake provider,
 // then walks the redirects the way ASWebAuthenticationSession would.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { startEngine } from './harness.mjs';
 import { startFakeOidc } from './fake-oidc.mjs';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const PORT = 4900 + Math.floor(Math.random() * 40);
+const PORT = 4900 + Math.floor(Math.random() * 90);
 const BASE = `http://127.0.0.1:${PORT}`;
 let idp;
 let engine;
-let data;
 
 const get = (url, headers = {}) => fetch(url.startsWith('http') ? url : `${BASE}${url}`, { redirect: 'manual', headers });
 const loc = (res) => res.headers.get('location');
@@ -38,30 +32,12 @@ async function walk(start) {
 
 before(async () => {
   idp = await startFakeOidc();
-  data = fs.mkdtempSync(path.join(os.tmpdir(), 'filmstudio-auth-'));
-  engine = spawn(process.execPath, ['engine/server.js'], {
-    cwd: ROOT,
-    env: {
-      PATH: process.env.PATH, HOME: data, ENGINE_PORT: String(PORT), ENGINE_DATA: data,
-      OIDC_ISSUER: idp.issuer, OIDC_CLIENT_ID: 'filmstudio-test', PUBLIC_URL: BASE, OIDC_ALLOWED_EMAILS: 'justin@example.com',
-      LLM_BASE_URL: 'http://127.0.0.1:9/v1', COMFY_URL: 'http://127.0.0.1:9',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let log = '';
-  engine.stdout.on('data', (d) => (log += d));
-  engine.stderr.on('data', (d) => (log += d));
-  for (let i = 0; i < 100; i++) {
-    try { if ((await fetch(`${BASE}/engine/api/health`)).ok) return; } catch {}
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error(`engine did not start:\n${log}`);
+  engine = await startEngine({ port: PORT, env: { OIDC_ISSUER: idp.issuer, OIDC_CLIENT_ID: 'filmstudio-test', PUBLIC_URL: BASE, OIDC_ALLOWED_EMAILS: 'justin@example.com' } });
 });
 
 after(async () => {
-  engine?.kill();
+  engine?.stop();
   await idp?.close();
-  fs.rmSync(data, { recursive: true, force: true });
 });
 
 test('native sign-in ends at filmstudio://auth with a session and the app state', async () => {

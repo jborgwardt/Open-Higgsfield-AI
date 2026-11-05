@@ -18,6 +18,7 @@ import { oidcConfig, loginRedirect, finishLogin, sessionFor, endSession, session
 import { fetchJSON } from './lib/http.js';
 import { apimartModels, APIMART_LLMS } from './lib/providers/apimart.js';
 import { elevenSubscription, elevenVoices, elevenAvailable, ELEVEN_TTS_MODELS } from './lib/providers/eleven.js';
+import { appConfig, patchAppConfig, appVersion, appendAppLog, readAppLog, clearAppLog } from './lib/appconfig.js';
 
 const PORT = Number(process.env.ENGINE_PORT) || 4848;
 const HOST = process.env.ENGINE_HOST || '127.0.0.1';
@@ -151,6 +152,14 @@ route('POST', '/logout', ({ req }) => {
 route('GET', '/status', ({ url }) => status(url.searchParams.has('fresh')));
 route('GET', '/catalog', async () => { await status(); return { models: publicCatalog(), providers: PROVIDERS }; });
 route('GET', '/settings', () => publicSettings());
+
+// Film Studio Apple app: server-driven config (tabs, web fallbacks, flags, defaults, copy) + remote diagnostics.
+route('GET', '/app/version', () => appVersion()); // unauthenticated (see `open` below)
+route('GET', '/app/config', () => appConfig());
+route('PATCH', '/app/config', ({ body }) => patchAppConfig(body));
+route('POST', '/app/log', ({ req, body }) => appendAppLog(body, { user: currentUser(req)?.email, ip: req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress }));
+route('GET', '/app/log', ({ url }) => readAppLog(Object.fromEntries(url.searchParams)));
+route('DELETE', '/app/log', () => clearAppLog());
 route('POST', '/settings', async ({ body }) => ({ settings: await updateSettings(body), status: await status(true) }));
 
 route('POST', '/xai/login', () => xai.startDeviceLogin());
@@ -272,7 +281,7 @@ const server = http.createServer(async (req, res) => {
         return send(res, 302, '', { Location: nativeRedirect({ error: `Pocket ID unreachable: ${e.message}`, state }) });
       }
     }
-    const open = p === '/engine/api/health' || p === '/engine/api/login' || p === '/engine/api/logout';
+    const open = p === '/engine/api/health' || p === '/engine/api/login' || p === '/engine/api/logout' || (p === '/engine/api/app/version' && req.method === 'GET');
     if ((p.startsWith('/engine/api/') || p.startsWith('/engine/media/')) && !open && !authed(req, url)) {
       return send(res, 401, { error: 'access code required', auth: true });
     }
