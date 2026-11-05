@@ -65,6 +65,7 @@ export function ToolsPage() {
         S.values = Object.fromEntries(S.tool.inputs.filter((i) => i.default !== undefined && i.default !== '').map((i) => [i.key, i.default]));
         history.replaceState(null, '', `#tool=${id}`);
         renderMain();
+        root.querySelector('.tl-main').scrollTop = 0;
     }
 
     /* ---------------- tool form ---------------- */

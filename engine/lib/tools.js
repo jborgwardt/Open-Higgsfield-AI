@@ -320,7 +320,7 @@ export const TOOLS = [
     inputs: [img('image', 'Target photo'), img('face', 'Face', { required: false }), character()],
     async run(v, ctx) {
       const f = await personRef(v, 'face', ctx.signal);
-      return editImage('Replace the face of the person in image 1 with the face of the person in image 2 (identity, facial structure, eyes, nose, mouth, skin tone). Keep image 1\'s pose, head angle, expression, hair style, lighting, colour grade and background. Seamless, photoreal.', v.image, [f.image, ...f.refs].slice(0, 3), ctx);
+      return editImage('The FIRST image is the photo to edit; the other image(s) only show a face. Output the first photo unchanged — same hair, head angle, expression, clothes, body, lighting, colour grade and background — except that the person\'s face now has the identity of the face in the other image(s): facial structure, eyes, nose, mouth, skin tone and facial hair. Seamless, photoreal.', v.image, [f.image, ...f.refs].slice(0, 3), ctx);
     },
   },
   {
@@ -329,7 +329,7 @@ export const TOOLS = [
     inputs: [img('image', 'Photo'), img('person', 'Your character', { required: false }), character()],
     async run(v, ctx) {
       const p = await personRef(v, 'person', ctx.signal);
-      return editImage('Replace the main person in image 1 with the character from image 2 — their face, hair, body type and outfit — in exactly the same pose, position, scale and lighting. Background and composition of image 1 stay unchanged. Photoreal.', v.image, [p.image, ...p.refs].slice(0, 3), ctx);
+      return editImage('The FIRST image is the photo to edit; the other image(s) show a character. Output the first photo with its background, composition, camera and lighting unchanged, but the main person in it replaced by that character — their face, hair, body type and outfit — in exactly the same pose, position and scale. Photoreal.', v.image, [p.image, ...p.refs].slice(0, 3), ctx);
     },
   },
   {

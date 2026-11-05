@@ -23,6 +23,9 @@
 .tl-fields { display: flex; flex-direction: column; gap: 12px; margin: 6px 0 4px; }
 .tl-fields em.req { color: var(--color-primary) !important; }
 .tl-tog { padding: 2px 0; }
+.tl .tl-media { display: flex; flex-direction: column; gap: 5px; }
+.tl .tl-media > span { font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--text-secondary); display: flex; justify-content: space-between; gap: 8px; }
+.tl .tl-media > span em { font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--text-muted); }
 .tl-media .tl-drop { height: 120px; border: 1px dashed var(--eg-line2); border-radius: 10px; display: grid; place-items: center; overflow: hidden; cursor: pointer; background: #0b0b0d; }
 .tl-media .tl-drop.has { border-style: solid; }
 .tl-media .tl-drop img, .tl-media .tl-drop video { width: 100%; height: 100%; object-fit: contain; background: #000; }

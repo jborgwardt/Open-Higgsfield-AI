@@ -208,7 +208,7 @@ route('POST', '/generate', ({ body }) => {
 route('GET', '/jobs/:id', ({ params }) => jobs.getJob(params.id) || Promise.reject(new HttpError(404, 'job not found')));
 
 // ---- Tools (Higgsfield-parity apps): server-driven registry rendered by the web Tools page and the Apple app ----
-route('GET', '/tools', () => tools.listTools());
+route('GET', '/tools', ({ url }) => tools.listTools({ all: url.searchParams.has('all') }));
 route('GET', '/tools/:id', async ({ params }) => (await tools.listTools()).find((t) => t.id === params.id) || Promise.reject(new HttpError(404, 'no such tool')));
 route('POST', '/tools/:id/run', ({ params, body }) => { const job = tools.runTool(params.id, body.inputs || body); return { jobId: job.id, job }; });
 route('GET', '/cinema/presets', () => tools.cinemaPresets());
