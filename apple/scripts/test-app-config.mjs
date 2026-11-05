@@ -25,7 +25,8 @@ after(async () => { local?.stop(); secured?.stop(); await idp?.close(); });
 test('defaults: tabs, features, polling, capture copy', async () => {
   const { status, body } = await call(local.base, 'GET', '/app/config');
   assert.equal(status, 200);
-  assert.deepEqual(body.tabs.map((t) => t.id), ['library', 'create', 'films', 'characters', 'tools', 'settings']);
+  assert.deepEqual(body.tabs.map((t) => t.id), ['explore', 'characters', 'library', 'films', 'settings']);
+  assert.deepEqual(body.explore.sections, ['create', 'tools', 'characters', 'models', 'recent', 'films']);
   assert.ok(body.tabs.every((t) => t.kind === 'native' && t.sfSymbol && t.title && t.path));
   assert.equal(body.features.characters, true);
   assert.ok(body.polling.jobMs > 0 && body.polling.productionMs > 0);
@@ -44,7 +45,7 @@ test('flip one tab to web, disable a feature, change a default, set a notice —
   const films = r.body.tabs.find((t) => t.id === 'films');
   assert.equal(films.kind, 'web');
   assert.equal(films.title, 'Films', 'a per-id tab patch keeps the other fields');
-  assert.equal(r.body.tabs.length, 6);
+  assert.equal(r.body.tabs.length, 5);
   assert.equal(r.body.features.saveToPhotos, false);
   assert.equal(r.body.features.deleteMedia, true, 'other flags keep their defaults');
   assert.equal(r.body.defaults.aspect, '9:16');
@@ -62,7 +63,7 @@ test('flip one tab to web, disable a feature, change a default, set a notice —
 
   // null resets a key to the default.
   r = await call(local.base, 'PATCH', '/app/config', { tabs: null, notice: null, features: { saveToPhotos: null } });
-  assert.equal(r.body.tabs.length, 6);
+  assert.equal(r.body.tabs.length, 5);
   assert.equal(r.body.notice, null);
   assert.equal(r.body.features.saveToPhotos, true);
   r = await call(local.base, 'PATCH', '/app/config', { reset: true });

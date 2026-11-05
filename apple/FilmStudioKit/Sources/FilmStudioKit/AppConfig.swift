@@ -22,6 +22,22 @@ public struct AppConfig: Decodable, Sendable, Equatable {
     }
     public struct ScreenOverride: Sendable, Equatable, Hashable { public var kind: String; public var path: String? }
     public struct CaptureStep: Sendable, Equatable, Hashable, Identifiable { public var id: String; public var title: String; public var instruction: String; public var sfSymbol: String }
+    /// A one-tap card on the Explore feed: a create flow (`mode`, optional `model`) or a tool (`tool`).
+    public struct ExploreCard: Sendable, Equatable, Hashable, Identifiable {
+        public var id: String
+        public var title: String
+        public var subtitle: String
+        public var sfSymbol: String
+        public var mode: String?
+        public var model: String?
+        public var tool: String?
+    }
+    public struct Explore: Sendable, Equatable {
+        public var title: String
+        public var subtitle: String
+        public var sections: [String]
+        public var cards: [ExploreCard]
+    }
     public struct Capture: Sendable, Equatable {
         public var title: String
         public var intro: String
@@ -46,6 +62,7 @@ public struct AppConfig: Decodable, Sendable, Equatable {
     public var limits: [String: Double]
     public var webBaseUrl: String?
     public var capture: Capture
+    public var explore: Explore
     public var updatedAt: String?
 
     public init(from decoder: Decoder) throws {
@@ -82,7 +99,23 @@ public struct AppConfig: Decodable, Sendable, Equatable {
         limits = l
         webBaseUrl = c.json("web")?["baseUrl"]?.string?.nonEmpty ?? fb?.webBaseUrl
         capture = AppConfig.parseCapture(c.json("capture"), fallback: fb?.capture)
+        explore = AppConfig.parseExplore(c.json("explore"), fallback: fb?.explore)
         updatedAt = c.string("updatedAt")
+    }
+
+    private static func parseExplore(_ v: JSONValue?, fallback: Explore?) -> Explore {
+        let cards: [ExploreCard] = (v?["createCards"]?.array ?? []).compactMap { c in
+            guard let id = c["id"]?.string else { return nil }
+            return ExploreCard(id: id, title: c["title"]?.string ?? id.capitalized, subtitle: c["subtitle"]?.string ?? "", sfSymbol: c["sfSymbol"]?.string ?? "sparkles",
+                               mode: c["mode"]?.string, model: c["model"]?.string, tool: c["tool"]?.string)
+        }
+        let sections = (v?["sections"]?.array ?? []).compactMap(\.string)
+        return Explore(
+            title: v?["title"]?.string ?? fallback?.title ?? "What will you make?",
+            subtitle: v?["subtitle"]?.string ?? fallback?.subtitle ?? "",
+            sections: v?["sections"]?.array != nil ? sections : (fallback?.sections ?? ["create", "tools", "characters", "recent", "films"]),
+            cards: v?["createCards"]?.array != nil ? cards : (fallback?.cards ?? [])
+        )
     }
 
     private static func parseCapture(_ v: JSONValue?, fallback: Capture?) -> Capture {
@@ -162,7 +195,7 @@ public struct AppConfig: Decodable, Sendable, Equatable {
     }()
     private static let empty: AppConfig = {
         // Only reachable if the bundled resource is missing; keeps the app usable.
-        try! bareDecoder.decode(AppConfig.self, from: Data(#"{"tabs":[{"id":"library","title":"Library","sfSymbol":"photo.on.rectangle.angled"},{"id":"create","title":"Create","sfSymbol":"wand.and.stars"},{"id":"films","title":"Films","sfSymbol":"film.stack"},{"id":"settings","title":"Settings","sfSymbol":"gearshape"}]}"#.utf8))
+        try! bareDecoder.decode(AppConfig.self, from: Data(#"{"tabs":[{"id":"explore","title":"Explore","sfSymbol":"sparkles"},{"id":"library","title":"Library","sfSymbol":"photo.on.rectangle.angled"},{"id":"films","title":"Films","sfSymbol":"film.stack"},{"id":"settings","title":"Settings","sfSymbol":"gearshape"}]}"#.utf8))
     }()
 }
 

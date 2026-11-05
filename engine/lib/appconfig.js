@@ -18,19 +18,31 @@ export const APP_DEFAULTS = {
   updateUrl: 'https://ota.heil.haus:8443/film-studio.html',
   notice: null, // { title, body, level: 'info' | 'warning' | 'critical', id? }
   // Order = order in the tab bar / sidebar. kind 'web' opens `path` on the web app inside the app, signed in.
+  // Known native ids: explore, characters, library, films, settings, create, tools. Unknown ids open `path` on the web.
   tabs: [
-    { id: 'library', title: 'Library', sfSymbol: 'photo.on.rectangle.angled', kind: 'native', path: '/#library' },
-    { id: 'create', title: 'Create', sfSymbol: 'wand.and.stars', kind: 'native', path: '/#image' },
-    { id: 'films', title: 'Films', sfSymbol: 'film.stack', kind: 'native', path: '/#longform' },
+    { id: 'explore', title: 'Explore', sfSymbol: 'sparkles', kind: 'native', path: '/#image' },
     { id: 'characters', title: 'Characters', sfSymbol: 'person.crop.rectangle.stack', kind: 'native', path: '/#characters' },
-    { id: 'tools', title: 'Tools', sfSymbol: 'square.grid.2x2', kind: 'native', path: '/#tools' },
+    { id: 'library', title: 'Library', sfSymbol: 'photo.on.rectangle.angled', kind: 'native', path: '/#library' },
+    { id: 'films', title: 'Films', sfSymbol: 'film.stack', kind: 'native', path: '/#longform' },
     { id: 'settings', title: 'Settings', sfSymbol: 'gearshape', kind: 'native', path: '/' },
   ],
   // Per-screen overrides for screens inside tabs: { [screenId]: { kind: 'web', path: '/#longform?id={id}' } }.
-  // Screen ids: library, mediaViewer, create, films, filmDetail, shotDetail, newFilm, characters,
-  // characterDetail, capture, tools, tool, settings. Tabs can be overridden here too.
+  // Screen ids: explore, create, tools, tool, library, mediaViewer, films, filmDetail, shotDetail, newFilm,
+  // characters, characterDetail, capture, settings. Tabs can be overridden here too.
   screens: {},
+  // The home feed (Higgsfield-style): one-tap create cards, then server-defined sections in this order.
+  // Cards open a create flow (`mode` image|video, optional `model`) or a tool (`tool: '<tool id>'`).
+  explore: {
+    title: 'What will you make?',
+    subtitle: 'Images, video, effects and films — rendered on your own studio.',
+    sections: ['create', 'tools', 'characters', 'models', 'recent', 'films'],
+    createCards: [
+      { id: 'image', title: 'Image', subtitle: 'Stills, keyframes and edits', sfSymbol: 'photo.artframe', mode: 'image' },
+      { id: 'video', title: 'Video', subtitle: 'From text or a start frame', sfSymbol: 'film', mode: 'video' },
+    ],
+  },
   features: {
+    explore: true,
     create: true,
     films: true,
     characters: true,

@@ -115,10 +115,13 @@ public struct ModelInfo: Decodable, Sendable, Identifiable, Hashable {
     public var resolutionDefault: String?
     public var maxClip: Double?
     public var refs: Int
+    /// Optional example still (thumbnail / thumb / example) for the Explore feed.
+    public var thumbnail: String?
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
         guard let id = c.string("id") else { throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "model without id")) }
+        thumbnail = c.string("thumbnail") ?? c.string("thumb") ?? c.string("example")
         self.id = id
         provider = c.string("provider") ?? String(id.split(separator: "/").first ?? "")
         label = c.string("label", default: id)

@@ -89,7 +89,7 @@ private func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
     }
 
     @Test func characterContract() throws {
-        let list = try decode(LossyList<Character>.self, #"""
+        let list = try decode(LossyList<StudioCharacter>.self, #"""
         [{"id":"ch_1","name":"Bub","description":"Tall, beard","lookNotes":"green coat","voice":{"provider":"eleven","voiceId":"v123"},
           "refs":[{"assetId":"a_1","url":"/engine/media/a_1.jpg","kind":"photo","angle":"front","quality":{"score":0.82,"sharp":true,"issues":[]}},
                   {"assetId":"a_2","url":"/engine/media/a_2.jpg","kind":"video-frame","angle":"threeQuarterLeft","quality":{"score":41,"sharp":0.3,"issues":["blurry","backlit"]}}],
@@ -109,7 +109,7 @@ private func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
 
     @Test func toolSchema() throws {
         let tools = try decode(LossyList<Tool>.self, #"""
-        [{"id":"upscale","title":"Upscale","sfSymbol":"arrow.up.left.and.arrow.down.right","category":"Enhance","description":"4× upscale",
+        [{"id":"upscale","title":"Upscale","sfSymbol":"arrow.up.left.and.arrow.down.right","category":"Enhance","description":"4× upscale","example":{"image":"/engine/media/upscale.jpg"},
           "inputs":[{"key":"image","type":"image","label":"Image","required":true},
                     {"key":"factor","type":"select","label":"Factor","options":[{"value":"2","label":"2×"},"4"],"default":"2"},
                     {"key":"strength","type":"number","min":0,"max":1,"default":0.5},
@@ -122,6 +122,7 @@ private func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
         #expect(tools.map(\.id) == ["upscale", "avatar"])
         let up = tools[0]
         #expect(up.run == .init(method: "POST", path: "/tools/upscale/run"))
+        #expect(up.thumbnail == "/engine/media/upscale.jpg" && tools[1].thumbnail == nil)
         #expect(up.inputs[1].options.map(\.label) == ["2×", "4"])
         #expect(up.inputs[2].min == 0 && up.inputs[2].max == 1)
         #expect(!up.inputs[4].kind.isKnown)
@@ -153,7 +154,8 @@ private func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
 @Suite struct AppConfigTests {
     @Test func bundledFallbackMatchesEngineShape() {
         let c = AppConfig.fallback
-        #expect(c.tabs.map(\.id) == ["library", "create", "films", "characters", "tools", "settings"])
+        #expect(c.tabs.map(\.id) == ["explore", "characters", "library", "films", "settings"])
+        #expect(c.explore.sections.first == "create" && c.explore.cards.map(\.mode) == ["image", "video"])
         #expect(c.capture.checklist.count == 9)
         #expect(c.capture.tips.count >= 3)
         #expect(c.isOn("saveToPhotos"))
@@ -184,9 +186,10 @@ private func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
 
     @Test func emptyOrGarbageConfigStillUsable() throws {
         let c = try decode(AppConfig.self, "{}")
-        #expect(c.visibleTabs.count == 6)
-        let g = try decode(AppConfig.self, #"{"tabs":"nope","features":[1,2],"polling":null,"capture":{"checklist":[{"title":"no id"}]}}"#)
-        #expect(g.visibleTabs.count == 6 && g.capture.checklist.count == 9)
+        #expect(c.visibleTabs.count == 5)
+        let g = try decode(AppConfig.self, #"{"tabs":"nope","features":[1,2],"polling":null,"capture":{"checklist":[{"title":"no id"}]},"explore":{"createCards":[{"id":"up","tool":"upscale"}],"sections":["tools"]}}"#)
+        #expect(g.visibleTabs.count == 5 && g.capture.checklist.count == 9)
+        #expect(g.explore.cards.map(\.tool) == ["upscale"] && g.explore.sections == ["tools"] && g.explore.title == "What will you make?")
     }
 
     @Test func updates() {

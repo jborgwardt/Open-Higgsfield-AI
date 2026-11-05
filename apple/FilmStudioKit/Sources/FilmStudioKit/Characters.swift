@@ -2,7 +2,7 @@ import Foundation
 
 /// A recurring character with reference photos (GET /characters). Built against the agreed contract;
 /// the app degrades gracefully while the route is not deployed (404).
-public struct Character: Decodable, Sendable, Identifiable, Hashable {
+public struct StudioCharacter: Decodable, Sendable, Identifiable, Hashable {
     public struct Voice: Sendable, Hashable { public var provider: String; public var voiceId: String }
     public struct Quality: Sendable, Hashable {
         public var score: Double?

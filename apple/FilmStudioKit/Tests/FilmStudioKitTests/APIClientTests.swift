@@ -50,7 +50,11 @@ private func makeClient(base: String = "https://films.heil.haus", token: String?
 
 private func json(_ data: Data) -> [String: JSONValue] { (try? JSONDecoder().decode([String: JSONValue].self, from: data)) ?? [:] }
 
-@Suite(.serialized) struct APIClientTests {
+/// Every suite that uses StubProtocol nests here, so they never run concurrently.
+@Suite(.serialized) enum NetworkTests {}
+
+extension NetworkTests {
+@Suite struct APIClientTests {
     @Test func urlsAndBearer() async throws {
         StubProtocol.reset { _, _ in .init(body: "[]") }
         let c = makeClient(base: "https://example.com/studio")
@@ -186,4 +190,5 @@ private func json(_ data: Data) -> [String: JSONValue] { (try? JSONDecoder().dec
         #expect(o["device"]?["device"] == "iPhone18,1")
         #expect(o["entries"]?.array?.first?["route"] == "/media" && o["entries"]?.array?.first?["status"] == 500)
     }
+}
 }

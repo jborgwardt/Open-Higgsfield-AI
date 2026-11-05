@@ -282,11 +282,11 @@ public extension APIClient {
     func deleteShot(_ id: String, _ shot: String) async throws -> Production { try await send("DELETE", "/productions/\(id.pathSegment)/shots/\(shot.pathSegment)", json: nil) }
 
     // Characters (contract; the route may not be deployed yet → APIError.notFound "no such route")
-    func characters() async throws -> [Character] { try await get("/characters", as: LossyList<Character>.self).items }
-    func character(_ id: String) async throws -> Character? { try await characters().first { $0.id == id } }
-    func createCharacter(name: String, description: String, lookNotes: String) async throws -> Character? {
+    func characters() async throws -> [StudioCharacter] { try await get("/characters", as: LossyList<StudioCharacter>.self).items }
+    func character(_ id: String) async throws -> StudioCharacter? { try await characters().first { $0.id == id } }
+    func createCharacter(name: String, description: String, lookNotes: String) async throws -> StudioCharacter? {
         let data = try await perform(makeRequest("POST", "/characters", body: try JSONEncoder().encode(["name": name, "description": description, "lookNotes": lookNotes])), route: "/characters")
-        return try? JSONDecoder().decode(Character.self, from: data)
+        return try? JSONDecoder().decode(StudioCharacter.self, from: data)
     }
     func updateCharacter(_ id: String, _ patch: [String: JSONValue]) async throws { try await call("PATCH", "/characters/\(id.pathSegment)", json: patch) }
     func deleteCharacter(_ id: String) async throws { try await call("DELETE", "/characters/\(id.pathSegment)", json: nil) }

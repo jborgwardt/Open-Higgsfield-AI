@@ -138,7 +138,7 @@ public struct Brief: Sendable, Hashable {
     public var shotCount: Int { max(1, Int((max(10, targetMinutes * 60) / max(clipSeconds, 1)).rounded())) }
 }
 
-public struct Scene: Sendable, Hashable, Identifiable {
+public struct FilmScene: Sendable, Hashable, Identifiable {
     public var id: String
     public var title: String
     public var summary: String
@@ -204,7 +204,7 @@ public struct Production: Decodable, Sendable, Identifiable {
     public var message: String
     public var brief: Brief
     public var plan: Plan?
-    public var scenes: [Scene]
+    public var scenes: [FilmScene]
     public var shots: [Shot]
     public var master: Master?
     public var log: [LogLine]
@@ -226,7 +226,7 @@ public struct Production: Decodable, Sendable, Identifiable {
         }
         scenes = (c.json("scenes")?.array ?? []).compactMap { s in
             guard let id = s["id"]?.string else { return nil }
-            return Scene(id: id, title: s["title"]?.string ?? "", summary: s["summary"]?.string ?? "", music: s["music"]?.string ?? "")
+            return FilmScene(id: id, title: s["title"]?.string ?? "", summary: s["summary"]?.string ?? "", music: s["music"]?.string ?? "")
         }
         shots = (c.json("shots")?.array ?? []).compactMap { $0.object.map(Shot.init(json:)) }.sorted { $0.index < $1.index }
         if let m = c.json("master")?.object, let url = m["url"]?.string {
@@ -245,8 +245,8 @@ public struct Production: Decodable, Sendable, Identifiable {
     public var canAssemble: Bool { doneCount > 0 && !assembling && status != .running }
 
     /// Shots grouped under their scene, in order (shots without a known scene go last).
-    public var sceneGroups: [(scene: Scene?, shots: [Shot])] {
-        var groups: [(Scene?, [Shot])] = []
+    public var sceneGroups: [(scene: FilmScene?, shots: [Shot])] {
+        var groups: [(FilmScene?, [Shot])] = []
         for shot in shots {
             let scene = scenes.first { $0.id == shot.sceneId }
             if let last = groups.last, last.0?.id == scene?.id { groups[groups.count - 1].1.append(shot) } else { groups.append((scene, [shot])) }

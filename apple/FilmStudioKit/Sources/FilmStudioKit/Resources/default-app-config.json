@@ -5,25 +5,11 @@
   "notice": null,
   "tabs": [
     {
-      "id": "library",
-      "title": "Library",
-      "sfSymbol": "photo.on.rectangle.angled",
-      "kind": "native",
-      "path": "/#library"
-    },
-    {
-      "id": "create",
-      "title": "Create",
-      "sfSymbol": "wand.and.stars",
+      "id": "explore",
+      "title": "Explore",
+      "sfSymbol": "sparkles",
       "kind": "native",
       "path": "/#image"
-    },
-    {
-      "id": "films",
-      "title": "Films",
-      "sfSymbol": "film.stack",
-      "kind": "native",
-      "path": "/#longform"
     },
     {
       "id": "characters",
@@ -33,11 +19,18 @@
       "path": "/#characters"
     },
     {
-      "id": "tools",
-      "title": "Tools",
-      "sfSymbol": "square.grid.2x2",
+      "id": "library",
+      "title": "Library",
+      "sfSymbol": "photo.on.rectangle.angled",
       "kind": "native",
-      "path": "/#tools"
+      "path": "/#library"
+    },
+    {
+      "id": "films",
+      "title": "Films",
+      "sfSymbol": "film.stack",
+      "kind": "native",
+      "path": "/#longform"
     },
     {
       "id": "settings",
@@ -48,7 +41,36 @@
     }
   ],
   "screens": {},
+  "explore": {
+    "title": "What will you make?",
+    "subtitle": "Images, video, effects and films — rendered on your own studio.",
+    "sections": [
+      "create",
+      "tools",
+      "characters",
+      "models",
+      "recent",
+      "films"
+    ],
+    "createCards": [
+      {
+        "id": "image",
+        "title": "Image",
+        "subtitle": "Stills, keyframes and edits",
+        "sfSymbol": "photo.artframe",
+        "mode": "image"
+      },
+      {
+        "id": "video",
+        "title": "Video",
+        "subtitle": "From text or a start frame",
+        "sfSymbol": "film",
+        "mode": "video"
+      }
+    ]
+  },
   "features": {
+    "explore": true,
     "create": true,
     "films": true,
     "characters": true,

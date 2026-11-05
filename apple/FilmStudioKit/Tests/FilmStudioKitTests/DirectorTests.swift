@@ -1,0 +1,83 @@
+import Foundation
+import Testing
+@testable import FilmStudioKit
+
+private func json(_ s: String) throws -> JSONValue { try JSONDecoder().decode(JSONValue.self, from: Data(s.utf8)) }
+
+@Suite struct DirectorParsingTests {
+    @Test func shapes() throws {
+        let a = DirectorCatalog.parse(try json(#"[{"id":"claude","label":"Claude (your subscription)","available":true,"models":["opus","sonnet"]},{"provider":"xai","name":"Grok","available":false,"reason":"sign in to SuperGrok"},"local"]"#))
+        #expect(a.options.map(\.id) == ["claude", "xai", "local"])
+        #expect(a.options[0].models.map(\.id) == ["opus", "sonnet"])
+        #expect(!a.options[1].available && a.options[1].note == "sign in to SuperGrok")
+        #expect(a.current == nil)
+
+        let b = DirectorCatalog.parse(try json(#"{"directors":[{"id":"google","label":"Gemini","available":true,"models":[{"id":"gemini-3-pro","label":"Gemini 3 Pro"}]}],"current":{"provider":"google","model":"gemini-3-pro"}}"#))
+        #expect(b.options.count == 1 && b.current == DirectorChoice(provider: "google", model: "gemini-3-pro"))
+        #expect(b.describe(b.current) == "Gemini · Gemini 3 Pro")
+
+        let c = DirectorCatalog.parse(try json(#"{"options":{"openai":{"label":"Local LLM","online":true},"local":{"label":"No AI"}},"directorProvider":"","directorModel":""}"#))
+        #expect(Set(c.options.map(\.id)) == ["openai", "local"])
+        #expect(c.current?.isChosen == false)
+        #expect(c.describe(c.current) == "Not chosen")
+        #expect(DirectorChoice(provider: "auto").isChosen == false)
+    }
+
+    @Test func needsDirectorError() {
+        #expect(APIError.server(status: 400, message: "Choose a director first").needsDirector)
+        #expect(APIError.server(status: 409, message: "No director chosen — pick one in Settings").needsDirector)
+        #expect(!APIError.server(status: 409, message: "pause the production before re-planning").needsDirector)
+    }
+
+    @Test func synthesizedFromOldStatus() throws {
+        let s = try json(#"{"providers":{"xai":{"available":true},"google":{"available":false}},"llm":{"online":false,"models":[]},"directorModels":{"apimart":["claude-opus-5","gpt-5.4"]}}"#)
+        let c = DirectorCatalog.synthesized(from: s)
+        #expect(c.option("xai")?.available == true && c.option("google")?.available == false)
+        #expect(c.option("apimart")?.models.count == 2)
+        #expect(c.option("local")?.available == true)
+    }
+}
+
+extension NetworkTests {
+@Suite struct DirectorClientTests {
+    private func client() -> APIClient {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StubProtocol.self]
+        return APIClient(baseURL: URL(string: "https://films.heil.haus")!, session: URLSession(configuration: config), token: { "t" })
+    }
+
+    @Test func fallsBackToStatusThenSettings() async throws {
+        StubProtocol.reset { req, _ in
+            switch req.url!.path {
+            case "/engine/api/directors": .init(status: 404, body: #"{"error":"no such route"}"#)
+            case "/engine/api/status": .init(body: #"{"providers":{},"directors":[{"id":"claude","label":"Claude","available":true},{"id":"local","label":"No AI","available":true}]}"#)
+            case "/engine/api/settings": .init(body: #"{"directorProvider":"claude","directorModel":"opus"}"#)
+            default: .init(status: 500)
+            }
+        }
+        let c = try await client().directors()
+        #expect(c.options.map(\.id) == ["claude", "local"])
+        #expect(c.current == DirectorChoice(provider: "claude", model: "opus"))
+    }
+
+    @Test func prefersDirectorsRoute() async throws {
+        StubProtocol.reset { req, _ in
+            req.url!.path == "/engine/api/directors"
+                ? .init(body: #"{"directors":[{"id":"xai","label":"Grok","available":true}],"current":{"provider":"xai"}}"#)
+                : .init(status: 500)
+        }
+        let c = try await client().directors()
+        #expect(c.options.map(\.id) == ["xai"] && c.current?.provider == "xai")
+        #expect(StubProtocol.all.count == 1)
+    }
+
+    @Test func persistsChoice() async throws {
+        StubProtocol.reset { _, _ in .init(body: #"{"settings":{},"status":{}}"#) }
+        try await client().setDirector(DirectorChoice(provider: "apimart", model: "claude-opus-5"))
+        let (req, body) = try #require(StubProtocol.last)
+        #expect(req.httpMethod == "POST" && req.url!.path == "/engine/api/settings")
+        let o = try JSONDecoder().decode([String: JSONValue].self, from: body)
+        #expect(o == ["directorProvider": "apimart", "directorModel": "claude-opus-5"])
+    }
+}
+}
