@@ -35,6 +35,10 @@ function navigate(page) {
     import('./components/CharactersPage.js').then(({ CharactersPage }) => {
       contentArea.appendChild(CharactersPage());
     });
+  } else if (page === 'tools') {
+    import('./components/ToolsPage.js').then(({ ToolsPage }) => {
+      contentArea.appendChild(ToolsPage());
+    });
   } else if (page === 'lipsync') {
     import('./components/LipSyncStudio.js').then(({ LipSyncStudio }) => {
       contentArea.appendChild(LipSyncStudio());

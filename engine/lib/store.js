@@ -44,6 +44,7 @@ const DEFAULTS = {
   veniceKey: '',
   elevenKey: '',
   elevenModel: 'eleven_v4',
+  qwenKey: '', // Qwen Cloud Token Plan (HappyHorse video, Qwen-Image / Wan 2.7 images); base URL via QWEN_BASE
   comfyUrl: 'http://127.0.0.1:8188',
   llmBaseUrl: 'http://127.0.0.1:11434/v1',
   llmModel: 'qwen3:8b',
@@ -51,7 +52,7 @@ const DEFAULTS = {
   directorProvider: '', // chosen by the user, no default: claude | google | xai | apimart | qwen | openai | split
   directorModel: '',
   handoffDir: path.join(os.homedir(), 'Downloads'),
-  concurrency: { xai: 2, google: 2, apimart: 3, fal: 4, replicate: 3, muapi: 2, kie: 3, comfy: 1, local: 2 },
+  concurrency: { xai: 2, google: 2, apimart: 3, fal: 4, replicate: 3, muapi: 2, kie: 3, comfy: 1, local: 2, qwen: 1 },
   accessToken: '', // required when the engine is reachable from other devices
   oidcIssuer: '',
   oidcClientId: '',
@@ -76,6 +77,7 @@ const ENV = {
   qwenKey: ['QWEN_API_KEY'],
   veniceKey: ['VENICE_API_KEY'],
   elevenKey: ['ELEVENLABS_API_KEY', 'ELEVEN_API_KEY'],
+  qwenKey: ['QWEN_API_KEY'],
   comfyUrl: ['COMFY_URL'],
   llmBaseUrl: ['LLM_BASE_URL'],
   llmModel: ['LLM_MODEL'],
@@ -132,7 +134,7 @@ let assets = readJSON(ASSETS_FILE, {});
 let assetsQueue = Promise.resolve();
 const saveAssets = () => (assetsQueue = assetsQueue.then(() => writeJSON(ASSETS_FILE, assets)).catch((e) => console.error('assets save', e)));
 
-const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/mp4': 'm4a', 'audio/aiff': 'aiff' };
+const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/svg+xml': 'svg','video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/mp4': 'm4a', 'audio/aiff': 'aiff' };
 export const extFor = (mime) => EXT[mime] || (mime?.startsWith('video/') ? 'mp4' : mime?.startsWith('image/') ? 'jpg' : 'bin');
 export const mimeForExt = (ext) => Object.entries(EXT).find(([, e]) => e === String(ext).replace('.', '').toLowerCase())?.[0] || 'application/octet-stream';
 
@@ -143,6 +145,7 @@ export function sniffMime(buf, fallback) {
   if (buf.subarray(0, 3).toString() === 'GIF') return 'image/gif';
   if (buf.subarray(4, 8).toString() === 'ftyp') return buf.subarray(8, 10).toString() === 'qt' ? 'video/quicktime' : 'video/mp4';
   if (buf.subarray(0, 4).toString('hex') === '1a45dfa3') return 'video/webm';
+  if (/^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(buf.subarray(0, 256).toString())) return 'image/svg+xml';
   return fallback || 'application/octet-stream';
 }
 

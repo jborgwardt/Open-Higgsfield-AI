@@ -71,8 +71,15 @@ export function ProvidersModal() {
               <span class="muted" data-test="eleven"></span>
             </div>
 
+            <div class="card prov col">
+              <h4>Qwen Cloud · Token Plan ${chip(p.qwen?.available, 'key set', 'no key')}</h4>
+              <p><b>HappyHorse 1.1</b> video (text, start frame, or up to 9 identity references) and <b>Qwen-Image / Wan 2.7</b> images on your Qwen subscription credits. Meant for interactive use — keep batches modest.</p>
+              <div class="row">${secret('qwenKey', s.qwenKey, 'Qwen Token Plan key')}<button type="button" class="btn sm" data-a="test" data-p="qwen" ${p.qwen?.available ? '' : 'disabled'}>Test</button></div>
+              <span class="muted" data-test="qwen"></span>
+            </div>
+
             <div class="grid2">
-              <div class="card prov col"><h4>fal.ai ${chip(p.fal.available, 'key set', 'no key')}</h4><p>Wan 2.2, LTX-Video, FLUX, Kontext (open weights).</p>${secret('falKey', s.falKey, 'fal key')}</div>
+              <div class="card prov col"><h4>fal.ai ${chip(p.fal.available, 'key set', 'no key')}</h4><p>Wan 2.2, LTX-Video, FLUX, Kontext — and most Tools: upscaling, talking avatars, lip-sync, background removal, video swap, sound effects. Also hosts video/audio inputs for ApiMart.</p>${secret('falKey', s.falKey, 'fal key')}</div>
               <div class="card prov col"><h4>Replicate ${chip(p.replicate.available, 'token set', 'no token')}</h4><p>Wan 2.2 Fast, FLUX schnell.</p>${secret('replicateToken', s.replicateToken, 'r8_…')}</div>
               <div class="card prov col"><h4>muapi.ai ${chip(p.muapi.available, 'key set', 'no key')}</h4><p>Veo 3.1, Kling 3.0, Seedance, Wan 2.6 via muapi.</p>${secret('muapiKey', s.muapiKey, 'muapi key')}</div>
               <div class="card prov col"><h4>kie.ai ${chip(p.kie.available, 'key set', 'no key')}</h4><p>Veo 3 Fast, Seedance 2, Kling 3, Nano Banana 2.</p>${secret('kieKey', s.kieKey, 'kie key')}</div>

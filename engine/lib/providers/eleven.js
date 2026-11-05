@@ -57,6 +57,28 @@ export async function elevenSpeech({ text, voice, model }, { signal } = {}) {
   return { buffer: Buffer.from(await res.arrayBuffer()), mime: 'audio/mpeg', ext: 'mp3' };
 }
 
+/* ---------------- Higgsfield-parity: sound effects + music (Audio tools) ---------------- */
+
+async function elevenAudio(path, body, signal) {
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, { method: 'POST', headers: { 'xi-api-key': key(), 'Content-Type': 'application/json', Accept: 'audio/mpeg' }, body: JSON.stringify(body), signal: signal || AbortSignal.timeout(300000) });
+  } catch (e) {
+    if (signal?.aborted) throw new Error('cancelled');
+    throw new ProviderError('elevenlabs', 0, e.cause?.code || e.message, { retryable: true });
+  }
+  if (!res.ok) throw await httpError('elevenlabs', res);
+  return { buffer: Buffer.from(await res.arrayBuffer()), mime: 'audio/mpeg', ext: 'mp3' };
+}
+
+/** Text → sound effect (0.5–30 s). */
+export const elevenSfx = ({ text, seconds, loop = false, influence = 0.4 }, { signal } = {}) =>
+  elevenAudio('/v1/sound-generation?output_format=mp3_44100_192', { text: String(text).slice(0, 1000), ...(seconds && { duration_seconds: Math.min(30, Math.max(0.5, Number(seconds))) }), prompt_influence: influence, loop, model_id: 'eleven_text_to_sound_v2' }, signal);
+
+/** Text → music track (Eleven Music). */
+export const elevenMusic = ({ prompt, seconds = 30, instrumental = true }, { signal } = {}) =>
+  elevenAudio('/v1/music?output_format=mp3_44100_192', { prompt: String(prompt).slice(0, 2000), music_length_ms: Math.round(Math.min(300, Math.max(10, Number(seconds) || 30)) * 1000), force_instrumental: !!instrumental }, signal);
+
 /**
  * Voice changer: re-speak a recorded line in another ElevenLabs voice (your clone included),
  * keeping the original timing and delivery — so lip movement in a generated clip still lines up.

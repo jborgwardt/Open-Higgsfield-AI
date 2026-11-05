@@ -51,6 +51,7 @@ export const engine = {
         const sorted = [...models].sort((a, b) => ORDER.indexOf(a.provider) - ORDER.indexOf(b.provider));
         for (const m of sorted) {
             if (!m.available || m.provider === 'handoff') continue;
+            if (m.kind !== 'image' && m.kind !== 'video') continue; // tool-only models (upscale, avatar, …) live on the Tools page
             const base = {
                 id: `engine:${m.id}`,
                 label: `${m.label}`,
@@ -111,6 +112,18 @@ export const engine = {
         });
         if (params.onRequestId) params.onRequestId(`engine:${job.id}`);
         return this.poll(job.id);
+    },
+
+    /** Run a server-defined tool (GET /tools); resolves with the finished job ({ url, kind, assets[], text }). */
+    async runTool(id, inputs, { onUpdate } = {}) {
+        const { jobId } = await req('POST', `/tools/${encodeURIComponent(id)}/run`, { inputs });
+        for (;;) {
+            const j = await req('GET', `/jobs/${jobId}`);
+            onUpdate?.(j);
+            if (j.status === 'done') return j;
+            if (j.status === 'error' || j.status === 'cancelled') throw Object.assign(new Error(j.error || 'Tool failed'), { job: j });
+            await new Promise((r) => setTimeout(r, 2000));
+        }
     },
 
     async poll(jobId, maxAttempts = 1800, interval = 2000) {
