@@ -15,6 +15,12 @@ FROM node:22-bookworm-slim
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg espeak-ng ca-certificates tini \
  && rm -rf /var/lib/apt/lists/*
+# Claude as a long-form director on your Claude subscription (Claude Code CLI, headless `claude -p`).
+# Auth: run `claude setup-token` once on any machine and set CLAUDE_CODE_OAUTH_TOKEN for the container.
+# CLI state lives on the data volume. Pinned; the in-app updater is off.
+RUN npm install -g --no-audit --no-fund @anthropic-ai/claude-code@2.1.318 && npm cache clean --force
+ENV CLAUDE_CONFIG_DIR=/data/claude \
+    DISABLE_AUTOUPDATER=1
 WORKDIR /app
 COPY engine ./engine
 COPY --from=web /app/dist ./dist

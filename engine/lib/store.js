@@ -40,13 +40,15 @@ const DEFAULTS = {
   muapiKey: '',
   kieKey: '',
   apimartKey: '',
+  qwenKey: '',
+  veniceKey: '',
   elevenKey: '',
   elevenModel: 'eleven_v4',
   comfyUrl: 'http://127.0.0.1:8188',
   llmBaseUrl: 'http://127.0.0.1:11434/v1',
   llmModel: 'qwen3:8b',
   llmKey: '',
-  directorProvider: 'auto', // auto | xai | google | apimart | openai
+  directorProvider: '', // chosen by the user, no default: claude | google | xai | apimart | qwen | openai | split
   directorModel: '',
   handoffDir: path.join(os.homedir(), 'Downloads'),
   concurrency: { xai: 2, google: 2, apimart: 3, fal: 4, replicate: 3, muapi: 2, kie: 3, comfy: 1, local: 2 },
@@ -61,6 +63,7 @@ const DEFAULTS = {
 
 let settings = { ...DEFAULTS, ...readJSON(SETTINGS_FILE, {}) };
 settings.concurrency = { ...DEFAULTS.concurrency, ...(settings.concurrency || {}) };
+if (settings.directorProvider === 'auto') settings.directorProvider = ''; // there is no automatic director any more
 
 const ENV = {
   falKey: ['FAL_KEY', 'FAL_API_KEY'],
@@ -70,6 +73,8 @@ const ENV = {
   muapiKey: ['MUAPI_KEY'],
   kieKey: ['KIE_API_KEY'],
   apimartKey: ['APIMART_API_KEY'],
+  qwenKey: ['QWEN_API_KEY'],
+  veniceKey: ['VENICE_API_KEY'],
   elevenKey: ['ELEVENLABS_API_KEY', 'ELEVEN_API_KEY'],
   comfyUrl: ['COMFY_URL'],
   llmBaseUrl: ['LLM_BASE_URL'],
@@ -84,7 +89,7 @@ export function getSettings() {
   return s;
 }
 
-const SECRET_KEYS = ['falKey', 'replicateToken', 'xaiKey', 'googleKey', 'muapiKey', 'kieKey', 'apimartKey', 'elevenKey', 'llmKey', 'accessToken', 'oidcClientSecret'];
+const SECRET_KEYS = ['falKey', 'replicateToken', 'xaiKey', 'googleKey', 'muapiKey', 'kieKey', 'apimartKey', 'qwenKey', 'veniceKey', 'elevenKey', 'llmKey', 'accessToken', 'oidcClientSecret'];
 
 export function publicSettings() {
   const s = getSettings();

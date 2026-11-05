@@ -1,6 +1,7 @@
 import '../styles/engine.css';
 import { engine } from '../lib/engine.js';
 import { ProvidersModal, toast } from './ProvidersModal.js';
+import { directorPicker, genreSelect, roomCard, shotExtras, editFields, screeningCard, cutSeconds } from './longform-room.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const mmss = (sec) => `${Math.floor((sec || 0) / 60)}:${String(Math.round((sec || 0) % 60)).padStart(2, '0')}`;
@@ -21,7 +22,7 @@ export function LongFormStudio() {
     const fileInput = Object.assign(document.createElement('input'), { type: 'file', hidden: true });
     root.appendChild(fileInput);
 
-    const S = { list: [], p: null, catalog: [], sound: { music: [], voice: [] }, chars: [], editing: null, timer: null, patchTimer: null, pending: {} };
+    const S = { list: [], p: null, catalog: [], sound: { music: [], voice: [] }, chars: [], directors: null, editing: null, timer: null, patchTimer: null, pending: {} };
     // Brief character entries as stored: a link to a saved character, or the inline { name, description, photo } form.
     const cleanChars = (list) => list.map((c) => (c.characterId ? { characterId: c.characterId } : { name: c.name || '', description: c.description || '', ...(c.refAssetId && { refAssetId: c.refAssetId }), ...(c.refAssetIds?.length && { refAssetIds: c.refAssetIds }) }));
     const models = (kind) => S.catalog.filter((m) => m.kind === kind);
@@ -36,10 +37,11 @@ export function LongFormStudio() {
     /* ---------------- data ---------------- */
 
     async function refreshCatalog() {
-        const [cat, sound, chars] = await Promise.all([engine.get('/catalog'), engine.get('/sound').catch(() => S.sound), engine.get('/characters').catch(() => S.chars)]);
+        const [cat, sound, chars, directors] = await Promise.all([engine.get('/catalog'), engine.get('/sound').catch(() => S.sound), engine.get('/characters').catch(() => S.chars), engine.get('/directors').catch(() => S.directors)]);
         S.catalog = cat.models;
         S.sound = sound;
         S.chars = chars;
+        S.directors = directors;
     }
 
     function soundSection(b) {
@@ -114,7 +116,7 @@ export function LongFormStudio() {
     function schedule() {
         clearTimeout(S.timer);
         if (!S.p || !document.body.contains(root)) return;
-        const live = ['planning', 'running'].includes(S.p.status) || S.p.assembling || S.p.shots.some((s) => s.status === 'handoff');
+        const live = ['planning', 'running'].includes(S.p.status) || S.p.assembling || S.p.screening?.status === 'running' || S.p.shots.some((s) => s.status === 'handoff');
         S.timer = setTimeout(async () => {
             if (!document.body.contains(root)) return;
             try {
@@ -158,6 +160,8 @@ export function LongFormStudio() {
           <label class="f"><span>Title</span><input type="text" data-b="title" value="${esc(b.title)}"/></label>
           <label class="f"><span>Script / story <em>paste a script, treatment or logline</em></span><textarea data-b="script" rows="9" placeholder="INT. ORBITAL GREENHOUSE — NIGHT. Mara, a botanist in a faded orange flight suit, discovers one seedling glowing…">${esc(b.script)}</textarea></label>
           <label class="f"><span>Look & style <em>applied to every shot</em></span><input type="text" data-b="style" value="${esc(b.style)}" placeholder="Anamorphic 35mm film, teal-orange grade, soft haze, shallow depth of field"/></label>
+          <div class="grid2">${genreSelect(b)}<div></div></div>
+          ${directorPicker(S.directors, b)}
           <div class="col chars">
             <h3 style="margin:4px 0 0">Characters <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:500">— saved characters bring their sheet + best photos</span></h3>
             ${(b.characters || []).map((c, i) => c.characterId ? `<div class="ch">
@@ -216,7 +220,7 @@ export function LongFormStudio() {
               ${s.model ? `<span class="dim" style="font-size:11px">${esc(m?.label || s.model)}</span>` : ''}
               ${Number.isFinite(s.likeness?.min) ? `<span class="chip ${s.likeness.pass ? 'ok' : 'warn'}" title="AI likeness estimate (advisory) vs the character photos, frames every ${s.likeness.every || 0.5}s${s.identityTries?.length > 1 ? ` · best of ${s.identityTries.length} renders` : ''}${s.identity?.model ? ` · ${s.identity.model} (${s.identity.mode})` : ''}"><i></i>Likeness ${s.likeness.score}/10${s.likeness.pass ? '' : ` · ${s.likeness.min} at ${s.likeness.minAt}s`}</span>` : ''}
             </div>
-            ${editing ? `<textarea data-edit="${s.id}" rows="5">${esc(s.prompt)}</textarea>${S.p.brief.narration ? `<input type="text" data-edit-narr="${s.id}" value="${esc(s.narration || '')}" placeholder="Narration for this shot (optional)" style="margin-top:6px"/>` : ''}<div class="row" style="margin-top:6px"><button class="btn sm primary" data-a="save-prompt" data-id="${s.id}">Save</button><button class="btn sm ghost" data-a="cancel-edit">Cancel</button><select data-shot-model="${s.id}" style="width:auto;margin-left:auto">${`<option value="">Production model</option>${modelOptions('video', s.model, { includeHandoff: true })}`}</select></div>` : `<div class="p" data-a="edit" data-id="${s.id}" title="Click to edit">${esc(s.prompt)}</div>`}
+            ${editing ? `<textarea data-edit="${s.id}" rows="5">${esc(s.prompt)}</textarea>${editFields(s)}${S.p.brief.narration ? `<input type="text" data-edit-narr="${s.id}" value="${esc(s.narration || '')}" placeholder="Narration for this shot (optional)" style="margin-top:6px"/>` : ''}<div class="row" style="margin-top:6px"><button class="btn sm primary" data-a="save-prompt" data-id="${s.id}">Save</button><button class="btn sm ghost" data-a="cancel-edit">Cancel</button><select data-shot-model="${s.id}" style="width:auto;margin-left:auto">${`<option value="">Production model</option>${modelOptions('video', s.model, { includeHandoff: true })}`}</select></div>` : `<div class="p" data-a="edit" data-id="${s.id}" title="Click to edit">${esc(s.prompt)}</div>${shotExtras(s)}`}
             ${S.p.brief.narration && s.narration && !editing ? `<div class="msg" style="color:#cfe3ff">🎙 ${esc(s.narration)}</div>` : ''}
             ${s.message && s.status !== 'done' ? `<div class="msg">${esc(s.message)}</div>` : ''}
             ${s.error && s.status === 'error' ? `<div class="msg err">${esc(s.error)}</div>` : ''}
@@ -237,7 +241,7 @@ export function LongFormStudio() {
         const b = p.brief;
         const [cls, label] = STATUS[p.status] || ['', p.status];
         const done = p.shots.filter((s) => s.status === 'done');
-        const rendered = done.reduce((t, s) => t + (s.clipDuration || 0), 0);
+        const rendered = cutSeconds(done);
         const running = p.shots.filter((s) => s.status === 'running').length;
         const failed = p.shots.filter((s) => s.status === 'error').length;
         const waiting = p.shots.filter((s) => s.status === 'handoff');
@@ -300,6 +304,8 @@ export function LongFormStudio() {
           <div class="col" data-region="head" style="gap:12px">${head}</div>
           ${handoff}
           ${master}
+          ${screeningCard(p, S.catalog.some((m) => m.provider === 'google' && m.available))}
+          ${roomCard(p)}
           ${p.shots.length ? `${scenes}${orphans.length ? `<div class="scene"><div class="scene-hd"><b>Extra shots</b></div>${orphans.map(shotRow).join('')}</div>` : ''}` : `<div class="empty">${p.status === 'planning' ? '<span class="spin"></span> The director is writing your shot list…' : 'Write or paste your script on the left, then <b>Plan with director</b>. You can edit every shot before rendering.'}</div>`}
           ${p.log?.length ? `<details><summary class="muted" style="cursor:pointer;font-size:12px">Production log</summary><div class="log">${p.log.slice().reverse().map((l) => `<div>${new Date(l.at).toLocaleTimeString()} — ${esc(l.msg)}</div>`).join('')}</div></details>` : ''}`;
         main.scrollTop = scroll;
@@ -364,8 +370,9 @@ export function LongFormStudio() {
                     const prompt = root.querySelector(`[data-edit="${id}"]`).value;
                     const mSel = root.querySelector(`[data-shot-model="${id}"]`)?.value || null;
                     const narr = root.querySelector(`[data-edit-narr="${id}"]`);
+                    const cut = { editIn: root.querySelector(`[data-edit-in="${id}"]`)?.value ?? null, editLength: root.querySelector(`[data-edit-len="${id}"]`)?.value ?? null, omit: !!root.querySelector(`[data-edit-omit="${id}"]`)?.checked };
                     S.editing = null;
-                    return act(`/shots/${id}`, { prompt, model: mSel, ...(narr ? { narration: narr.value } : {}) }, 'patch');
+                    return act(`/shots/${id}`, { prompt, model: mSel, ...cut, ...(narr ? { narration: narr.value } : {}) }, 'patch');
                 }
                 case 'retry': return act(`/shots/${id}`, { reset: true }, 'patch');
                 case 'skip': return act(`/shots/${id}`, { skip: true }, 'patch');
@@ -376,6 +383,14 @@ export function LongFormStudio() {
                     return toast('Prompt copied');
                 }
                 case 'autoimport': return act('/autoimport', { on: el.checked });
+                case 'screen': return act('/screen');
+                case 'screen-apply': return act('/screen/apply', el.dataset.n ? { shots: [Number(el.dataset.n)] } : {});
+                case 'screen-prompt': {
+                    const n = S.p.screening?.shots?.find((x) => x.shot === Number(el.dataset.n));
+                    if (!n?.newPrompt || !confirm(`Replace shot ${n.shot}'s prompt with the screening's re-shoot prompt and queue it for re-rendering?`)) return;
+                    return act(`/shots/${id}`, { prompt: n.newPrompt, reset: true }, 'patch');
+                }
+                case 'director-studio': e.preventDefault(); patchBrief({ directorProvider: '', directorModel: '' }); return renderSide();
                 case 'play': {
                     const s = S.p.shots.find((x) => x.id === id);
                     el.innerHTML = `<video src="${esc(s.videoUrl)}" autoplay controls playsinline></video>`;
@@ -416,6 +431,16 @@ export function LongFormStudio() {
         if (el.dataset.a === 'char-link' && el.value) {
             const x = S.chars.find((c) => c.id === el.value);
             setChars([...(S.p.brief.characters || []), { characterId: el.value, linked: true, resolvedName: x?.name, resolvedDescription: x?.description || '', refUrl: x?.coverUrl, refUrls: x?.refs.map((r) => r.url) || [], hasVoice: !!x?.voice }]);
+            return renderSide();
+        }
+        if (el.hasAttribute('data-director')) {
+            // The choice is saved studio-wide and stays until changed (this film's own override, if any, follows it).
+            const [provider, model] = el.value.split('|');
+            try {
+                S.directors = await engine.post('/directors', { provider, model });
+                if (S.p.brief.directorProvider) patchBrief({ directorProvider: provider, directorModel: model });
+                toast(`Director: ${S.directors.providers.find((x) => x.id === provider)?.label || provider}${model ? ` · ${model}` : ''}`);
+            } catch (err) { toast(err.message, true); }
             return renderSide();
         }
         if (el.dataset.b && (el.type === 'checkbox' || el.tagName === 'SELECT')) {
