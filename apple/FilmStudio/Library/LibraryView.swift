@@ -65,6 +65,13 @@ struct LibraryView: View {
                 }
                 .padding(.bottom, 24)
             }
+            .scrollDismissesKeyboard(.immediately)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { searchFocused = false }.fontWeight(.semibold)
+                }
+            }
             .onChange(of: app.scrollToTopTick["library"]) { _, _ in withAnimation(.snappy) { proxy.scrollTo("top", anchor: .top) } }
             }
             .studioCanvas()
@@ -96,6 +103,8 @@ struct LibraryView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(Color.textTertiary)
                     TextField("Search prompts and models", text: $search).textFieldStyle(.plain).focused($searchFocused).plainField()
+                        .submitLabel(.search)
+                        .onSubmit { searchFocused = false } // the keyboard's Search key closes it
                 }
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .background(Color.surfaceHigh, in: Capsule())
@@ -129,6 +138,7 @@ struct LibraryView: View {
                     Button { withAnimation(.snappy) { filter = f } } label: { StudioChip(title: f.rawValue, selected: filter == f) }
                         .buttonStyle(.plain)
                         .accessibilityAddTraits(filter == f ? .isSelected : [])
+                        .accessibilityIdentifier("libraryFilter.\(f.rawValue)") // distinct from the "Characters" tab button
                 }
             }
         }

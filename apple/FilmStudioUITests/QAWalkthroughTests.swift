@@ -381,10 +381,14 @@ final class QAWalkthroughTests: XCTestCase {
         typePrompt("Waves rolling over black rocks under a storm")
         guard generateGuarded(video: true) else { return }
         sleep(1)
-        closeComposer()
-        shot("50-progress-pill")
-        dump("50-progress-pill")
+        let finishedBeforeClose = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Save' OR label BEGINSWITH 'Share'")).count > 0
+        btn("Close").tap()
+        // Poll for the pill straight away: free local jobs can finish within seconds.
         let pill = btn(prefix: "Generating")
+        var sawPill = false
+        for _ in 0..<20 where !sawPill { if pill.exists || btn(containing: "generating").exists { sawPill = true; shot("50-progress-pill"); dump("50-progress-pill") } else { usleep(250_000) } }
+        note("progress pill seen=\(sawPill) (job finished before close: \(finishedBeforeClose))")
+        if !finishedBeforeClose { XCTAssertTrue(sawPill, "no progress pill while the job was still running") }
         if pill.exists { pill.tap(); sleep(1); shot("51-library-with-placeholder") }
         else { note("no progress pill after closing the composer mid-generation"); go("Library"); sleep(1); shot("51-library-with-placeholder") }
         dump("51-library")
@@ -401,10 +405,14 @@ final class QAWalkthroughTests: XCTestCase {
         shot("60-library")
         dump("60-library")
         for f in ["Videos", "Images", "Films", "Characters", "All"] {
-            let c = btn(f)
+            // By identifier: a bare "Characters" label also matches the tab bar and leaves Library.
+            let c = app.buttons["libraryFilter.\(f)"].firstMatch
+            let strip = app.scrollViews.containing(.button, identifier: "libraryFilter.All").firstMatch
+            for _ in 0..<3 where c.exists && !c.isHittable { if c.frame.minX > app.frame.midX { strip.swipeLeft() } else { strip.swipeRight() } }
             if c.exists && c.isHittable { c.tap(); sleep(2); shot("61-filter-\(f.lowercased())") } else { note("filter chip missing/unhittable: \(f) exists=\(c.exists)") }
         }
-        if !(btn("All").exists && btn("All").isHittable) { app.terminate(); start(); go("Library"); sleep(3) }
+        XCTAssertTrue(app.buttons["libraryFilter.All"].exists, "Library 'All' filter missing")
+        if !(app.buttons["libraryFilter.All"].exists && app.buttons["libraryFilter.All"].isHittable) { app.terminate(); start(); go("Library"); sleep(3) }
         let tile = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Video:' OR label BEGINSWITH 'Image:'")).firstMatch
         if wait(tile, 10, "library tile") {
             tile.press(forDuration: 1.2)
@@ -440,7 +448,8 @@ final class QAWalkthroughTests: XCTestCase {
         sleep(2)
         shot("68-after-refresh")
         let search = btn("Search")
-        if search.exists { search.tap(); sleep(1); app.typeText("lighthouse"); sleep(1); shot("69-search"); dismissKeyboard() }
+        if search.exists { search.tap(); sleep(1); app.typeText("lighthouse"); sleep(1); shot("69-search"); dismissKeyboard()
+            XCTAssertEqual(app.keyboards.count, 0, "Library search keyboard did not dismiss") }
     }
 
     // MARK: 07 Films
@@ -491,6 +500,12 @@ final class QAWalkthroughTests: XCTestCase {
         if title.exists { title.tap(); title.typeText("QA Lighthouse") }
         let script = app.textViews.firstMatch
         if script.exists { script.tap(); script.typeText("A keeper climbs the lighthouse stairs. He lights the lamp. The beam sweeps the sea. A ship turns toward shore.") }
+        if app.keyboards.count > 0 {
+            let done = app.toolbars.buttons["Done"].firstMatch.exists ? app.toolbars.buttons["Done"].firstMatch : app.buttons["Done"].firstMatch
+            if done.exists { done.tap(); sleep(1) }
+            XCTAssertEqual(app.keyboards.count, 0, "New Film script editor keyboard did not dismiss via Done")
+            note("new film keyboard dismissed=\(app.keyboards.count == 0)")
+        }
         shot("78-new-film-filled")
         let createFilm = app.navigationBars.buttons["Create"]
         guard wait(createFilm, 5, "New Film Create") else { return }
@@ -513,9 +528,8 @@ final class QAWalkthroughTests: XCTestCase {
             if env["FS_DIRECTOR_PICK"] != "0" { pickInForm("Director", "No AI") }
             let p2 = app.buttons["Plan Film"]; if p2.exists { p2.tap() }
         }
-        let render = btn("Render").exists ? btn("Render") : btn(containing: "Start Rendering")
-        _ = btn("Render").waitForExistence(timeout: 60)
-        guard wait(render, 60, "planned film") else { shot("79c-plan-failed"); return }
+        let render = btn("Render")
+        guard wait(render, 60, "planned film") else { shot("79c-plan-failed"); dump("79c-plan-failed"); return }
         sleep(1)
         shot("7a-film-planned")
         dump("7a-film-planned")
