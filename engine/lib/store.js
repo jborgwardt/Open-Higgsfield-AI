@@ -127,7 +127,7 @@ let assets = readJSON(ASSETS_FILE, {});
 let assetsQueue = Promise.resolve();
 const saveAssets = () => (assetsQueue = assetsQueue.then(() => writeJSON(ASSETS_FILE, assets)).catch((e) => console.error('assets save', e)));
 
-const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/mp4': 'm4a', 'audio/aiff': 'aiff' };
+const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/svg+xml': 'svg','video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/mp4': 'm4a', 'audio/aiff': 'aiff' };
 export const extFor = (mime) => EXT[mime] || (mime?.startsWith('video/') ? 'mp4' : mime?.startsWith('image/') ? 'jpg' : 'bin');
 export const mimeForExt = (ext) => Object.entries(EXT).find(([, e]) => e === String(ext).replace('.', '').toLowerCase())?.[0] || 'application/octet-stream';
 
@@ -138,6 +138,7 @@ export function sniffMime(buf, fallback) {
   if (buf.subarray(0, 3).toString() === 'GIF') return 'image/gif';
   if (buf.subarray(4, 8).toString() === 'ftyp') return buf.subarray(8, 10).toString() === 'qt' ? 'video/quicktime' : 'video/mp4';
   if (buf.subarray(0, 4).toString('hex') === '1a45dfa3') return 'video/webm';
+  if (/^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(buf.subarray(0, 256).toString())) return 'image/svg+xml';
   return fallback || 'application/octet-stream';
 }
 

@@ -11,6 +11,11 @@ import { muapiRun, muapiUpload, muapiUrl } from './providers/muapi.js';
 import { kieJob, kieVeo, kieUpload } from './providers/kie.js';
 import { comfyRun, listTemplates } from './providers/comfy.js';
 import { apimartVideo, apimartUpload, apimartAvailable } from './providers/apimart.js';
+// Higgsfield-parity (tools agent): extra image/video models + tool-only models.
+import { apimartImage, apimartVeoExtend } from './providers/apimart.js';
+import { falUpload } from './providers/fal.js';
+import { elevenAvailable } from './providers/eleven.js';
+import { TOOL_MODELS } from './toolmodels.js';
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const first = (o) => (Array.isArray(o) ? o[0] : o);
@@ -73,6 +78,36 @@ const IMAGE = [
   { id: 'local/plate', provider: 'local', label: 'Previs plate (offline)', refs: 0, aspects: AR_ALL },
 ];
 
+/* ------------------------------------------------------------------ Higgsfield-parity models */
+// Higgsfield's model hub carries GPT Image 2.x, Seedream 5, FLUX.2, Kling 3 Omni, Hailuo, MiniMax and Veo Lite;
+// these run on ApiMart with the request shapes in providers/apimart.js. `refs` on a video model = reference images.
+
+const PARITY_IMAGE = [
+  { id: 'apimart/gpt-image-2.6-flare', provider: 'apimart', label: 'GPT Image 2.6 (ApiMart)', blurb: 'OpenAI’s newest: precise edits, text, up to 16 references.', refs: 8, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
+  { id: 'apimart/gpt-image-2.6-sunburst', provider: 'apimart', label: 'GPT Image 2.6 Sunburst (ApiMart)', blurb: 'Precision tier for intricate detail and tight edits.', refs: 8, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
+  { id: 'apimart/gpt-image-2', provider: 'apimart', label: 'GPT Image 2 (ApiMart)', refs: 8, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
+  { id: 'apimart/seedream-5-0-pro', provider: 'apimart', label: 'Seedream 5.0 Pro (ApiMart)', blurb: 'ByteDance flagship, 2K, up to 10 references.', refs: 8, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
+  { id: 'apimart/flux-2-max', provider: 'apimart', label: 'FLUX.2 Max (ApiMart)', blurb: '4 MP photoreal, up to 8 references.', refs: 7, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'] },
+];
+
+const PARITY_VIDEO = [
+  { id: 'apimart/kling-v3-omni', provider: 'apimart', label: 'Kling 3.0 Omni (ApiMart)', blurb: 'Audio, start + end frame and up to 4 reference images; 720p / 1080p / 4K.', caps: { t2v: true, i2v: true, end: true }, refs: 4, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1'], resolutions: ['720p', '1080p', '4k'], resolutionDefault: '1080p', maxClip: 15 },
+  { id: 'apimart/veo3.1-lite', provider: 'apimart', label: 'Veo 3.1 Lite (ApiMart)', blurb: 'Cheapest Veo 3.1 with audio. 8 s clips.', caps: { t2v: true, i2v: true, end: true }, durations: [8], aspects: ['16:9', '9:16'], resolutions: ['720p', '1080p'], resolutionDefault: '720p', maxClip: 8 },
+  { id: 'apimart/MiniMax-H3', provider: 'apimart', label: 'MiniMax H3 (ApiMart)', blurb: '2K with audio, start + end frame, reference images.', caps: { t2v: true, i2v: true, end: true }, refs: 6, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['768p', '2k'], resolutionDefault: '2k', maxClip: 15 },
+  { id: 'apimart/MiniMax-Hailuo-2.3', provider: 'apimart', label: 'Hailuo 2.3 (ApiMart)', blurb: 'Strong physics and camera moves; 6 / 10 s.', caps: { t2v: true, i2v: true }, durations: [6, 10], aspects: ['16:9'], resolutions: ['768p', '1080p'], resolutionDefault: '768p', maxClip: 10 },
+  { id: 'apimart/kling-3.0-turbo', provider: 'apimart', label: 'Kling 3.0 Turbo (ApiMart)', blurb: 'Fast Kling 3.0, 3–15 s.', caps: { t2v: true, i2v: true }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1'], resolutions: ['720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
+  { id: 'apimart/seedance-2.0-fast', provider: 'apimart', label: 'Seedance 2.0 Fast (ApiMart)', blurb: 'Cheaper Seedance 2.0 with audio, up to 720p.', caps: { t2v: true, i2v: true, end: true }, refs: 6, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'], resolutions: ['480p', '720p'], resolutionDefault: '720p', maxClip: 15 },
+];
+// Seedance 2.x also takes reference images (and reference video/audio) when no start frame is given.
+for (const m of VIDEO) if (/^apimart\/seedance-2\.[05]$/.test(m.id)) m.refs = 6;
+
+/** Every modelKind a model can serve (tools filter GET /catalog by these). */
+export function kindsOf(m) {
+  if (m.kind === 'image') return ['image', ...(m.refs ? ['image-edit'] : [])];
+  if (m.kind === 'video') return ['video', ...(m.caps?.t2v ? ['t2v'] : []), ...(m.caps?.i2v ? ['i2v'] : []), ...(m.caps?.end ? ['video-end'] : []), ...(m.refs ? ['video-refs'] : [])];
+  return [m.kind];
+}
+
 function comfyModels() {
   return listTemplates().map((t) => ({
     id: `comfy/${t.id}`, provider: 'comfy', label: `${t.label} (ComfyUI)`, template: t, refs: t.kind === 'edit' ? 1 : 0,
@@ -94,14 +129,18 @@ export function availableProviders() {
     comfy: !!globalThis.__comfyOnline,
     local: true,
     handoff: true,
+    eleven: elevenAvailable(),
   };
 }
 
 export function allModels() {
   return [
     ...VIDEO.map((m) => ({ ...m, kind: 'video' })),
+    ...PARITY_VIDEO.map((m) => ({ ...m, kind: 'video' })),
     ...IMAGE.map((m) => ({ ...m, kind: 'image' })),
+    ...PARITY_IMAGE.map((m) => ({ ...m, kind: 'image' })),
     ...comfyModels(),
+    ...TOOL_MODELS,
   ];
 }
 
@@ -109,7 +148,7 @@ export const getModel = (id) => allModels().find((m) => m.id === id);
 
 export function publicCatalog() {
   const avail = availableProviders();
-  return allModels().map(({ template, ...m }) => ({ ...m, available: !!avail[m.provider] }));
+  return allModels().map(({ template, ...m }) => ({ ...m, kinds: kindsOf(m), available: !!avail[m.provider] }));
 }
 
 /* ------------------------------------------------------------------ media plumbing */
@@ -133,8 +172,8 @@ export async function materialize(ref, signal) {
 
 const age = (t) => (t ? Date.now() - Date.parse(t) : Infinity);
 
-/** Convert a local asset into whatever the provider accepts. */
-async function asInput(provider, asset, signal) {
+/** Convert a local asset into whatever the provider accepts. 'public' = a public https URL (fal CDN), for video/audio inputs. */
+export async function asInput(provider, asset, signal) {
   if (!asset) return null;
   const abs = assetPath(asset);
   if (provider === 'local') return abs;
@@ -155,11 +194,12 @@ async function asInput(provider, asset, signal) {
     case 'kie': return cache('kie', () => kieUpload({ buffer, mime: asset.mime, filename: asset.file }, signal), 20 * 36e5);
     case 'apimart': return cache('apimart', () => apimartUpload({ buffer, mime: asset.mime, filename: asset.file }, signal), 48 * 36e5);
     case 'comfy': return { buffer, mime: asset.mime, filename: `gaffer_${asset.file}` };
+    case 'public': return cache('falcdn', () => falUpload({ key: getSettings().falKey, buffer, mime: asset.mime, filename: asset.file, signal }), 5 * 24 * 36e5);
     default: throw new Error(`no media path for ${provider}`);
   }
 }
 
-async function saveResult(r, { kind, signal, meta = {} }) {
+export async function saveResult(r, { kind, signal, meta = {} }) {
   let asset;
   if (r.buffer) asset = await addAsset({ buffer: r.buffer, mime: r.mime || (kind === 'video' ? 'video/mp4' : 'image/jpeg'), meta });
   else if (r.url) {
@@ -192,6 +232,7 @@ export async function generate(job, { onStatus, signal } = {}) {
   const m = getModel(job.model);
   if (!m) throw new Error(`unknown model ${job.model}`);
   if (m.provider === 'handoff') throw new Error('hand-off models are completed by importing a clip');
+  if (m.kind !== 'image' && m.kind !== 'video') throw new Error(`${m.label} is a tool model — run it from Tools (/engine/api/tools)`);
   const avail = availableProviders();
   if (!avail[m.provider]) throw new ProviderError(m.provider, 0, `${PROVIDERS[m.provider]?.label || m.provider} is not connected — open Providers`);
   const P = m.provider;
@@ -223,6 +264,11 @@ export async function generate(job, { onStatus, signal } = {}) {
       }
       case 'replicate': r = { url: first(await replicateRun({ token: getSettings().replicateToken, model: 'black-forest-labs/flux-schnell', input: { prompt: job.prompt, aspect_ratio: job.aspect === '3:4' ? '3:4' : job.aspect, output_format: 'jpg', seed, go_fast: true }, onStatus, signal })) }; break;
       case 'kie': r = await kieJob({ model: 'nano-banana-2', input: { prompt: job.prompt, aspect_ratio: job.aspect, output_format: 'jpg', ...(img || refs.length ? { image_input: [img, ...refs].filter(Boolean) } : {}) } }, ctx); break;
+      case 'apimart': {
+        const maskA = await materialize(job.mask, signal);
+        r = await apimartImage({ model: slug, label: m.label, prompt: job.prompt, image: img, refs, aspect: job.aspect, resolution: job.resolution, mask: maskA && (await asInput('apimart', maskA, signal)), format: job.format }, ctx);
+        break;
+      }
       case 'comfy': {
         const { W, H } = ff.frameSize(job.aspect, 1280);
         r = await comfyRun({ base: getSettings().comfyUrl, template: m.template, vars: { prompt: job.prompt, seed: seed ?? Math.floor(Math.random() * 2 ** 31), width: Math.round(W / 16) * 16, height: Math.round(H / 16) * 16, negative: '' }, files: { image: img || refs[0] }, kind: 'image', onStatus, signal });
@@ -261,7 +307,14 @@ export async function generate(job, { onStatus, signal } = {}) {
       break;
     }
     case 'apimart': {
-      r = await apimartVideo({ model: slug, label: m.label, prompt: job.prompt, image: img, endImage: end, aspect: job.aspect, resolution: job.resolution || m.resolutionDefault, duration: dur, seed }, ctx);
+      // Native Veo 3.1 extension when the previous clip was rendered by the same ApiMart Veo model.
+      if (ext?.ref?.provider === 'apimart' && ext.ref.taskId && ext.ref.model === slug && /^veo3\.1-(fast|quality)$/.test(slug)) {
+        r = await apimartVeoExtend({ taskId: ext.ref.taskId, model: slug, prompt: job.prompt, aspect: job.aspect, resolution: job.resolution || m.resolutionDefault }, ctx);
+        break;
+      }
+      // Reference video / audio (Seedance 2.x, MiniMax H3) must be public URLs — hosted on fal's CDN.
+      const pub = async (list) => Promise.all((list || []).slice(0, 3).map(async (x) => asInput('public', await materialize(x, signal), signal)));
+      r = await apimartVideo({ model: slug, label: m.label, prompt: job.prompt, image: img, endImage: end, refs, videos: await pub(job.videos), audios: await pub(job.audios), aspect: job.aspect, resolution: job.resolution || m.resolutionDefault, duration: dur, seed }, ctx);
       break;
     }
     case 'fal': {
