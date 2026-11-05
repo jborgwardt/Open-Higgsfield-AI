@@ -488,9 +488,8 @@ export function characterFallback(m, chars, { identityLock = true, hasImage = fa
 
 const names = (chars) => chars.map((c) => c.name).filter(Boolean).join(' and ') || 'the character';
 /** Staging that keeps a first-frame model from inventing a new face mid-shot. */
-// Only used when a real person must go through a first-frame-only model (no reference mode available): open on the
-// face and keep it in view, as normal coverage would — people still move and turn naturally.
-export const stagingLine = (chars) => `Staging: open with ${names(chars)}'s face clearly visible and keep it in view for most of the shot. `;
+// No staging rules are injected into prompts: anything prepended pulls the whole shot toward it. The keyframe already
+// shows the face; identity lock routes real people to reference-mode models so they can move naturally.
 
 /**
  * Rewrite a generate() job that names characters into what the model can actually take:
@@ -538,10 +537,10 @@ export async function applyCharacters(job, m, { onStatus, signal } = {}) {
       const aspect = job.aspect || '16:9';
       const kf = await generate({ model: im.id, prompt: `Cinematic film still, ${aspect} frame, photorealistic. Show ${names(chars)}'s face clearly and in focus, from the angle the shot mostly holds. ${prompt}`, characters: job.characters, aspect }, { onStatus, signal });
       updateAsset(kf.asset.id, { source: 'character-keyframe' });
-      return { ...base, image: kf.asset.id, keyframeId: kf.asset.id, prompt: cr.textGuide(chars) + stagingLine(chars) + prompt, routeNote: `keyframe ${kf.asset.id}` };
+      return { ...base, image: kf.asset.id, keyframeId: kf.asset.id, prompt: cr.textGuide(chars) + prompt, routeNote: `keyframe ${kf.asset.id}` };
     }
   }
-  return { ...base, prompt: cr.textGuide(chars) + (m.kind === 'video' && job.image ? stagingLine(chars) : '') + prompt, routeNote: 'description only' };
+  return { ...base, prompt: cr.textGuide(chars) + prompt, routeNote: 'description only' };
 }
 
 /** POST /likeness { assetId, characters: [id], every, threshold } — score any clip against characters. */

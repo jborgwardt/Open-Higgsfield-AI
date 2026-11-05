@@ -11,7 +11,7 @@ import * as ff from './ffmpeg.js';
 import { sleep } from './http.js';
 import { makeMusic, makeVoice, pickVoiceProvider } from './sound.js';
 import { elevenVoiceChange } from './providers/eleven.js';
-import { resolveBriefCharacters, characterVoice, characterFallback, identityModels, isRealCast, refsOk, stagingLine } from './characters.js';
+import { resolveBriefCharacters, characterVoice, characterFallback, identityModels, isRealCast, refsOk } from './characters.js';
 import { checkLikeness } from './likeness.js';
 import { planRefs } from './charref.js';
 
@@ -460,8 +460,7 @@ async function runShot(id, sid, signal) {
     }
     const inputs = await inputsFor(p, s, m, signal, onStatus, cast);
     const duration = Number(s.duration) || Number(p.brief.clipSeconds) || 8;
-    const frameOnly = cast.length && !inputs.characters && !inputs.extend && isRealCast(resolved);
-    const r = await generate({ model: m.id, prompt: (frameOnly ? stagingLine(resolved) : '') + s.prompt, aspect: p.brief.aspect, resolution: p.brief.resolution, duration, ...inputs, identityLock: false, likeness: false }, { onStatus, signal });
+    const r = await generate({ model: m.id, prompt: s.prompt, aspect: p.brief.aspect, resolution: p.brief.resolution, duration, ...inputs, identityLock: false, likeness: false }, { onStatus, signal });
     const total = r.asset.duration || duration;
     const result = {
       videoId: r.asset.id, posterId: r.asset.posterId || null, ref: r.ref, trimStart: r.trimStart || 0,
