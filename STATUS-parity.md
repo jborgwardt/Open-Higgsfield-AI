@@ -20,9 +20,11 @@ Run on a local Mac engine before the switch to VPS-only testing:
 - Recast on Kling 3.0 Omni did NOT swap the person → Recast merged with Video Swap on PixVerse Swap (`recast`, modes
   person/object/background); `video-face-swap` removed. Edit Video moved to Wan 2.7 VideoEdit.
 
+## Verified on the VPS test container (studio-test-parity)
+- `recast` (PixVerse Swap, person): the man replaces the woman in her talking clip, same performance/background/audio — ✅
+- `click-to-ad` (LLM hook → NB keyframe → Veo 3.1 Fast): 9:16 UGC ad, product label legible, spoken line with audio — ✅
+
 ## Not yet verified (next, on the VPS test container)
-1. `recast` with a different person (PixVerse person mode), ≈$0.05
-2. `click-to-ad` (NB keyframe + Veo 3.1 Fast ≈ $0.20) — the run was stopped before Veo was submitted
 3. fal Wan 3.0 reference-to-video, 480p 2 s (≈$0.10)
 4. Qwen HappyHorse t2v / i2v / r2v, 3 s 480P (plan credits)
 5. Upscale Video (SeedVR2 small clip ≈$0.04), Video BG Remover (Bria 2 s ≈$0.10), Music (Eleven Music, credits)
