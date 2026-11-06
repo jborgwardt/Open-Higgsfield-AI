@@ -25,6 +25,7 @@ struct SettingsView: View {
                 }
             }
             DriveArchiveSection()
+            GoogleUltraSection()
             providersSection
             appSection
             Section {
@@ -77,7 +78,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                LabeledContent("Director", value: s.director.map { $0 == "codex" ? "ChatGPT / Codex" : ($0 == "openai" ? "Local LLM" : $0.capitalized) } ?? "Offline splitter")
+                LabeledContent("Director", value: s.director.map { app.directors?.option($0)?.label ?? DirectorCatalog.displayName($0) } ?? "Offline splitter")
                 LabeledContent("ElevenLabs", value: s.elevenAvailable ? "Connected" : "Not connected")
                 LabeledContent("ComfyUI", value: s.comfy ? "Online" : "Offline")
                 LabeledContent("ffmpeg", value: s.ffmpeg ? "Ready" : "Missing")

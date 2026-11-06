@@ -86,7 +86,8 @@ public struct DirectorCatalog: Sendable, Hashable {
         switch id {
         case "codex": "ChatGPT / Codex"
         case "claude": "Claude"
-        case "google": "Gemini"
+        case "google": "Google Gemini API"
+        case "google-ultra": "Google AI Ultra"
         case "xai": "Grok"
         case "apimart": "ApiMart"
         case "qwen": "Qwen"
@@ -110,7 +111,10 @@ public struct DirectorCatalog: Sendable, Hashable {
         let llmModels = (llm?["models"]?.array ?? []).compactMap(\.string).map { DirectorOption.Model(id: $0, label: $0) }
         let options = [
             DirectorOption(id: "xai", label: "Grok", available: has("xai"), note: "SuperGrok sign-in or xAI key"),
-            DirectorOption(id: "google", label: "Gemini", available: has("google"), note: "Gemini API key"),
+            DirectorOption(id: "google", label: "Google Gemini API (paid key)", available: has("google"), note: "Billed to your Gemini API key"),
+            DirectorOption(id: "google-ultra", label: "Google AI Ultra (your plan)",
+                           available: has("google-ultra") || (status?["googleUltra"]?["connected"]?.isTruthy ?? false),
+                           note: "Needs sign in with AI Ultra", defaultModel: "gemini-3.8-flash"),
             DirectorOption(id: "apimart", label: "ApiMart", available: has("apimart"), models: apimartModels),
             DirectorOption(id: "openai", label: "Local LLM", available: llm?["online"]?.isTruthy ?? false, models: llmModels),
             DirectorOption(id: "split", label: "No AI (split my script)", available: true, note: "Splits the script into shots without an LLM"),

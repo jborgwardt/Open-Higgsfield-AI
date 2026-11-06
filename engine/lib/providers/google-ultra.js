@@ -96,6 +96,9 @@ const MODEL_MAP = {
   'gemini-3-pro-image': 'gemini-nano-banana-2.1',
   'gemini-nano-banana-2.1': 'gemini-nano-banana-2.1',
   'gemini-3.8-flash-tts': 'gemini-3.8-flash-tts',
+  // Catalog slugs (google-ultra/<slug>). Pro's cloudcode name is unverified against the live endpoint.
+  'nano-banana-2.1': 'gemini-nano-banana-2.1',
+  'nano-banana-pro': 'gemini-3-pro-image',
 };
 
 async function cloudcode(model, request, { timeout = 180000, signal } = {}) {
@@ -139,20 +142,45 @@ export async function ultraMusic({ model = 'lyria-3.5', prompt, seconds }, ctx =
   return inlineMedia(j);
 }
 
+/** generateContent TTS returns raw 16-bit PCM (audio/L16;rate=24000); wrap it in a WAV header for ffmpeg. */
+export function pcmToWav(r) {
+  if (!/L16|pcm/i.test(r.mime || '')) return r;
+  const rate = Number(/rate=(\d+)/.exec(r.mime)?.[1]) || 24000;
+  const h = Buffer.alloc(44);
+  h.write('RIFF', 0); h.writeUInt32LE(36 + r.buffer.length, 4); h.write('WAVE', 8); h.write('fmt ', 12);
+  h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22); h.writeUInt32LE(rate, 24);
+  h.writeUInt32LE(rate * 2, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write('data', 36); h.writeUInt32LE(r.buffer.length, 40);
+  return { buffer: Buffer.concat([h, r.buffer]), mime: 'audio/wav' };
+}
+
 export async function ultraSpeech({ text, voice = 'Kore' }, ctx = {}) {
   const j = await cloudcode('gemini-3.8-flash-tts', {
     contents: [{ role: 'user', parts: [{ text: String(text).slice(0, 4000) }] }],
     generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice || 'Kore' } } } },
   }, ctx);
+  return pcmToWav(inlineMedia(j));
+}
+
+/** Nano Banana on the plan. model: catalog slug ('nano-banana-2.1' | 'nano-banana-pro'); refs: [{mime,base64}]. */
+export async function ultraImage({ model = 'nano-banana-2.1', prompt, refs = [], aspect }, ctx = {}) {
+  const parts = [...refs.filter(Boolean).slice(0, 6).map((r) => ({ inlineData: { mimeType: r.mime, data: r.base64 } })), { text: prompt }];
+  const cfg = { responseModalities: ['IMAGE'] };
+  if (aspect && aspect !== 'auto') cfg.imageConfig = { aspectRatio: aspect };
+  const j = await cloudcode(model, { contents: [{ role: 'user', parts }], generationConfig: cfg }, ctx);
   return inlineMedia(j);
 }
 
-export async function ultraImage({ prompt, refs = [], aspect }, ctx = {}) {
-  const parts = [...refs.filter(Boolean).map((r) => ({ inlineData: { mimeType: r.mime, data: r.base64 } })), { text: prompt }];
-  const cfg = { responseModalities: ['IMAGE'] };
-  if (aspect && aspect !== 'auto') cfg.imageConfig = { aspectRatio: aspect };
-  const j = await cloudcode('gemini-3-pro-image', { contents: [{ role: 'user', parts }], generationConfig: cfg }, ctx);
-  return inlineMedia(j);
+/** Director / tool chat on the plan's Gemini text models. messages: OpenAI-style [{ role, content }]. */
+export async function ultraChat({ model, messages = [], signal }) {
+  const text = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => p?.text || '').join('') : String(c ?? ''));
+  const sys = messages.filter((m) => m.role === 'system').map((m) => text(m.content)).join('\n\n');
+  const contents = messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: text(m.content) }] }));
+  const j = await cloudcode(model || 'gemini-3.8-flash', {
+    contents,
+    ...(sys ? { systemInstruction: { parts: [{ text: sys }] } } : {}),
+    generationConfig: { temperature: 0.7 },
+  }, { signal });
+  return (j.candidates?.[0]?.content?.parts || []).filter((p) => p.text && !p.thought).map((p) => p.text).join('');
 }
 
 export const ULTRA_VOICES = ['Kore', 'Puck', 'Charon', 'Zephyr', 'Fenrir', 'Aoede', 'Leda', 'Orus'];

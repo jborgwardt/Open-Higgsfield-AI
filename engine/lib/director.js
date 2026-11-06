@@ -9,6 +9,7 @@ import { getModel } from './catalog.js';
 import { fetchJSON } from './http.js';
 import { xaiChat, xaiAvailable, xaiModels } from './providers/xai.js';
 import { googleChat, googleAvailable } from './providers/google.js';
+import { ultraChat, ultraAvailable } from './providers/google-ultra.js';
 import { openaiChat, openaiPing } from './providers/openai.js';
 import { APIMART, APIMART_DIRECTOR_DEFAULT, apimartAvailable, apimartModels } from './providers/apimart.js';
 import { claudeChat, claudeStatus, CLAUDE_MODELS, CLAUDE_DEFAULT_MODEL } from './providers/claude-cli.js';
@@ -37,7 +38,8 @@ const qwen = async () => {
 export const DIRECTORS = [
   { id: 'codex', label: 'ChatGPT / Codex (your plan)', note: 'Connect with ChatGPT in Film Studio on your Mac; uses your ChatGPT plan for writing and planning', defaultModel: '', list: chatgptModels },
   { id: 'claude', label: 'Claude (your subscription)', note: 'Claude Code CLI signed in with your Claude plan', defaultModel: CLAUDE_DEFAULT_MODEL, list: async () => CLAUDE_MODELS },
-  { id: 'google', label: 'Google Gemini', note: 'Gemini API key (Google Cloud credits)', defaultModel: 'gemini-3.8-flash', list: gemini, ok: googleAvailable, need: 'add a Gemini API key' },
+  { id: 'google', label: 'Google Gemini API (paid key)', note: 'Billed to your Gemini API key (AI Ultra Cloud credits can pay it)', defaultModel: 'gemini-3.8-flash', list: gemini, ok: googleAvailable, need: 'add a Gemini API key' },
+  { id: 'google-ultra', label: 'Google AI Ultra (your plan)', note: 'Included with your AI Ultra subscription · sign in with Google', defaultModel: 'gemini-3.8-flash', list: async () => ['gemini-3.8-flash'], ok: ultraAvailable, need: 'sign in with AI Ultra' },
   { id: 'xai', label: 'xAI Grok', note: 'SuperGrok sign-in or xAI key', defaultModel: '', list: async () => (await xaiModels()).filter((id) => /^grok/.test(id) && !NOT_CHAT.test(id) && !/imagine/.test(id)), ok: xaiAvailable, need: 'sign in with SuperGrok or add an xAI key' },
   { id: 'apimart', label: 'ApiMart (paid API)', note: 'Billed to your ApiMart balance', defaultModel: APIMART_DIRECTOR_DEFAULT, list: async () => (await apimartModels()).filter((id) => !NOT_CHAT.test(id)), ok: apimartAvailable, need: 'add an ApiMart key' },
   { id: 'qwen', label: 'Qwen Cloud Token Plan', note: 'QWEN_API_KEY (OpenAI-compatible)', defaultModel: 'qwen3.8-max', list: qwen, ok: () => !!getSettings().qwenKey, need: 'set QWEN_API_KEY' },
@@ -48,7 +50,7 @@ export const DIRECTORS = [
 export const DIRECTOR_LABEL = Object.fromEntries(DIRECTORS.map((d) => [d.id, d.label]));
 const ids = DIRECTORS.map((d) => d.id);
 const clean = (v) => (ids.includes(v) ? v : ''); // a stored 'auto' (old default) counts as "not chosen"
-const MODEL_SHAPE = { claude: /^(opus|sonnet|haiku|fable|claude)/i, google: /^(gemini|gemma)/i, xai: /^grok/i };
+const MODEL_SHAPE = { claude: /^(opus|sonnet|haiku|fable|claude)/i, google: /^(gemini|gemma)/i, 'google-ultra': /^gemini/i, xai: /^grok/i };
 
 /** The saved director: the production's own choice if it has one, else the studio-wide choice. */
 export function chosenDirector(brief = {}) {
@@ -149,6 +151,7 @@ async function chat(d, messages, signal) {
     case 'claude': return claudeChat({ model, messages, signal });
     case 'xai': return xaiChat({ model, messages, signal });
     case 'google': return googleChat({ model, messages, signal });
+    case 'google-ultra': return ultraChat({ model, messages, signal });
     case 'apimart': return openaiChat({ provider: 'apimart', baseUrl: APIMART, key: getSettings().apimartKey, model: model || APIMART_DIRECTOR_DEFAULT, messages, signal });
     case 'venice': if (!model) throw new Error('choose a Venice model for the director'); return openaiChat({ provider: 'venice', baseUrl: VENICE, key: getSettings().veniceKey, model, messages, signal });
     case 'qwen': return openaiChat({ provider: 'qwen', baseUrl: QWEN, key: getSettings().qwenKey, model: model || 'qwen3.8-max', messages, signal });

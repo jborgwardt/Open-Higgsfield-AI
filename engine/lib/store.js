@@ -89,7 +89,7 @@ export function getSettings() {
   return s;
 }
 
-const SECRET_KEYS = ['falKey', 'replicateToken', 'xaiKey', 'googleKey', 'muapiKey', 'kieKey', 'apimartKey', 'qwenKey', 'veniceKey', 'elevenKey', 'llmKey', 'accessToken', 'oidcClientSecret'];
+const SECRET_KEYS = ['falKey', 'replicateToken', 'xaiKey', 'googleKey', 'muapiKey', 'kieKey', 'apimartKey', 'qwenKey', 'veniceKey', 'elevenKey', 'llmKey', 'accessToken', 'oidcClientSecret', 'googleUltraClientSecret'];
 
 export function publicSettings() {
   const s = getSettings();

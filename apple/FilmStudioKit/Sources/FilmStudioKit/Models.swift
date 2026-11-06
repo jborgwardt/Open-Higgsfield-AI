@@ -191,7 +191,12 @@ public struct Catalog: Decodable, Sendable {
     public init(models: [ModelInfo], providers: [String: ProviderInfo] = [:]) { self.models = models; self.providers = providers }
 
     public func model(_ id: String?) -> ModelInfo? { id.flatMap { id in models.first { $0.id == id } } }
-    public func providerLabel(_ key: String) -> String { providers[key]?.label.nonEmpty ?? key }
+    public func providerLabel(_ key: String) -> String { providers[key]?.label.nonEmpty ?? Self.fallbackProviderLabels[key] ?? key }
+    /// Used only when the engine's catalog doesn't label a provider; the paid API and the plan are kept apart.
+    static let fallbackProviderLabels: [String: String] = [
+        "google": "Google · Gemini API (paid key)",
+        "google-ultra": "Google AI Ultra (your plan)",
+    ]
 
     /// Available models of a kind, grouped by provider in catalog order.
     public func groups(kind: String, hiddenProviders: Set<String> = []) -> [(provider: String, label: String, models: [ModelInfo])] {
@@ -270,6 +275,8 @@ public struct StatusReport: Decodable, Sendable {
     public var elevenAvailable: Bool
     public var ffmpeg: Bool
     public var xaiSignedIn: Bool
+    /// AI Ultra plan sign-in (`googleUltra` on newer engines; nil when the engine doesn't report it).
+    public var googleUltra: GoogleUltraStatus?
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
@@ -283,6 +290,10 @@ public struct StatusReport: Decodable, Sendable {
         ffmpeg = c.bool("ffmpeg", default: false)
         let x = c.json("xai")
         xaiSignedIn = x?["loggedIn"]?.isTruthy ?? x?["connected"]?.isTruthy ?? false
+        googleUltra = c.json("googleUltra").flatMap { g in
+            g.object == nil ? nil : GoogleUltraStatus(connected: g["connected"]?.isTruthy ?? false, email: g["email"]?.string?.nonEmpty,
+                                                      hasSecret: g["hasSecret"]?.isTruthy ?? true)
+        }
     }
 }
 

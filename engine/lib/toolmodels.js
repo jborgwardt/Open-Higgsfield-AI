@@ -58,4 +58,5 @@ export const TOOL_MODELS = [
   { id: 'eleven/sfx', provider: 'eleven', kind: 'sfx', label: 'ElevenLabs Sound Effects', blurb: 'Text → sound effect, up to 30 s.', endpoint: 'sound-generation' },
   { id: 'eleven/music', provider: 'eleven', kind: 'music', label: 'Eleven Music', blurb: 'Text → full song or score.', endpoint: 'music' },
   { id: 'google/lyria-3.5', provider: 'google', kind: 'music', label: 'Lyria 3.5 (Gemini API)', blurb: 'Film score with a clean ending.', endpoint: 'lyria-3.5' },
+  { id: 'google-ultra/lyria-3.5', provider: 'google-ultra', kind: 'music', label: 'Lyria 3.5 (AI Ultra plan)', blurb: 'Film score with a clean ending, included with your AI Ultra subscription.', endpoint: 'lyria-3.5' },
 ];

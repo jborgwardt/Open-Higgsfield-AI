@@ -22,6 +22,7 @@ import { buildCinemaPrompt, CAMERAS, LENSES, FOCALS, APERTURES, MOVES, GENRES, E
 import { EFFECTS, PHOTO_STYLES, AD_SCENES, RESTYLES, HEADSHOTS, RELIGHT_DIRECTIONS, RELIGHT_COLORS, SHOT_SETS, TRANSITIONS, LANGUAGES, options, byValue, fill } from './presets.js';
 import { elevenAvailable, elevenVoices, ELEVEN_DEFAULT_VOICE } from './providers/eleven.js';
 import { googleAvailable, GEMINI_VOICES } from './providers/google.js';
+import { ultraAvailable, ULTRA_VOICES } from './providers/google-ultra.js';
 import { xaiAvailable } from './providers/xai.js';
 
 /* ---------------- best model per job (first = the pick; the rest only if its provider is not connected) ---------------- */
@@ -466,7 +467,8 @@ async function voiceOptions() {
     out.push(...vs.map((x) => ({ value: x.id, label: x.note ? `${x.name} — ${x.note}` : x.name })));
     if (!out.length) out.push({ value: ELEVEN_DEFAULT_VOICE, label: 'George (ElevenLabs)' });
   }
-  if (googleAvailable()) out.push(...GEMINI_VOICES.map((x) => ({ value: `google:${x}`, label: `${x} (Gemini)` })));
+  if (googleAvailable()) out.push(...GEMINI_VOICES.map((x) => ({ value: `google:${x}`, label: `${x} (Gemini API)` })));
+  if (ultraAvailable()) out.push(...ULTRA_VOICES.map((x) => ({ value: `google-ultra:${x}`, label: `${x} (AI Ultra plan)` })));
   if (xaiAvailable()) out.push(...['eve', 'ara'].map((x) => ({ value: `xai:${x}`, label: `${x} (Grok)` })));
   return out;
 }

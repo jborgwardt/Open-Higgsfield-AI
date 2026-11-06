@@ -5,6 +5,7 @@ import { download, ProviderError } from './http.js';
 import * as ff from './ffmpeg.js';
 import { xaiVideo, xaiExtend, xaiImage, xaiAvailable } from './providers/xai.js';
 import { googleVideo, googleImage, googleAvailable } from './providers/google.js';
+import { ultraImage, ultraAvailable } from './providers/google-ultra.js';
 import { falRun, falUpload, wan3Request } from './providers/fal.js';
 import { replicateRun, replicateUpload } from './providers/replicate.js';
 import { muapiRun, muapiUpload, muapiUrl } from './providers/muapi.js';
@@ -22,7 +23,10 @@ const AR_ALL = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'];
 
 export const PROVIDERS = {
   xai: { label: 'xAI · Grok', note: 'SuperGrok sign-in or API key' },
-  google: { label: 'Google · Gemini API', note: 'API key (AI Ultra includes $100/mo Cloud credits)' },
+  // Two separate Google paths: the paid Gemini API (billed to the key's Cloud project; AI Ultra's monthly Cloud
+  // credits can pay that bill) and the AI Ultra plan's own included models (cloudcode OAuth sign-in, no key).
+  google: { label: 'Google · Gemini API (paid key)', note: 'Billed to your Gemini API key (AI Ultra Cloud credits can pay it)' },
+  'google-ultra': { label: 'Google AI Ultra (your plan)', note: 'Included with your AI Ultra subscription · sign in with Google' },
   apimart: { label: 'ApiMart', note: 'API key — Veo 3.1, Kling, Seedance, Wan + director LLMs' },
   fal: { label: 'fal.ai', note: 'API key' },
   replicate: { label: 'Replicate', note: 'API token' },
@@ -40,9 +44,9 @@ const VIDEO = [
   { id: 'xai/grok-imagine-video-1.5', provider: 'xai', label: 'Grok Imagine Video 1.5', blurb: 'Native 1080p with audio, start + end frame, up to 14 character references (720p).', caps: { t2v: true, i2v: true, end: true, extend: true, refs: 14, refsWithImage: true, refTag: 'xai' }, durations: [6, 8, 10, 15], aspects: AR_ALL, resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
   { id: 'xai/grok-imagine-video-1.5-lite', provider: 'xai', label: 'Grok Imagine Video 1.5 Lite', blurb: 'Cheapest Grok video per second.', caps: { t2v: true, i2v: true, end: true, extend: true }, durations: [6, 8, 10, 15], aspects: AR_ALL, resolutions: ['480p', '720p', '1080p'], resolutionDefault: '720p', maxClip: 15 },
   { id: 'xai/grok-imagine-video', provider: 'xai', label: 'Grok Imagine Video (classic)', blurb: 'Supports native extension and up to 7 character references.', caps: { t2v: true, i2v: true, end: false, extend: true, refs: 7, refTag: 'xai' }, durations: [6, 8, 10, 15], aspects: AR_ALL, resolutions: ['480p', '720p'], resolutionDefault: '720p', maxClip: 15 },
-  { id: 'google/gemini-omni-1.2-flash', provider: 'google', label: 'Gemini Omni 1.2 Flash', blurb: 'Newest Google video model on your Gemini key: audio, first+last frame, multi-turn extension. Refuses real people\'s likeness.', caps: { t2v: true, i2v: true, end: true, extend: true, noRealPeople: true, refs: 6, refTag: 'plain', refsRealPeople: false }, durations: [4, 6, 8, 10], aspects: ['16:9', '9:16'], resolutions: ['360p', '720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 10 },
-  { id: 'google/gemini-omni-flash-preview', provider: 'google', label: 'Gemini Omni Flash (preview)', blurb: 'Google\'s rolling preview of Omni Flash: newest features first, may change. Refuses real people\'s likeness.', caps: { t2v: true, i2v: true, end: true, extend: true, noRealPeople: true, refs: 6, refTag: 'plain', refsRealPeople: false }, durations: [4, 6, 8, 10], aspects: ['16:9', '9:16'], resolutions: ['360p', '720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 10 },
-  { id: 'google/gemini-omni-1.1-flash', provider: 'google', label: 'Gemini Omni 1.1 Flash', blurb: 'Google video with audio, first+last frame, multi-turn extension. Refuses real people\'s likeness.', caps: { t2v: true, i2v: true, end: true, extend: true, noRealPeople: true, refs: 6, refTag: 'plain', refsRealPeople: false }, durations: [4, 6, 8, 10], aspects: ['16:9', '9:16'], resolutions: ['360p', '720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 10 },
+  { id: 'google/gemini-omni-1.2-flash', provider: 'google', label: 'Gemini Omni 1.2 Flash (Gemini API)', blurb: 'Newest Google video model on your Gemini key: audio, first+last frame, multi-turn extension. Refuses real people\'s likeness.', caps: { t2v: true, i2v: true, end: true, extend: true, noRealPeople: true, refs: 6, refTag: 'plain', refsRealPeople: false }, durations: [4, 6, 8, 10], aspects: ['16:9', '9:16'], resolutions: ['360p', '720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 10 },
+  { id: 'google/gemini-omni-flash-preview', provider: 'google', label: 'Gemini Omni Flash preview (Gemini API)', blurb: 'Google\'s rolling preview of Omni Flash: newest features first, may change. Refuses real people\'s likeness.', caps: { t2v: true, i2v: true, end: true, extend: true, noRealPeople: true, refs: 6, refTag: 'plain', refsRealPeople: false }, durations: [4, 6, 8, 10], aspects: ['16:9', '9:16'], resolutions: ['360p', '720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 10 },
+  { id: 'google/gemini-omni-1.1-flash', provider: 'google', label: 'Gemini Omni 1.1 Flash (Gemini API)', blurb: 'Google video with audio, first+last frame, multi-turn extension. Refuses real people\'s likeness.', caps: { t2v: true, i2v: true, end: true, extend: true, noRealPeople: true, refs: 6, refTag: 'plain', refsRealPeople: false }, durations: [4, 6, 8, 10], aspects: ['16:9', '9:16'], resolutions: ['360p', '720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 10 },
   { id: 'apimart/veo3.1-quality', provider: 'apimart', label: 'Veo 3.1 Quality (ApiMart)', blurb: 'Top-tier Veo with native audio, start + end frame. 8 s clips.', caps: { t2v: true, i2v: true, end: true }, durations: [8], aspects: ['16:9', '9:16'], resolutions: ['720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 8 },
   { id: 'apimart/veo3.1-fast', provider: 'apimart', label: 'Veo 3.1 Fast (ApiMart)', blurb: 'Cheaper Veo 3.1 with native audio, start + end frame, or up to 3 character references. 8 s clips.', caps: { t2v: true, i2v: true, end: true, refs: 3, refTag: 'plain' }, durations: [8], aspects: ['16:9', '9:16'], resolutions: ['720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 8 },
   { id: 'apimart/kling-v3', provider: 'apimart', label: 'Kling 3.0 (ApiMart)', blurb: 'Kling 3.0, start + end frame, 3–15 s. 720p std / 1080p pro / 4k.', caps: { t2v: true, i2v: true, end: true }, durations: [5, 8, 10, 15], aspects: ['16:9', '9:16', '1:1'], resolutions: ['720p', '1080p', '4k'], resolutionDefault: '720p', maxClip: 15 },
@@ -71,8 +75,10 @@ const VIDEO = [
 /* ------------------------------------------------------------------ image models */
 
 const IMAGE = [
-  { id: 'google/gemini-nano-banana-2.1', provider: 'google', label: 'Nano Banana 2.1 (Gemini)', blurb: 'Best character consistency from reference images.', refs: 6, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
-  { id: 'google/gemini-3-pro-image', provider: 'google', label: 'Nano Banana Pro (Gemini)', refs: 6, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
+  { id: 'google/gemini-nano-banana-2.1', provider: 'google', label: 'Nano Banana 2.1 (Gemini API)', blurb: 'Best character consistency from reference images.', refs: 6, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
+  { id: 'google/gemini-3-pro-image', provider: 'google', label: 'Nano Banana Pro (Gemini API)', refs: 6, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
+  { id: 'google-ultra/nano-banana-2.1', provider: 'google-ultra', label: 'Nano Banana 2.1 (AI Ultra plan)', blurb: 'Included with your AI Ultra subscription — no API billing.', refs: 6, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
+  { id: 'google-ultra/nano-banana-pro', provider: 'google-ultra', label: 'Nano Banana Pro (AI Ultra plan)', blurb: 'Included with your AI Ultra subscription — no API billing.', refs: 6, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
   { id: 'xai/grok-imagine-image-2.0', provider: 'xai', label: 'Grok Imagine Image 2.0', refs: 5, aspects: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] },
   { id: 'fal/flux-dev', provider: 'fal', label: 'FLUX.1 [dev] (fal)', refs: 0, aspects: ['16:9', '9:16', '1:1', '4:3'] },
   { id: 'fal/flux-schnell', provider: 'fal', label: 'FLUX.1 [schnell] (fal)', refs: 0, aspects: ['16:9', '9:16', '1:1', '4:3'] },
@@ -134,6 +140,7 @@ export function availableProviders() {
   return {
     xai: xaiAvailable(),
     google: googleAvailable(),
+    'google-ultra': ultraAvailable(),
     apimart: apimartAvailable(),
     fal: !!s.falKey,
     replicate: !!s.replicateToken,
@@ -200,7 +207,8 @@ export async function asInput(provider, asset, signal) {
     return url;
   };
   switch (provider) {
-    case 'google': return { mime: asset.mime, base64: buffer.toString('base64'), kind: asset.kind };
+    case 'google':
+    case 'google-ultra': return { mime: asset.mime, base64: buffer.toString('base64'), kind: asset.kind };
     case 'xai':
     case 'qwen':
     case 'fal': return remote.source && /^https:/.test(remote.source) && age(asset.createdAt) < 864e5 ? remote.source : `data:${asset.mime};base64,${buffer.toString('base64')}`;
@@ -282,6 +290,7 @@ export async function generate(job, { onStatus, signal } = {}) {
     let r;
     switch (P) {
       case 'google': r = await googleImage({ model: slug, prompt: job.prompt, image: img, refs, aspect: job.aspect }, ctx); break;
+      case 'google-ultra': onStatus?.({ message: 'Nano Banana on your AI Ultra plan' }); r = await ultraImage({ model: slug, prompt: job.prompt, refs: [img, ...refs].filter(Boolean).slice(0, 6), aspect: job.aspect }, ctx); break;
       case 'xai': r = await xaiImage({ model: slug, prompt: job.prompt, image: img, refs, aspect: job.aspect }, ctx); break;
       case 'fal': {
         const ep = { 'flux-dev': 'fal-ai/flux/dev', 'flux-schnell': 'fal-ai/flux/schnell', 'kontext-dev': 'fal-ai/flux-kontext/dev' }[slug];

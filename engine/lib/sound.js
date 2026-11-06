@@ -2,6 +2,7 @@
 import fsp from 'node:fs/promises';
 import { addAsset, assetPath, newAssetPath, updateAsset } from './store.js';
 import { googleMusic, googleSpeech, googleAvailable, GEMINI_VOICES } from './providers/google.js';
+import { ultraMusic, ultraSpeech, ultraAvailable, ULTRA_VOICES } from './providers/google-ultra.js';
 import { xaiSpeech, xaiVoices, xaiAvailable } from './providers/xai.js';
 import { localSpeech, localVoices, localVoiceEngine } from './providers/localaudio.js';
 import { elevenSpeech, elevenVoices, elevenAvailable, ELEVEN_DEFAULT_VOICE } from './providers/eleven.js';
@@ -18,12 +19,14 @@ export async function soundCatalog() {
     music: [
       { id: 'google/lyria-3.5', label: 'Lyria 3.5 — full score (Gemini API)', available: googleAvailable() },
       { id: 'google/lyria-3-clip-preview', label: 'Lyria 3 Clip — 30 s loops (Gemini API)', available: googleAvailable() },
+      { id: 'google-ultra/lyria-3.5', label: 'Lyria 3.5 — full score (AI Ultra plan)', available: ultraAvailable() },
     ],
     // Same order as pickVoiceProvider, so "Best available" in the UI matches what the engine uses.
     voice: [
       { id: 'eleven', label: 'ElevenLabs voice (your voices + stock)', available: elevenAvailable(), voices: ev.map((v) => ({ id: v.id, name: v.note ? `${v.name} — ${v.note}` : v.name })), defaultVoice: ELEVEN_DEFAULT_VOICE },
       { id: 'xai', label: 'Grok voice (SuperGrok / xAI)', available: xaiAvailable(), voices: xv.length ? xv : ['eve', 'ara'] },
       { id: 'google', label: 'Gemini voice (Gemini API)', available: googleAvailable(), voices: GEMINI_VOICES },
+      { id: 'google-ultra', label: 'Gemini voice (AI Ultra plan)', available: ultraAvailable(), voices: ULTRA_VOICES },
       { id: 'local', label: le === 'say' ? 'Mac built-in voice (free, offline)' : 'Offline voice (espeak, free)', available: !!le, voices: lv },
     ],
   };
@@ -38,7 +41,7 @@ export function pickVoiceProvider(pref) {
 }
 
 async function toAsset(r, meta, signal) {
-  const ext = r.ext || ({ 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/aiff': 'aiff' }[r.mime] || 'bin');
+  const ext = r.ext || ({ 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/aiff': 'aiff' }[r.mime] || 'bin');
   const tmp = newAssetPath('audio/mpeg');
   const raw = `${tmp.abs}.src.${ext}`;
   await fsp.writeFile(raw, r.buffer);
@@ -60,13 +63,15 @@ export async function makeVoice({ provider, voice, text, style }, { signal } = {
   if (prov === 'eleven') r = await elevenSpeech({ text, voice }, { signal });
   else if (prov === 'xai') r = await xaiSpeech({ text, voice: voice || 'eve' }, { signal });
   else if (prov === 'google') r = await googleSpeech({ text, voice: voice || 'Kore', style }, { signal });
+  else if (prov === 'google-ultra') r = await ultraSpeech({ text, voice: voice || 'Kore' }, { signal });
   else r = await localSpeech({ text, voice });
   return toAsset(r, { source: 'narration', prompt: text, model: `${prov}-voice` }, signal);
 }
 
 export async function makeMusic({ model = 'google/lyria-3.5', prompt, seconds }, { signal, onStatus } = {}) {
-  const slug = model.replace(/^google\//, '');
-  const r = await googleMusic({ model: slug, prompt, seconds }, { signal, onStatus });
+  const ultra = /^google-ultra\//.test(model);
+  const slug = model.replace(/^google(-ultra)?\//, '');
+  const r = ultra ? await ultraMusic({ model: slug, prompt, seconds }, { signal, onStatus }) : await googleMusic({ model: slug, prompt, seconds }, { signal, onStatus });
   return toAsset({ ...r, mime: r.mime || 'audio/mpeg' }, { source: 'music', prompt, model }, signal);
 }
 

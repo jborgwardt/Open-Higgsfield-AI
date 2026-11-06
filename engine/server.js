@@ -11,6 +11,7 @@ import { publicCatalog, availableProviders, PROVIDERS } from './lib/catalog.js';
 import * as jobs from './lib/jobs.js';
 import * as lf from './lib/longform.js';
 import * as xai from './lib/providers/xai.js';
+import * as ultra from './lib/providers/google-ultra.js'; // namespaced: oidc.js also exports finishLogin
 import { comfyPing } from './lib/providers/comfy.js';
 import { openaiPing } from './lib/providers/openai.js';
 import { directorBackend, chosenDirector, listDirectors, chooseDirector } from './lib/director.js';
@@ -157,6 +158,7 @@ async function status(fresh, owner) {
   return {
     providers: Object.fromEntries(Object.entries(PROVIDERS).map(([k, v]) => [k, { ...v, available: !!avail[k] }])),
     xai: { ...x, apiKey: !!s.xaiKey, preferSubscription: s.xaiPreferSubscription },
+    googleUltra: ultra.ultraStatus(), // { connected, email, hasSecret } — the AI Ultra plan sign-in, separate from the Gemini API key
     comfy,
     llm: { online: !!llm, models: llm || [] },
     director: await directorBackend(),
@@ -228,6 +230,17 @@ route('POST', '/productions/:id/restore', ({ params }) => archive.restoreProject
 route('POST', '/xai/login', () => xai.startDeviceLogin());
 route('GET', '/xai/login', () => xai.loginStatus());
 route('POST', '/xai/logout', async () => { await xai.logout(); return xai.loginStatus(); });
+// Google AI Ultra plan sign-in (cloudcode OAuth). Open `url`, approve, then paste the localhost:8085 URL
+// (it fails to load — that's expected) or just its code into /complete. Behind studio auth like the rest.
+route('GET', '/google-ultra/login', () => ultra.ultraStatus());
+route('POST', '/google-ultra/login', () => ({ url: ultra.authUrl().url }));
+route('POST', '/google-ultra/login/complete', async ({ body }) => {
+  if (!String(body?.code || '').trim()) throw new HttpError(400, 'paste the code (or the whole localhost URL) from the Google sign-in page');
+  // A bad / expired code or a missing server secret is the caller's to fix: answer 400, not 500.
+  try { await ultra.finishLogin(body.code); } catch (e) { throw new HttpError(400, e.message); }
+  return ultra.ultraStatus();
+});
+route('POST', '/google-ultra/logout', async () => { await ultra.logout(); return ultra.ultraStatus(); });
 // ChatGPT plan access is provisioned by the Mac app's local OAuth flow. These
 // routes stay behind studio authentication; no public callback or API-key fallback.
 route('GET', '/codex/login', async ({ req }) => chatgptStatus(await providerOwner(req)));

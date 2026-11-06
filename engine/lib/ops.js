@@ -94,14 +94,14 @@ export async function audioForUpload(audio, { minSeconds = 0, signal } = {}) {
 }
 
 /**
- * Speak a script: ElevenLabs voice ids (default, incl. cloned voices) or xai:/google:/local: prefixed voices
+ * Speak a script: ElevenLabs voice ids (default, incl. cloned voices) or xai:/google:/google-ultra:/local: prefixed voices
  * through sound.js. `keep` = a user-facing output (TTS tool) rather than an intermediate step.
  */
 export async function speak({ text, voice, keep = false }, { signal, onStatus } = {}) {
   if (!String(text || '').trim()) throw new ProviderError('tools', 0, 'write a script or upload audio');
   onStatus?.({ message: 'Recording the voice line' });
   const v = String(voice || '');
-  const m = v.match(/^(xai|google|local):(.+)$/);
+  const m = v.match(/^(xai|google-ultra|google|local):(.+)$/);
   if (m) return makeVoice({ provider: m[1], voice: m[2], text }, { signal });
   if (elevenAvailable()) {
     const r = await elevenSpeech({ text, voice: v.replace(/^eleven:/, '') || undefined }, { signal });
