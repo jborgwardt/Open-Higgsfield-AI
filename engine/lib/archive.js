@@ -59,6 +59,16 @@ export function rcloneAdapter({ data, env = process.env } = {}) {
     configured,
     async probe() { await run(['about', full(''), '--json'], 45_000); },
     async stat(p) { return JSON.parse(await run(['lsjson', full(p), '--stat', '--hash', '--hash-type', 'MD5'], 45_000)); },
+    async folderStat(p) {
+      // --stat on a directory treats it as the remote root and fabricates a directory without ID.
+      // A one-level parent listing preserves the actual Drive folder ID; no share link is created.
+      full(p); // Validate before splitting.
+      const parent = path.posix.dirname(p), name = path.posix.basename(p);
+      const entries = JSON.parse(await run(['lsjson', full(parent === '.' ? '' : parent), '--dirs-only', '--max-depth', '1'], 45_000));
+      const matches = entries.filter((entry) => entry.IsDir && entry.Name === name);
+      if (matches.length !== 1) throw fail(502, 'The Google Drive backup folder could not be identified uniquely');
+      return matches[0];
+    },
     async upload(local, p) { await run(['copyto', local, full(p), '--checksum', '--transfers', '1', '--checkers', '1', '--drive-chunk-size', '8M', '--buffer-size', '1M']); },
     async download(p, local) { await run(['copyto', full(p), local, '--checksum', '--transfers', '1', '--checkers', '1', '--buffer-size', '1M']); },
   };
@@ -173,7 +183,7 @@ export function createArchiveManager({ data, media, getAsset, listAssets, listPr
     if (remote.Size !== size || String(remote.Hashes?.MD5 || '').toLowerCase() !== md5) throw fail(502, 'Project metadata verification failed; local files were kept');
   }
   async function folderUrl(folder) {
-    try { const s = await drive.stat(folder); return s.IsDir && s.ID ? `https://drive.google.com/drive/folders/${encodeURIComponent(s.ID)}` : null; } catch { return null; }
+    try { const s = await (drive.folderStat ? drive.folderStat(folder) : drive.stat(folder)); return s.IsDir && s.ID ? `https://drive.google.com/drive/folders/${encodeURIComponent(s.ID)}` : null; } catch { return null; }
   }
   async function archiveProject(id, verifyExisting = false) {
     if (!safeId(id) || !id.startsWith('prod_')) throw fail(400, 'Invalid project ID');

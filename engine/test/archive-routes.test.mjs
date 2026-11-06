@@ -26,7 +26,7 @@ const fs = require('node:fs');
 const a=process.argv.slice(2), i=a.indexOf('copyto');
 if (i>=0) { fs.copyFileSync(process.env.SYNTHETIC_SOURCE, a[i+2]); process.exit(0); }
 if(a.includes('about')) { console.log(JSON.stringify({free:100000})); process.exit(0); }
-if(a.includes('lsjson')) { console.log(JSON.stringify({IsDir:true,ID:'private-fixture-folder'})); process.exit(0); }
+if(a.includes('lsjson')) { console.log(JSON.stringify(a.includes('--stat') ? {IsDir:true} : [{IsDir:true,Name:'Film Studio',ID:'private-fixture-folder'}])); process.exit(0); }
 process.exit(2);
 `, { mode: 0o755 });
   const holder = net.createServer(); await new Promise((resolve) => holder.listen(0, '127.0.0.1', resolve));

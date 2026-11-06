@@ -5,6 +5,10 @@
 # the log only shows its first 4 characters).
 # Post-production (subtitles, dialogue cleanup, mastering, picture) runs on the CPU: see docs/post-production.md.
 
+# Official multi-platform rclone release, pinned to its verified manifest-list digest.
+# Only the static executable is copied; Google credentials live in the /data volume.
+FROM rclone/rclone:1.75.2@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5 AS drive-tools
+
 FROM node:22-bookworm-slim AS web
 WORKDIR /app
 RUN npm install --no-save --no-audit --no-fund vite@^5.4.0 @tailwindcss/vite@^4.1.18 tailwindcss@^4.1.18
@@ -57,6 +61,8 @@ RUN curl -fsSL --retry 3 -o "${WHISPER_MODEL}" "https://huggingface.co/ggerganov
     | sha256sum -c -
 
 FROM node:22-bookworm-slim
+COPY --from=drive-tools /usr/local/bin/rclone /usr/local/bin/rclone
+RUN test "$(rclone version | head -n 1)" = "rclone v1.75.2"
 # ffmpeg 5.1 (Debian) has libass, zimg, arnndn, loudnorm, minterpolate, nlmeans — everything post.js uses.
 # libgomp1: whisper.cpp's OpenMP threads. fonts-inter: burned-in subtitle font (DejaVu stays as fallback).
 RUN apt-get update \

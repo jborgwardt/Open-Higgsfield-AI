@@ -6,7 +6,9 @@ Film Studio uses the studio server's existing Google Drive rclone connection. Th
 
 The default executable is `rclone` on PATH, the config is `${ENGINE_DATA}/rclone/rclone.conf`, and the remote is `gdrive`. Overrides are `ENGINE_ARCHIVE_RCLONE`, `ENGINE_ARCHIVE_RCLONE_CONFIG`, and `ENGINE_ARCHIVE_REMOTE`. Remote names must contain only letters, digits, `_`, or `-`.
 
-Install a trusted rclone binary in the server image and provision only the desired Drive remote's configuration into the persistent data volume. Keep the configuration directory mode 0700 and the file mode 0600; rclone needs write access to refresh its tokens. Do not bake credentials into an image. Read-only `rclone about gdrive: --json` verifies current authentication before enabling backups.
+The Dockerfile copies the static executable from the official `rclone/rclone:1.75.2` image, pinned to multi-platform manifest digest `sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5`. The Docker Hub Registry digest and the SHA256 of its manifest response were independently checked on 2026-11-06; the index includes Linux amd64 and arm64. A build-time assertion checks `rclone v1.75.2`. See the [official Docker installation documentation](https://rclone.org/install/#docker-installation) and [versioned image Dockerfile](https://github.com/rclone/rclone/blob/v1.75.2/Dockerfile).
+
+Provision only the desired Drive remote's existing configuration into the persistent data volume at `/data/rclone/rclone.conf`. Do this through a local file copy or a config parser that writes the selected remote directly to a mode-0600 file; never print token fields or paste them into app settings, logs, or shell command arguments. Keep the configuration directory mode 0700. Rclone needs directory write access to atomically refresh its tokens; a single read-only config-file bind mount will not work for renewal. Do not bake credentials into an image. The existing `studio-data:/data` volume preserves credentials and archive history across container replacement. Read-only `rclone --config /data/rclone/rclone.conf about gdrive: --json` verifies current authentication before enabling backups.
 
 The discovered VPS remote authenticated successfully on 2026-11-06, but uses rclone's shared Google OAuth client. rclone warns that this client is being retired during 2026. Migrate to an owned Google OAuth client before that connection is withdrawn. This is separate from the app's backup policy and must not silently broaden account access.
 
@@ -36,6 +38,8 @@ All routes use normal Film Studio authentication:
 Status/settings return `{provider, configured, connected, rootFolder, folderUrl, policy, busy, stats, lastRunAt, lastError}`. Stats contain `projects`, `videos`, `verifiedBytes`, `localBytesFreed`, and `pending`. Manual run returns this status plus `queued`. A manual request while another backup is busy returns HTTP 409 instead of silently discarding it.
 
 Project status returns `{id, status, title, folderUrl, error, verifiedAt, localOffloaded}` (some fields are absent before the first backup). Status is `not_archived`, `uploading`, `verified`, or `error`; a project changed since its last snapshot is reported `not_archived`. Project POST also returns `queued` and `busy`. Restore returns `{restored:true, projectId}`.
+
+Private folder links use an actual Drive directory ID from a one-level parent directory listing. `rclone lsjson <directory> --stat` returns a synthetic root-directory object without an ID, so it is used only for media-file checksum verification. No folder is created by a status query, and the implementation never calls `rclone link`.
 
 ## Verification
 
