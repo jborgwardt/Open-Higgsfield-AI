@@ -104,6 +104,8 @@ public struct UploadedAsset: Decodable, Sendable, Hashable, Identifiable {
 
 public struct ModelCaps: Sendable, Hashable {
     public var t2v = false, i2v = false, end = false, extend = false
+    /// Video: how many reference photos the model takes in reference mode, and whether a start frame can go with them.
+    public var refs = 0, refsWithImage = false
 }
 
 public struct ModelInfo: Decodable, Sendable, Identifiable, Hashable {
@@ -140,7 +142,8 @@ public struct ModelInfo: Decodable, Sendable, Identifiable, Hashable {
         kind = c.string("kind", default: "image")
         available = c.bool("available", default: false)
         let caps = c.json("caps")
-        self.caps = ModelCaps(t2v: caps?["t2v"]?.isTruthy ?? false, i2v: caps?["i2v"]?.isTruthy ?? false, end: caps?["end"]?.isTruthy ?? false, extend: caps?["extend"]?.isTruthy ?? false)
+        self.caps = ModelCaps(t2v: caps?["t2v"]?.isTruthy ?? false, i2v: caps?["i2v"]?.isTruthy ?? false, end: caps?["end"]?.isTruthy ?? false, extend: caps?["extend"]?.isTruthy ?? false,
+                              refs: Int(caps?["refs"]?.double ?? 0), refsWithImage: caps?["refsWithImage"]?.isTruthy ?? false)
         durations = c.doubles("durations")
         aspects = c.strings("aspects")
         resolutions = c.strings("resolutions")

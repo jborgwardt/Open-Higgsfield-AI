@@ -53,6 +53,19 @@ struct ComposerView: View {
     @State private var pick: PhotosPickerItem?
     @State private var pickTarget = AttachTarget.start
     @State private var showPicker = false
+    /// Reference photos (several at once) and a reference video.
+    @State private var refPicks: [PhotosPickerItem] = []
+    @State private var showRefPicker = false
+    @State private var videoPick: PhotosPickerItem?
+    @State private var showVideoPicker = false
+    @State private var referenceVideo: UploadedAsset?
+    /// "+" menu: Camera · Photos & videos · Files, then "Use as…" for photos.
+    @State private var addPicks: [PhotosPickerItem] = []
+    @State private var showAddPicker = false
+    @State private var showCamera = false
+    @State private var importingFile = false
+    @State private var pendingPhotos: [UploadedAsset] = []
+    @State private var videoToolRoute: VideoToolRoute?
     @State private var uploading = false
     /// The picked photo, shown at once while it uploads.
     @State private var uploadThumb: CGImage?
@@ -63,6 +76,17 @@ struct ComposerView: View {
     @FocusState private var promptFocused: Bool
 
     enum AttachTarget { case start, end, reference }
+    /// A picked reference video opens the matching video tool with the clip (and prompt) filled in.
+    struct VideoToolRoute: Identifiable { let id = UUID(); let tool: Tool; let clip: UploadedAsset; let prompt: String }
+    /// Tools that take a reference video, in the order offered.
+    private static let videoToolIDs: [(id: String, title: String, icon: String)] = [
+        ("video-edit", "Edit this video with a prompt", "wand.and.stars"),
+        ("motion-control", "Copy its motion onto a photo or character", "figure.walk.motion"),
+        ("restyle", "Restyle it (new look, same motion)", "paintpalette"),
+        ("recast", "Swap a person or object in it", "person.2.crop.square.stack"),
+        ("extend", "Continue it (what happens next)", "arrow.right.to.line"),
+    ]
+    private var videoRefLimit: Int { model.map { $0.isVideo ? $0.caps.refs : max(1, $0.refs) } ?? 0 }
 
     private var kind: String { mode == .image ? "image" : "video" }
     private var model: ModelInfo? {
@@ -103,6 +127,88 @@ struct ComposerView: View {
                 .environment(app)
             }
             .photosPicker(isPresented: $showPicker, selection: $pick, matching: .images, photoLibrary: .shared())
+            .photosPicker(isPresented: $showRefPicker, selection: $refPicks, maxSelectionCount: max(1, videoRefLimit - references.count), matching: .images, photoLibrary: .shared())
+            .photosPicker(isPresented: $showVideoPicker, selection: $videoPick, matching: .videos, photoLibrary: .shared())
+            .photosPicker(isPresented: $showAddPicker, selection: $addPicks, maxSelectionCount: 10, matching: .any(of: [.images, .videos]), photoLibrary: .shared())
+            .onChange(of: addPicks) { _, items in
+                guard !items.isEmpty else { return }
+                addPicks = []
+                receive { try await withThrowingTaskGroup(of: (Int, UploadedAsset).self) { g in
+                    for (i, item) in items.enumerated() { g.addTask { (i, try await MediaUpload.upload(item, app: app)) } }
+                    var out: [(Int, UploadedAsset)] = []
+                    for try await r in g { out.append(r) }
+                    return out.sorted { $0.0 < $1.0 }.map(\.1)
+                } }
+            }
+            .fileImporter(isPresented: $importingFile, allowedContentTypes: [.image, .movie], allowsMultipleSelection: true) { result in
+                guard case .success(let urls) = result, !urls.isEmpty else { return }
+                receive { var out: [UploadedAsset] = []; for u in urls { out.append(try await MediaUpload.imported(u, app: app)) }; return out }
+            }
+            #if os(iOS)
+            .fullScreenCover(isPresented: $showCamera) {
+                CameraCapture { result in
+                    showCamera = false
+                    guard let result else { return }
+                    switch result {
+                    case .photo(let data): receive { [try await MediaUpload.image(data, app: app)] }
+                    case .video(let url): receive { defer { try? FileManager.default.removeItem(at: url) }; return [try await MediaUpload.file(url, app: app)] }
+                    }
+                }
+                .ignoresSafeArea()
+            }
+            #endif
+            .confirmationDialog(pendingPhotos.count == 1 ? "Use this photo as…" : "Use these \(pendingPhotos.count) photos as…", isPresented: Binding(get: { !pendingPhotos.isEmpty }, set: { if !$0 { pendingPhotos = [] } }), titleVisibility: .visible) {
+                if let m = model {
+                    if m.caps.i2v { Button("Start frame") { usePhotos(as: .start) } }
+                    if m.caps.end, pendingPhotos.count >= 1 { Button(pendingPhotos.count >= 2 ? "Start + end frame" : "End frame") { usePhotos(as: .end) } }
+                    if m.caps.refs > 0 { Button("Reference photos (keeps the subject)") { usePhotos(as: .reference) } }
+                }
+                Button("Cancel", role: .cancel) { pendingPhotos = [] }
+            }
+            .onChange(of: refPicks) { _, items in
+                guard !items.isEmpty else { return }
+                refPicks = []
+                pickTarget = .reference
+                for item in items { attach { try await MediaUpload.upload(item, app: app) } }
+            }
+            .onChange(of: videoPick) { _, item in
+                guard let item else { return }
+                videoPick = nil
+                uploading = true
+                uploadError = nil
+                Task {
+                    do {
+                        let clip = try await MediaUpload.upload(item, app: app)
+                        referenceVideo = clip
+                    } catch {
+                        uploadError = error.localizedDescription
+                        app.report(error, screen: "create", action: "Upload video")
+                    }
+                    uploading = false
+                }
+            }
+            .confirmationDialog("Use this video to…", isPresented: Binding(get: { referenceVideo != nil && videoToolRoute == nil }, set: { if !$0 { referenceVideo = nil } }), titleVisibility: .visible) {
+                if !Self.videoToolIDs.contains(where: { t in app.tools.contains { $0.id == t.id } }) {
+                    Button("Open Tools") { referenceVideo = nil; app.requestedTab = "tools" }
+                }
+                ForEach(Self.videoToolIDs, id: \.id) { t in
+                    if let tool = app.tools.first(where: { $0.id == t.id }), let clip = referenceVideo {
+                        Button(t.title) { videoToolRoute = VideoToolRoute(tool: tool, clip: clip, prompt: prompt) }
+                    }
+                }
+                Button("Cancel", role: .cancel) { referenceVideo = nil }
+            } message: {
+                if !Self.videoToolIDs.contains(where: { t in app.tools.contains { $0.id == t.id } }) {
+                    Text("This studio has no video tools connected yet (they need a video provider such as ApiMart or fal).")
+                }
+            }
+            .sheet(item: $videoToolRoute, onDismiss: { referenceVideo = nil }) { r in
+                NavigationStack {
+                    ToolRunView(tool: r.tool, prefill: r.prompt.isEmpty ? [:] : ["prompt": .string(r.prompt)], prefillAsset: r.clip)
+                        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { videoToolRoute = nil } } }
+                }
+                .environment(app)
+            }
             .onChange(of: pick) { _, item in
                 guard let item else { return }
                 pick = nil
@@ -270,7 +376,7 @@ struct ComposerView: View {
                 Button(action: generate) {
                     HStack(spacing: 8) {
                         // Say why Generate is waiting instead of just greying it out (QA-19).
-                        if uploading { ProgressView().controlSize(.small).tint(Color.onEmber); Text("Uploading photo…") }
+                        if uploading { ProgressView().controlSize(.small).tint(Color.onEmber); Text("Uploading…") }
                         else { Text("Generate"); Image(systemName: "sparkle") }
                     }
                     .frame(maxWidth: .infinity)
@@ -281,7 +387,7 @@ struct ComposerView: View {
                 .accessibilityHint(model?.requiresStartImage == true && startFrame == nil ? "\(model?.displayName ?? "This model") needs a start frame" : "")
             }
             if let m = model, m.requiresStartImage, startFrame == nil {
-                Text("\(m.displayName) needs a start frame — tap + Start frame.").font(.caption).foregroundStyle(Color.textSecondary)
+                Text("\(m.displayName) needs a start frame — tap + and add a photo.").font(.caption).foregroundStyle(Color.textSecondary)
             }
         }
         .padding(16)
@@ -304,6 +410,7 @@ struct ComposerView: View {
     private var chips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                addMenu
                 Button { pickingModel = true } label: {
                     StudioChip(title: model?.displayName ?? "Model", systemImage: mode.symbol, selected: true, showsChevron: true)
                 }
@@ -320,7 +427,6 @@ struct ComposerView: View {
                         optionMenu(title: resolution, icon: "sparkles.tv", options: m.resolutions.map { ($0, $0) }) { resolution = $0 }
                     }
                     if app.config.isOn("characterPicker"), app.charactersAvailable == true, !app.characters.isEmpty { characterMenu }
-                    if app.config.isOn("startEndFrames"), m.acceptsStartImage { attachMenu(m) }
                 }
             }
             .padding(.vertical, 1)
@@ -356,18 +462,111 @@ struct ComposerView: View {
         .buttonStyle(.plain)
     }
 
+    /// "+": Camera · Photos & videos · Files. Photos then ask how to use them; a video opens the video tools.
+    private var addMenu: some View {
+        Menu {
+            #if os(iOS)
+            if CameraCapture.isAvailable { Button("Camera", systemImage: "camera") { showCamera = true } }
+            #endif
+            Button("Photos & videos", systemImage: "photo.on.rectangle") { showAddPicker = true }
+            Button("Files", systemImage: "paperclip") { importingFile = true }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .background(Color.white.opacity(0.12), in: Circle())
+        }
+        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add photo or video")
+        .accessibilityIdentifier("composer.add")
+    }
+
+    /// Upload whatever was picked, then sort it: videos → video tools, photos → frame/reference (asks when there's a choice).
+    private func receive(_ work: @escaping () async throws -> [UploadedAsset]) {
+        uploading = true
+        uploadError = nil
+        Task {
+            do {
+                let assets = try await work()
+                let videos = assets.filter { $0.kind.hasPrefix("video") }
+                let photos = assets.filter { !$0.kind.hasPrefix("video") }
+                if let v = videos.first { referenceVideo = v }
+                if !photos.isEmpty { routePhotos(photos) }
+            } catch {
+                uploadError = error.localizedDescription
+                app.report(error, screen: "create", action: "Add media")
+            }
+            uploading = false
+        }
+    }
+
+    private func routePhotos(_ photos: [UploadedAsset]) {
+        guard let m = model else { return }
+        if !m.isVideo { // image models: everything is a reference
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { references = Array((references + photos).prefix(max(1, m.refs))) }
+            return
+        }
+        let options = (m.caps.i2v ? 1 : 0) + (m.caps.refs > 0 ? 1 : 0)
+        if options <= 1 { pendingPhotos = photos; usePhotos(as: m.caps.refs > 0 && !m.caps.i2v ? .reference : .start) }
+        else { pendingPhotos = photos }
+    }
+
+    private func usePhotos(as target: AttachTarget) {
+        let photos = pendingPhotos
+        pendingPhotos = []
+        guard let m = model, !photos.isEmpty else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            switch target {
+            case .start:
+                startFrame = photos[0]
+                if !m.caps.refsWithImage { references = [] }
+            case .end:
+                if photos.count >= 2 { startFrame = photos[0]; endFrame = photos[1] } else { endFrame = photos[0] }
+                if !m.caps.refsWithImage { references = [] }
+            case .reference:
+                references = Array((references + photos).prefix(m.caps.refs))
+                if !m.caps.refsWithImage { startFrame = nil; endFrame = nil }
+            }
+            currentRun = nil
+        }
+    }
+
     @ViewBuilder private func attachMenu(_ m: ModelInfo) -> some View {
         if m.isVideo {
+            // Reference photos keep a subject/character consistent; some models can't combine them with a start frame.
+            let refsBlockFrames = !references.isEmpty && !m.caps.refsWithImage
+            let framesBlockRefs = startFrame != nil && !m.caps.refsWithImage
             Menu {
-                Button(startFrame == nil ? "Start frame…" : "Replace start frame…", systemImage: "photo") { pickTarget = .start; showPicker = true }
-                if m.caps.end { Button(endFrame == nil ? "End frame…" : "Replace end frame…", systemImage: "photo.badge.checkmark") { pickTarget = .end; showPicker = true } }
+                Section("Photos") {
+                    Button(startFrame == nil ? "Start frame…" : "Replace start frame…", systemImage: "photo") { pickTarget = .start; showPicker = true }
+                        .disabled(refsBlockFrames)
+                    if m.caps.end { Button(endFrame == nil ? "End frame…" : "Replace end frame…", systemImage: "photo.badge.checkmark") { pickTarget = .end; showPicker = true }.disabled(refsBlockFrames) }
+                    if m.caps.refs > 0 {
+                        Button(references.isEmpty ? "Reference photos (up to \(m.caps.refs))…" : "Add reference photos (\(references.count)/\(m.caps.refs))…", systemImage: "person.crop.rectangle.stack") { showRefPicker = true }
+                            .disabled(framesBlockRefs || references.count >= m.caps.refs)
+                    }
+                }
+                Section("Video") {
+                    Button("Reference video…", systemImage: "film") { showVideoPicker = true }
+                }
+                if refsBlockFrames || framesBlockRefs {
+                    Text("\(m.displayName): start frame or reference photos, not both")
+                }
             } label: {
-                StudioChip(title: startFrame == nil ? "Start frame" : "Frames", systemImage: "plus")
+                StudioChip(title: startFrame == nil && references.isEmpty ? "Add photo / video" : (references.isEmpty ? "Frames" : "References \(references.count)"), systemImage: "plus")
             }
             .menuIndicator(.hidden)
             .buttonStyle(.plain)
-        } else if references.count < max(1, m.refs) {
-            Button { pickTarget = .reference; showPicker = true } label: { StudioChip(title: "Reference", systemImage: "plus") }
+        } else {
+            Menu {
+                if references.count < max(1, m.refs) {
+                    Button(m.refs > 1 ? "Reference photos (up to \(m.refs))…" : "Reference photo…", systemImage: "photo.on.rectangle") { showRefPicker = true }
+                }
+                Button("Reference video…", systemImage: "film") { showVideoPicker = true }
+            } label: { StudioChip(title: references.isEmpty ? "Add photo / video" : "References \(references.count)", systemImage: "plus") }
+                .menuIndicator(.hidden)
                 .buttonStyle(.plain)
         }
     }
@@ -386,9 +585,9 @@ struct ComposerView: View {
                     .frame(width: 54, height: 54)
                     .background(Color.surfaceHigh)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(alignment: .bottomLeading) { Text("UPLOADING").font(.label(8, weight: .heavy)).foregroundStyle(.white).padding(.horizontal, 4).background(.black.opacity(0.6), in: Capsule()).padding(3) }
+                    .overlay(alignment: .bottomLeading) { Text("UPLOADING").font(.label(8, weight: .heavy)).lineLimit(1).fixedSize().foregroundStyle(.white).padding(.horizontal, 4).background(.black.opacity(0.6), in: Capsule()).padding(3) }
                     .padding(.top, 5)
-                    .accessibilityLabel("Uploading photo")
+                    .accessibilityLabel("Uploading")
                 }
                 if let uploadError { Text(uploadError).font(.caption).foregroundStyle(.red).lineLimit(2).frame(maxWidth: 220, alignment: .leading) }
             }
@@ -445,6 +644,7 @@ struct ComposerView: View {
         if m.isVideo, !m.durations.contains(duration) { duration = m.durations.contains(defDur) ? defDur : (m.durations.first ?? 0) }
         if !m.resolutions.contains(resolution) { resolution = m.resolutionDefault.flatMap { m.resolutions.contains($0) ? $0 : nil } ?? m.resolutions.first ?? "" }
         if !m.caps.end { endFrame = nil }
+        if m.isVideo, references.count > m.caps.refs { references = Array(references.prefix(m.caps.refs)) }
         if !m.isVideo, m.refs == 0 { references = [] }
         if !m.isVideo, m.refs > 0, references.count > m.refs { references = Array(references.prefix(m.refs)) }
     }
@@ -475,8 +675,8 @@ struct ComposerView: View {
 
     private func generate() {
         guard let m = model, canGenerate else { return }
-        let refs = m.isVideo ? [] : references.map(\.id)
-        let request = GenerateRequest(
+        let refs = references.map(\.id)
+        var request = GenerateRequest(
             model: m.id,
             prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines),
             aspect: aspect.nonEmpty,
@@ -484,9 +684,10 @@ struct ComposerView: View {
             resolution: resolution.nonEmpty,
             startImage: m.isVideo ? startFrame?.id : refs.first,
             endImage: m.isVideo && m.caps.end ? endFrame?.id : nil,
-            references: Array(refs.dropFirst()),
+            references: m.isVideo ? Array(refs.prefix(m.caps.refs)) : Array(refs.dropFirst()),
             characters: Array(selectedCharacters)
         )
+        request.refMode = m.isVideo && !refs.isEmpty && m.caps.refs > 0
         let client = app.client
         Platform.impact()
         promptFocused = false

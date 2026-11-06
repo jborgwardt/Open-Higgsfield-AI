@@ -352,6 +352,8 @@ public struct GenerateRequest: Sendable, Equatable {
     public var references: [String] = []
     public var characters: [String] = []
     public var seed: Int?
+    /// Video: send `references` as subject/character references (the model's reference mode).
+    public var refMode = false
 
     public init(model: String, prompt: String, aspect: String? = nil, duration: Double? = nil, resolution: String? = nil, startImage: String? = nil, endImage: String? = nil, references: [String] = [], characters: [String] = [], seed: Int? = nil) {
         self.model = model; self.prompt = prompt; self.aspect = aspect; self.duration = duration; self.resolution = resolution
@@ -368,6 +370,7 @@ public struct GenerateRequest: Sendable, Equatable {
         if !references.isEmpty { o["images_list"] = JSONValue(references) }
         if !characters.isEmpty { o["characters"] = JSONValue(characters) }
         if let seed { o["seed"] = .number(Double(seed)) }
+        if refMode { o["ref_mode"] = .bool(true) }
         return o
     }
 }

@@ -227,7 +227,7 @@ route('POST', '/generate', ({ body }) => {
   const id = String(body.model).replace(/^engine:/, '');
   return jobs.startJob({
     model: id, prompt: body.prompt || '', image: body.image_url || body.image || null, endImage: body.end_image_url || null,
-    refs: body.images_list || body.refs || [], aspect: body.aspect_ratio || body.aspect || '16:9', duration: body.duration, resolution: body.resolution,
+    refs: body.images_list || body.refs || [], refMode: body.ref_mode === true || body.refMode === true, aspect: body.aspect_ratio || body.aspect || '16:9', duration: body.duration, resolution: body.resolution,
     seed: Number.isInteger(body.seed) && body.seed >= 0 ? body.seed : undefined,
     characters: Array.isArray(body.characters) ? body.characters : body.characters ? [body.characters] : undefined, // character ids → refs routed per model
     keyframeModel: body.keyframe_model || body.keyframeModel || undefined,
