@@ -1,5 +1,6 @@
 import '../styles/engine.css';
 import { engine } from '../lib/engine.js';
+import { mountDriveArchiveSettings } from './DriveArchiveSettings.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -117,6 +118,8 @@ export function ProvidersModal() {
               <div class="grid2"><input type="url" name="llmBaseUrl" value="${esc(s.llmBaseUrl)}" placeholder="http://127.0.0.1:11434/v1" />${secret('llmKey', s.llmKey, 'API key (optional for local servers)')}</div>
             </div>
 
+            <div class="card prov col" data-drive-settings></div>
+
             <div class="card prov col">
               <h4>Subscription hand-off folder</h4>
               <p>When a Long-form shot uses a hand-off model, generate it yourself in Flow or grok.com/imagine and download it — new videos landing in this folder are attached to the waiting shots in order.</p>
@@ -124,7 +127,8 @@ export function ProvidersModal() {
             </div>
             ${st.ffmpeg ? '' : '<p style="color:var(--eg-bad)">ffmpeg is not installed — long-form assembly needs it (<code>brew install ffmpeg</code>).</p>'}
           </form>
-          <div class="ft"><button class="btn" data-a="close">Close</button><button class="btn primary" data-a="save">Save</button></div>`;
+          <div class="ft"><button class="btn" data-a="close">Close</button><button class="btn primary" data-a="save">Save providers</button></div>`;
+        mountDriveArchiveSettings(overlay.querySelector('[data-drive-settings]'));
         clearTimeout(pollTimer);
         // While a SuperGrok code is pending, watch only the login state so typing in the form isn't disturbed.
         if (x.pending) {

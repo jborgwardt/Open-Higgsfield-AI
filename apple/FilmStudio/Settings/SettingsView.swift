@@ -24,6 +24,7 @@ struct SettingsView: View {
                     Text("Plans every long-form film: an AI director writes scenes and shots, or “No AI” splits your script as written.")
                 }
             }
+            DriveArchiveSection()
             providersSection
             appSection
             Section {

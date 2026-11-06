@@ -201,6 +201,7 @@ struct FilmDetailView: View {
             Section { header(p) }
             Section { actions(p) }
             Section { actionDetails(p) }
+            ProjectDriveArchiveSection(productionID: id, canBackUp: p.master != nil && !p.isLive)
             if p.shots.isEmpty {
                 Section {
                     Text(p.status == .planning ? "The director is writing the shot list…" : "No shots yet. Write a script in the brief, then plan with the director.")
