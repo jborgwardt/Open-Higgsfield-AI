@@ -311,7 +311,7 @@ struct MediaViewer: View {
                     }
                     try Task.checkCancellation()
                     busy = "Preparing export…"
-                    try await then(file)
+                    try await then(MediaFiles.named(file, for: item))
                 }
             } catch is CancellationError {
                 flash("Download cancelled")

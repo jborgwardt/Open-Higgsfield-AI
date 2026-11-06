@@ -63,6 +63,32 @@ enum MediaFiles {
         throw APIError.invalidResponse
     }
 
+    /// A copy of a finished download named for people ("The Road on Side B.mp4", not "FilmStudio-a_960be31d6a0a.mp4"),
+    /// for Files / Share. A hard link where possible, so a 150 MB film isn't duplicated on the phone.
+    static func named(_ file: URL, for item: MediaItem) -> URL {
+        let base: String = {
+            let words = item.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            if item.model == "Long-form master", !words.isEmpty { return words }
+            if words.isEmpty { return "Film Studio \(item.isVideo ? "video" : "image")" }
+            let short = words.split(separator: " ").prefix(8).joined(separator: " ")
+            return "Film Studio – \(short)"
+        }()
+        let unsafe = CharacterSet(charactersIn: "/\\:?*\"<>|\n\r\t")
+        var name = base.components(separatedBy: unsafe).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        if name.count > 80 { name = String(name.prefix(80)).trimmingCharacters(in: .whitespaces) }
+        if name.isEmpty { name = "Film Studio" }
+        let ext = file.pathExtension.isEmpty ? (item.isVideo ? "mp4" : "jpg") : file.pathExtension
+        let dir = ExportDownloader.exportsDirectory.appendingPathComponent("Named", isDirectory: true)
+            .appendingPathComponent(String(file.deletingPathExtension().lastPathComponent.suffix(24)), isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dest = dir.appendingPathComponent(name).appendingPathExtension(ext)
+        if !FileManager.default.fileExists(atPath: dest.path) {
+            do { try FileManager.default.linkItem(at: file, to: dest) }
+            catch { do { try FileManager.default.copyItem(at: file, to: dest) } catch { return file } }
+        }
+        return dest
+    }
+
     /// Connection problems worth another try (resuming where the transfer stopped when possible).
     private static let retryable: Set<Int> = [
         NSURLErrorTimedOut, NSURLErrorNetworkConnectionLost, NSURLErrorNotConnectedToInternet, NSURLErrorCannotConnectToHost,

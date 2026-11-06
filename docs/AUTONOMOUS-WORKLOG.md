@@ -13,12 +13,14 @@ Started 2026-11-06 ~06:45Z. Justin authorized 24–48 h autonomous work. Handoff
 ## Checklist
 - [x] Mac load: shut 4 duplicate sims (kept 15 Pro Max, iPad Pro M4; Apple TV sim not ours, left alone). Closed old 4968 test tunnel.
 - [x] (1) Movie: verified SHA-256 4e8f4e03…5704; copied to iCloud Drive `FINISHED FILM - The Road on Side B.mp4` — iCloud reports uploaded. Photos import blocked (Photos AppleEvents time out; Photos control denied). **Waiting on Justin: Files → iCloud Drive → tap → Share → Save Video.** Not verified on phone yet.
-- [ ] (2) Trace iOS download→save lifecycle (`MediaFiles.swift`, `MediaViewer.swift`, Library exports, FilmStudioKit client); fix stuck "Downloading"; Save to Photos / Files / Share with 147 MB master.
-- [ ] (2) Server: `serveFile` stream cleanup leak (destroy read stream on close/abort, handle errors) + regression test (aborted/full/range).
+- [x] (2) iOS export: background URLSession (survives app switch/lock), 6 resumable retries, cached finished file reused by Photos/Files/Share, files named after the film. **Verified on iPhone 15 Pro Max sim with the 147 MB master**: backgrounded mid-download → completed by nsurlsessiond; SHA-256 matches; Photos got a 155.375 s video; Files got 146,802,253 bytes; Share sheet instant, named. Physical phone not yet verified.
+- [x] (2) Server stream leak fixed (pipeline), ETag/Last-Modified/If-Range for resume; test proves 18→0 leaked fds. Deployed 07:2xZ as studio:streamfix-20261106 (rollback = studio:rollback-prev = old 15d46a93). Live: 0 fds after 8 aborts; resume 206.
 - [ ] (2) Concurrency/session check: simultaneous downloads from two devices/sessions.
-- [ ] (2) Distinct **Open/Download Finished Film** Drive action (master), separate from **Open Project Folder**.
+- [x] (2) Finished-film Drive link: engine `filmUrl` (live: file/d/1C_XYDKavmOPQPvtFbEkWprwQVuo6cVxc) + app 'Open Finished Film in Google Drive' / 'Open Project Folder'.
 - [ ] (3) QA workers: iPhone 15 Pro Max + iPad Pro M4 — compact readability, export controls, busy/progress/cancel/retry, navigation, long-press, iPad popovers/landscape.
 - [ ] (4) Bump version/build, OTA staged rebuild, SignTools upload, Feather source, report one install link.
 
 ## Progress notes
 - 06:45Z handoff read; main HEAD f2e4931 (check `git log`).
+
+- QA notes found while testing (to fix in step 3): Home "Make a Film" card opens a blank New Film sheet even when films exist; film header shows "2.589511 min" (format); Director row shows raw "codex"; master viewer's primary orange button is "Upscale" (paid) instead of export; player area black until tapped/loaded.

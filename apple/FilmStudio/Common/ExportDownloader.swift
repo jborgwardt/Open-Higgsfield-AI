@@ -77,7 +77,9 @@ nonisolated final class ExportDownloader: NSObject, URLSessionDownloadDelegate, 
         let fm = FileManager.default
         let cutoff = Date().addingTimeInterval(-48 * 3600)
         let files = (try? fm.contentsOfDirectory(at: Self.exportsDirectory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        for f in files where ((try? f.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantFuture) < cutoff {
+        // Friendly-named hand-off copies (hard links) are recreated on demand.
+        try? fm.removeItem(at: Self.exportsDirectory.appendingPathComponent("Named", isDirectory: true))
+        for f in files where f.lastPathComponent != "Named" && ((try? f.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantFuture) < cutoff {
             try? fm.removeItem(at: f)
         }
     }

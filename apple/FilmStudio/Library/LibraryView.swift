@@ -354,7 +354,7 @@ struct LibraryView: View {
                     }
                     try Task.checkCancellation()
                     exportStatus = "Preparing export…"
-                    try await then(file)
+                    try await then(MediaFiles.named(file, for: item))
                 }
             } catch is CancellationError {
                 exportMessage = "Download cancelled"
