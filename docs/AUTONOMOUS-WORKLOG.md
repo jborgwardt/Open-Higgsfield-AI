@@ -12,7 +12,7 @@ Started 2026-11-06 ~06:45Z. Justin authorized 24–48 h autonomous work. Handoff
 
 ## Checklist
 - [x] Mac load: shut 4 duplicate sims (kept 15 Pro Max, iPad Pro M4; Apple TV sim not ours, left alone). Closed old 4968 test tunnel.
-- [x] (1) Movie: verified SHA-256 4e8f4e03…5704; copied to iCloud Drive `FINISHED FILM - The Road on Side B.mp4` — iCloud reports uploaded. Photos import blocked (Photos AppleEvents time out; Photos control denied). **Waiting on Justin: Files → iCloud Drive → tap → Share → Save Video.** Not verified on phone yet.
+- [x] (1) Movie: verified SHA-256 4e8f4e03…5704; copied to iCloud Drive `FINISHED FILM - The Road on Side B.mp4` — iCloud reports uploaded. Photos import blocked (Photos AppleEvents time out; Photos control denied). **DONE — Justin confirmed (≈08:40Z): saved to Photos on his iPhone and it plays.**
 - [x] (2) iOS export: background URLSession (survives app switch/lock), 6 resumable retries, cached finished file reused by Photos/Files/Share, files named after the film. **Verified on iPhone 15 Pro Max sim with the 147 MB master**: backgrounded mid-download → completed by nsurlsessiond; SHA-256 matches; Photos got a 155.375 s video; Files got 146,802,253 bytes; Share sheet instant, named. Physical phone not yet verified.
 - [x] (2) Server stream leak fixed (pipeline), ETag/Last-Modified/If-Range for resume; test proves 18→0 leaked fds. Deployed 07:2xZ as studio:streamfix-20261106 (rollback = studio:rollback-prev = old 15d46a93). Live: 0 fds after 8 aborts; resume 206.
 - [x] (2) Concurrency: 3 simultaneous full master downloads all 200/exact (~1 s each on loopback); sessions are per sign-in, no single-login limit (createSession never revokes others).
