@@ -26,7 +26,9 @@ struct DirectorPicker: View {
                         if !current.model.isEmpty, !o.models.contains(where: { $0.id == current.model }) { Text(current.model).tag(current.model) }
                     }
                 }
-                if let note = cat.option(current.provider)?.note.nonEmpty {
+                if current.provider == "codex", cat.option("codex")?.available == true {
+                    Text("Connected · plans with your ChatGPT plan").font(.caption).foregroundStyle(.secondary)
+                } else if let note = cat.option(current.provider)?.note.nonEmpty {
                     Text(note).font(.caption).foregroundStyle(.secondary)
                 }
                 if !current.isChosen {

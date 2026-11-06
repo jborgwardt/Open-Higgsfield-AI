@@ -157,7 +157,9 @@ struct MainView: View {
                 }
                 Section {
                     ForEach(tabs) { t in
-                        Label(t.displayTitle, systemImage: t.displaySymbol).tag(t.id)
+                        // Icons as bright as the labels (the dark row tint made them near-invisible).
+                        Label { Text(t.displayTitle) } icon: { Image(systemName: t.displaySymbol).foregroundStyle(.white.opacity(0.85)) }
+                            .tag(t.id)
                     }
                 }
                 if !app.generations.runs.filter({ !$0.isFinished }).isEmpty {
@@ -177,6 +179,9 @@ struct MainView: View {
             .tint(Color(white: 0.26))
             #if os(macOS)
             .navigationSplitViewColumnWidth(min: 190, ideal: 220)
+            #else
+            // A slimmer sidebar on iPad: portrait no longer gives a third of the screen to navigation.
+            .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 280)
             #endif
         } detail: {
             if tab == "create", app.config.isOn("create") {

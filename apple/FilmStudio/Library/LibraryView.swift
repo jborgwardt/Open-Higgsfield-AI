@@ -471,7 +471,11 @@ struct FilmCard: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
                         MediaBadge(text: p.status.label, ember: p.status == .done)
-                        if p.shots > 0 { Text("\(p.done)/\(p.shots) shots").font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.8)).monospacedDigit() }
+                        if p.shots > 0 {
+                            // A finished film that skipped shots: say what's in the cut, not an "incomplete" fraction.
+                            Text(p.status == .done && p.done < p.shots ? "\(p.done) of \(p.shots) shots used" : "\(p.done)/\(p.shots) shots")
+                                .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.8)).monospacedDigit()
+                        }
                     }
                     DisplayTitle(p.title, size: 26).foregroundStyle(.white)
                     if p.shots > 0, p.done < p.shots, p.status.isLive {
