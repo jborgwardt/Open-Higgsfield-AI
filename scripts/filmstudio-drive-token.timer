@@ -1,0 +1,11 @@
+[Unit]
+Description=Renew Film Studio's Drive-only token every 20 minutes
+
+[Timer]
+OnCalendar=*:0/20
+RandomizedDelaySec=30
+Persistent=true
+Unit=filmstudio-drive-token.service
+
+[Install]
+WantedBy=timers.target

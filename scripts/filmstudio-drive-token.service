@@ -1,0 +1,18 @@
+[Unit]
+Description=Renew Film Studio Drive-only access token
+After=network-online.target incus.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /opt/studio/refresh-drive-token.py
+TimeoutStartSec=180
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/docker/volumes/studio-data/_data/rclone /opt/studio/drive-broker-backups
+StandardOutput=journal
+StandardError=journal
