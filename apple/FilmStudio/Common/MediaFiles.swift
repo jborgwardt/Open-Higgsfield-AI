@@ -72,6 +72,30 @@ enum MediaFiles {
     #endif
 }
 
+#if os(macOS)
+/// Use AppKit directly: the SwiftUI VideoPlayer bridge can fail while resolving AVPlayerView on macOS 27.
+private struct NativeMoviePlayer: NSViewRepresentable {
+    let player: AVPlayer?
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.controlsStyle = .floating
+        view.showsFullScreenToggleButton = true
+        view.videoGravity = .resizeAspect
+        view.player = player
+        return view
+    }
+
+    func updateNSView(_ view: AVPlayerView, context: Context) {
+        if view.player !== player { view.player = player }
+    }
+
+    static func dismantleNSView(_ view: AVPlayerView, coordinator: ()) {
+        view.player = nil
+    }
+}
+#endif
+
 /// AVPlayer for engine media; sends the session token to the engine only.
 struct EngineVideoPlayer: View {
     let url: String
@@ -80,7 +104,13 @@ struct EngineVideoPlayer: View {
     @State private var player: AVPlayer?
 
     var body: some View {
-        VideoPlayer(player: player)
+        Group {
+            #if os(macOS)
+            NativeMoviePlayer(player: player)
+            #else
+            VideoPlayer(player: player)
+            #endif
+        }
             .task(id: url) {
                 guard let u = app.client.resolve(url) else { return }
                 var options: [String: Any] = [:]
