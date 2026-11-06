@@ -13,6 +13,7 @@ import { comfyPing } from './lib/providers/comfy.js';
 import { openaiPing } from './lib/providers/openai.js';
 import { directorBackend, chosenDirector, listDirectors, chooseDirector } from './lib/director.js';
 import { claudeStatus } from './lib/providers/claude-cli.js';
+import { chatgptStatus, beginConnection, completeConnection, cancelConnection, disconnect as disconnectChatGPT, chatgptModels, recordStudioOwner } from './lib/providers/chatgpt.js';
 import * as screening from './lib/screening.js';
 import { hasFfmpeg } from './lib/ffmpeg.js';
 import { soundCatalog } from './lib/sound.js';
@@ -44,6 +45,17 @@ const bearerOf = (req) => req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.
 function currentUser(req) {
   // A Pocket ID session: the browser's cookie, or the same kind of session as a Bearer token (the Apple app).
   return oidcConfig() ? sessionFor(cookie(req, 'engine_session')) || sessionFor(bearerOf(req)) : null;
+}
+/**
+ * Who is asking, for the ChatGPT account routes. Always an explicitly authenticated studio session:
+ * a Pocket ID session (cookie or the app's Bearer), or — on a studio without Pocket ID — the access code
+ * presented as a Bearer token or cookie. Never the implicit "open on this machine" access of a local engine.
+ */
+async function providerOwner(req) {
+  const user = currentUser(req);
+  if (user?.sub) { await recordStudioOwner(user); return user.sub; }
+  if (!oidcConfig() && [bearerOf(req), cookie(req, 'engine_token')].some((t) => t && tokenMatches(t))) return 'local-studio';
+  throw new HttpError(401, 'Sign in to Film Studio before connecting ChatGPT');
 }
 function authed(req, url) {
   const bearer = bearerOf(req);
@@ -112,7 +124,7 @@ function serveFile(req, res, abs, type, immutable) {
 /* ---------------- provider status ---------------- */
 
 let ffOk = null;
-async function status(fresh) {
+async function status(fresh, owner) {
   const s = getSettings();
   if (ffOk === null || fresh) ffOk = await hasFfmpeg();
   const [comfy, llm] = await Promise.all([
@@ -130,6 +142,8 @@ async function status(fresh) {
     director: await directorBackend(),
     directorChoice: chosenDirector(), // { id, model } — null id means the user has not picked one yet
     claude: await claudeStatus({ fresh }),
+    // Never let the ChatGPT account check break the studio's status (e.g. owner not recorded yet).
+    chatgpt: await chatgptStatus(owner).catch(() => ({ installed: true, available: false, loggedIn: false, state: 'error', account: null, error: 'Sign in as the studio owner to connect ChatGPT', loginMethod: 'mac_local_oauth' })),
     directorModels: { apimart: APIMART_LLMS },
     screening: screening.screeningAvailable(),
     eleven: { available: elevenAvailable(), models: ELEVEN_TTS_MODELS },
@@ -161,7 +175,7 @@ route('POST', '/logout', ({ req }) => {
   if (oidcConfig() && sessionFor(bearerOf(req))) endSession(bearerOf(req)); // the app signing out
   return { ok: true, __cookie: oidcConfig() ? clearSessionCookie() : 'engine_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' };
 });
-route('GET', '/status', ({ url }) => status(url.searchParams.has('fresh')));
+route('GET', '/status', async ({ req, url }) => { const user = currentUser(req); if (user?.sub) await recordStudioOwner(user).catch(() => {}); return status(url.searchParams.has('fresh'), user?.sub); });
 route('GET', '/catalog', async () => { await status(); return { models: publicCatalog().map(feed.withModelPreview), providers: PROVIDERS }; });
 route('GET', '/settings', () => publicSettings());
 
@@ -177,6 +191,20 @@ route('POST', '/settings', async ({ body }) => ({ settings: await updateSettings
 route('POST', '/xai/login', () => xai.startDeviceLogin());
 route('GET', '/xai/login', () => xai.loginStatus());
 route('POST', '/xai/logout', async () => { await xai.logout(); return xai.loginStatus(); });
+// ChatGPT plan access is provisioned by the Mac app's local OAuth flow. These
+// routes stay behind studio authentication; no public callback or API-key fallback.
+route('GET', '/codex/login', async ({ req }) => chatgptStatus(await providerOwner(req)));
+route('POST', '/codex/login', async ({ req }) => beginConnection(await providerOwner(req)));
+route('POST', '/codex/login/complete', async ({ req, body }) => {
+  // The Mac client also enforces HTTPS and rejects redirects. Require an
+  // encrypted reverse-proxy connection (or a local-only development request)
+  // before accepting account credentials here.
+  if (!secureReq(req) && !isLoopback(req)) throw new HttpError(400, 'Use HTTPS to connect ChatGPT to this studio');
+  return completeConnection(await providerOwner(req), body);
+});
+route('POST', '/codex/login/cancel', async ({ req, body }) => cancelConnection(await providerOwner(req), body.connectionId));
+route('POST', '/codex/logout', async ({ req }) => disconnectChatGPT(await providerOwner(req)));
+route('GET', '/codex/models', async ({ req, url }) => chatgptModels({ owner: await providerOwner(req), fresh: url.searchParams.has('fresh') }));
 route('POST', '/test/:provider', async ({ params }) => {
   const s = getSettings();
   switch (params.provider) {

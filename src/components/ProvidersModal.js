@@ -24,11 +24,26 @@ export function ProvidersModal() {
         const [s, st, dirs] = await Promise.all([engine.get('/settings'), engine.get('/status'), engine.get('/directors').catch(() => ({ providers: [] }))]);
         const dsel = dirs.providers.find((d) => d.id === s.directorProvider);
         const x = st.xai;
+        const chatgpt = st.chatgpt || { available: false, loggedIn: false };
         const p = st.providers;
         overlay.querySelector('.eg-modal').innerHTML = `
           <div class="hd"><h2>Providers & accounts</h2><button class="btn ghost" data-a="close">✕</button></div>
           <form class="bd" autocomplete="off">
-            <p class="muted" style="font-size:12px">Connect any mix of providers. Every connected model shows up in the Image, Video, Cinema and Long-form studios. Keys stay on this machine in <code>engine-data/settings.json</code>.</p>
+            <p class="muted" style="font-size:12px">Connect your providers for writing, images, video and audio. Credentials stay on your studio server.</p>
+
+            <div class="card prov col">
+              <h4>ChatGPT / Codex · film director ${chip(chatgpt.available, 'connected', chatgpt.loggedIn ? 'needs attention' : 'not connected')}</h4>
+              <p>Use your ChatGPT plan to write scenes and plan shots. Your selected video and audio providers still create the film.</p>
+              ${chatgpt.loggedIn
+                ? '<p>ChatGPT is connected to this studio. Choose it in the Director picker below or for an individual film.</p>'
+                : '<p>Open <b>Film Studio on your Mac → Settings → Film Director → Continue with ChatGPT</b> to connect once. This studio can then use the connected director from your iPhone, iPad, Mac and browser.</p>'}
+              ${chatgpt.error ? `<p style="color:var(--eg-bad)">${esc(chatgpt.error)}</p>` : ''}
+              <div class="row">
+                <button type="button" class="btn sm" data-a="chatgpt-refresh">Refresh connection</button>
+                ${chatgpt.loggedIn ? '<button type="button" class="btn sm" data-a="chatgpt-logout">Disconnect ChatGPT</button>' : ''}
+              </div>
+              <span class="muted">Uses your ChatGPT plan allowance. No separately billed API fallback.</span>
+            </div>
 
             <div class="card prov col">
               <h4>xAI · Grok Imagine ${x.connected ? chip(true, `SuperGrok · ${x.email || 'connected'}`, '') : x.apiKey ? chip(true, 'API key', '') : chip(false, '', 'not connected')}</h4>
@@ -142,6 +157,20 @@ export function ProvidersModal() {
         if (announce) toast('Providers saved — new models are in the studio pickers');
     }
 
+    async function refreshConnectionUI() {
+        const fields = Array.from(overlay.querySelector('form')?.elements || [])
+            .filter((el) => el.name && !el.disabled)
+            .map((el) => ({ name: el.name, value: el.value, checked: el.checked, type: el.type }));
+        await render();
+        const form = overlay.querySelector('form');
+        for (const field of fields) {
+            const el = form?.elements.namedItem(field.name);
+            if (!el || el.disabled) continue;
+            if (field.type === 'checkbox') el.checked = field.checked;
+            else el.value = field.value;
+        }
+    }
+
     overlay.addEventListener('click', async (e) => {
         const b = e.target.closest('[data-a]');
         if (!b) return;
@@ -151,6 +180,14 @@ export function ProvidersModal() {
             else if (a === 'save') { b.disabled = true; await saveForm(); close(); }
             else if (a === 'xai-login') { b.disabled = true; await saveForm(false); await engine.post('/xai/login'); render(); }
             else if (a === 'xai-logout') { await engine.post('/xai/logout'); await engine.registerModels(); render(); }
+            else if (a === 'chatgpt-refresh') { b.disabled = true; await refreshConnectionUI(); }
+            else if (a === 'chatgpt-logout') {
+                b.disabled = true;
+                await engine.post('/codex/logout');
+                await engine.registerModels();
+                window.dispatchEvent(new CustomEvent('engine:catalog-changed'));
+                await refreshConnectionUI();
+            }
             else if (a === 'test') {
                 await saveForm(false);
                 const out = overlay.querySelector(`[data-test="${b.dataset.p}"]`);

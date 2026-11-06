@@ -6,6 +6,7 @@ struct DirectorPicker: View {
     @Environment(AppModel.self) private var app
     @State private var saving = false
     @State private var error: String?
+    @State private var showChatGPTConnection = false
 
     var body: some View {
         Group {
@@ -36,9 +37,15 @@ struct DirectorPicker: View {
             } else {
                 HStack { ProgressView().controlSize(.small); Text("Loading directors…").foregroundStyle(.secondary) }
             }
+            Button {
+                showChatGPTConnection = true
+            } label: {
+                Label("ChatGPT / Codex Connection", systemImage: "person.crop.circle.badge.checkmark")
+            }
             if saving { HStack { ProgressView().controlSize(.mini); Text("Saving…").font(.caption).foregroundStyle(.secondary) } }
         }
         .task { if app.directors == nil { await load() } }
+        .sheet(isPresented: $showChatGPTConnection) { ChatGPTConnectionSheet() }
     }
 
     private func load() async {

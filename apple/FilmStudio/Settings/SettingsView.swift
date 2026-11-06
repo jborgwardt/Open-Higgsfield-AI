@@ -69,7 +69,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                LabeledContent("Director", value: s.director.map { $0 == "openai" ? "Local LLM" : $0.capitalized } ?? "Offline splitter")
+                LabeledContent("Director", value: s.director.map { $0 == "codex" ? "ChatGPT / Codex" : ($0 == "openai" ? "Local LLM" : $0.capitalized) } ?? "Offline splitter")
                 LabeledContent("ElevenLabs", value: s.elevenAvailable ? "Connected" : "Not connected")
                 LabeledContent("ComfyUI", value: s.comfy ? "Online" : "Offline")
                 LabeledContent("ffmpeg", value: s.ffmpeg ? "Ready" : "Missing")
@@ -79,7 +79,7 @@ struct SettingsView: View {
                 HStack { ProgressView().controlSize(.small); Text("Checking providers…").foregroundStyle(.secondary) }
             }
         } header: { Text("Providers") } footer: {
-            Text("Read-only. Connect providers on the studio server (web app → Providers).")
+            Text("Connect ChatGPT above under Film Director. Manage video and other providers on the studio server (web app → Providers).")
         }
     }
 

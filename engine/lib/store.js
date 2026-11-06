@@ -48,7 +48,7 @@ const DEFAULTS = {
   llmBaseUrl: 'http://127.0.0.1:11434/v1',
   llmModel: 'qwen3:8b',
   llmKey: '',
-  directorProvider: '', // chosen by the user, no default: claude | google | xai | apimart | qwen | openai | split
+  directorProvider: '', // chosen by the user, no default: codex | claude | google | xai | apimart | qwen | openai | split
   directorModel: '',
   handoffDir: path.join(os.homedir(), 'Downloads'),
   concurrency: { xai: 2, google: 2, apimart: 3, fal: 4, replicate: 3, muapi: 2, kie: 3, comfy: 1, local: 2, qwen: 1 },

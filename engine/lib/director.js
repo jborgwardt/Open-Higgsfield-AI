@@ -12,6 +12,7 @@ import { googleChat, googleAvailable } from './providers/google.js';
 import { openaiChat, openaiPing } from './providers/openai.js';
 import { APIMART, APIMART_DIRECTOR_DEFAULT, apimartAvailable, apimartModels } from './providers/apimart.js';
 import { claudeChat, claudeStatus, CLAUDE_MODELS, CLAUDE_DEFAULT_MODEL } from './providers/claude-cli.js';
+import { chatgptStatus, chatgptModels, chatgptChat } from './providers/chatgpt.js';
 
 // Qwen Cloud Token Plan (OpenAI-compatible). QWEN_BASE may point at the Alibaba host instead.
 export const QWEN = `${(process.env.QWEN_BASE || 'https://token-plan.maas.qwencloudapi.com').replace(/\/+$/, '')}/compatible-mode/v1`;
@@ -34,6 +35,7 @@ const qwen = async () => {
 
 // Model lists are fetched live (free calls) and cached for 10 minutes.
 export const DIRECTORS = [
+  { id: 'codex', label: 'ChatGPT / Codex (your plan)', note: 'Connect with ChatGPT in Film Studio on your Mac; uses your ChatGPT plan for writing and planning', defaultModel: '', list: chatgptModels },
   { id: 'claude', label: 'Claude (your subscription)', note: 'Claude Code CLI signed in with your Claude plan', defaultModel: CLAUDE_DEFAULT_MODEL, list: async () => CLAUDE_MODELS },
   { id: 'google', label: 'Google Gemini', note: 'Gemini API key (Google Cloud credits)', defaultModel: 'gemini-3.8-flash', list: gemini, ok: googleAvailable, need: 'add a Gemini API key' },
   { id: 'xai', label: 'xAI Grok', note: 'SuperGrok sign-in or xAI key', defaultModel: '', list: async () => (await xaiModels()).filter((id) => /^grok/.test(id) && !NOT_CHAT.test(id) && !/imagine/.test(id)), ok: xaiAvailable, need: 'sign in with SuperGrok or add an xAI key' },
@@ -64,6 +66,16 @@ const lists = new Map(); // id -> { at, models, error }
 async function availability(id, { fresh } = {}) {
   const d = DIRECTORS.find((x) => x.id === id);
   if (!d) return { available: false, detail: 'unknown director', models: [] };
+  if (id === 'codex') {
+    const st = await chatgptStatus();
+    if (!st.available) return { available: false, detail: st.error || 'Connect ChatGPT in Film Studio on your Mac', models: [] };
+    try {
+      const models = await chatgptModels({ fresh });
+      return { available: models.length > 0, detail: models.length ? 'Connected with your ChatGPT plan' : 'No director models are available for this account', models };
+    } catch (e) {
+      return { available: false, detail: e.message, models: [] };
+    }
+  }
   if (id === 'claude') {
     const st = await claudeStatus({ fresh });
     return { available: st.available, detail: st.available ? `Claude Code ${st.version || ''} · ${st.subscription || st.authMethod || 'signed in'}`.replace(/\s+/g, ' ') : st.error, models: CLAUDE_MODELS.map((m) => ({ id: m, label: m })) };
@@ -126,6 +138,7 @@ export async function toolDirector() {
 async function chat(d, messages, signal) {
   const model = d.model || undefined;
   switch (d.id) {
+    case 'codex': return chatgptChat({ model, messages, signal });
     case 'claude': return claudeChat({ model, messages, signal });
     case 'xai': return xaiChat({ model, messages, signal });
     case 'google': return googleChat({ model, messages, signal });
