@@ -157,6 +157,7 @@ struct FilmDetailView: View {
     @State private var editingBrief = false
     @State private var shot: Shot?
     @State private var playMaster = false
+    @State private var confirmReassemble = false
     @State private var actionError: String?
     @State private var askDirector = false
     @State private var confirmReplan = false
@@ -202,6 +203,9 @@ struct FilmDetailView: View {
             .sheet(isPresented: $askDirector) {
                 DirectorSheet { Task { await plan() } }.environment(app)
             }
+            .confirmationDialog("Re-assemble the finished film?", isPresented: $confirmReassemble, titleVisibility: .visible) {
+                Button("Re-assemble") { Task { await run("Re-assemble") { try await app.client.productionAction(id, "assemble") } } }
+            } message: { Text("This rebuilds the film from its shots and replaces the current cut. You don't need it to save or share the film.") }
             .confirmationDialog("Re-plan this film?", isPresented: $confirmReplan, titleVisibility: .visible) {
                 Button("Re-plan", role: .destructive) { Task { await plan() } }
             } message: { Text("The director writes a new shot list from the script. Shots rendered so far are replaced.") }
@@ -273,7 +277,9 @@ struct FilmDetailView: View {
                 StatusBadge(text: p.assembling ? "Assembling" : p.status.label, tint: p.assembling ? .purple : p.status.tint, spinning: p.isLive)
                 if !p.shots.isEmpty { Text("\(p.doneCount)/\(p.shots.count) shots").font(.subheadline).foregroundStyle(.secondary).monospacedDigit() }
                 Spacer()
-                Text("\(lengthText(draftMinutes ?? p.brief.targetMinutes)) · \(Int(p.brief.clipSeconds)) s clips").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                // A finished film shows its real running time (2:35); a plan shows the target length.
+                Text(p.master.map { "\(($0.duration ?? 0).clock) film" } ?? "\(lengthText(draftMinutes ?? p.brief.targetMinutes)) · \(Int(p.brief.clipSeconds)) s clips")
+                    .font(.caption).foregroundStyle(.secondary).monospacedDigit()
             }
             if p.shots.isEmpty, p.status == .draft {
                 // Set the length right here (also in the brief); saved when you let go.
@@ -290,7 +296,12 @@ struct FilmDetailView: View {
             }
             if !p.shots.isEmpty { ProgressView(value: Double(p.doneCount), total: Double(max(p.shots.count, 1))) }
             if let plan = p.plan, !plan.logline.isEmpty { Text(plan.logline).font(.callout).italic() }
-            if !p.message.isEmpty { Text(p.message).font(.caption).foregroundStyle(.secondary) }
+            if !p.message.isEmpty, !(p.master != nil && p.message.hasPrefix("Master ready")) {
+                Text(p.message).font(.caption).foregroundStyle(.secondary)
+            }
+            if let m = p.master, !p.isLive {
+                FilmExportRow(title: p.title, masterURL: m.url).padding(.top, 4)
+            }
         }
         .padding(.vertical, 4)
     }
@@ -316,7 +327,21 @@ struct FilmDetailView: View {
                     actionButton(p.doneCount > 0 ? "Resume" : "Render", "play.fill", prominent: true) { try await app.client.productionAction(id, "start") }
                 }
                 if p.doneCount > 0 {
-                    actionButton(p.master == nil ? "Assemble" : "Re-assemble", "film.stack", prominent: p.master == nil && p.shots.allSatisfy { $0.status == .done || $0.status == .skipped }, disabled: !p.canAssemble) { try await app.client.productionAction(id, "assemble") }
+                    if p.master == nil {
+                        actionButton("Assemble", "film.stack", prominent: p.shots.allSatisfy { $0.status == .done || $0.status == .skipped }, disabled: !p.canAssemble) { try await app.client.productionAction(id, "assemble") }
+                    } else {
+                        // Rebuilds the finished film from its shots: ask first (it replaces the current cut).
+                        Button { confirmReassemble = true } label: {
+                            HStack {
+                                if busy == "Re-assemble" { ProgressView().controlSize(.small) } else { Image(systemName: "film.stack") }
+                                Text("Re-assemble")
+                            }
+                            .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 4)
+                        }
+                        .glassButton(prominent: false)
+                        .controlSize(.large)
+                        .disabled(!p.canAssemble || busy != nil)
+                    }
                 }
             }
         }
@@ -412,6 +437,15 @@ struct FilmDetailView: View {
 }
 
 private struct ShotRow: View {
+    /// A model prompt without the identity-reference preamble every shot shares.
+    static func readablePrompt(_ p: String) -> String {
+        var t = p.trimmingCharacters(in: .whitespacesAndNewlines)
+        for lead in ["Use supplied identity-reference photos.", "Characters (keep their look consistent):"] where t.hasPrefix(lead) {
+            t = String(t.dropFirst(lead.count)).trimmingCharacters(in: .whitespaces)
+        }
+        return t
+    }
+
     let shot: Shot
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -432,7 +466,8 @@ private struct ShotRow: View {
                     Spacer(minLength: 4)
                     StatusBadge(text: shot.status.label, tint: shot.status.tint, spinning: shot.status == .running)
                 }
-                Text(shot.prompt).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                // What happens in the shot, not the raw model prompt (that starts with the same reference boilerplate).
+                Text(shot.action.nonEmpty ?? Self.readablePrompt(shot.prompt)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 if let e = shot.error, shot.status == .error || shot.status == .pending {
                     Text(e).font(.caption2).foregroundStyle(.red).lineLimit(2)
                 } else if !shot.message.isEmpty, shot.status == .running {

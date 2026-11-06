@@ -105,10 +105,14 @@ struct ComposerView: View {
         ScreenGate(id: "create", title: "Create") {
             ZStack(alignment: .bottom) {
                 stage.ignoresSafeArea()
+                    // Tapping the picture puts the keyboard away (the nav bar is hidden, so there's no keyboard toolbar).
+                    .simultaneousGesture(TapGesture().onEnded { promptFocused = false })
                 VStack(spacing: 0) {
                     topBar
                     Spacer(minLength: 0)
                     stageCaption
+                        .opacity(promptFocused ? 0 : 1) // don't lay the model blurb over the picture while typing
+                        .animation(.easeOut(duration: 0.15), value: promptFocused)
                     composerCard
                 }
             }
@@ -364,6 +368,19 @@ struct ComposerView: View {
                 .textFieldStyle(.plain)
                 .onChange(of: prompt) { _, v in if v.count > maxPrompt { prompt = String(v.prefix(maxPrompt)) } }
                 .accessibilityLabel("Prompt")
+                #if os(iOS)
+                .overlay(alignment: .topTrailing) {
+                    if promptFocused {
+                        Button { promptFocused = false } label: {
+                            Image(systemName: "keyboard.chevron.compact.down").font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color.textSecondary).frame(width: 36, height: 30)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Hide keyboard")
+                        .offset(y: -4)
+                    }
+                }
+                #endif
             chips
             HStack(alignment: .center, spacing: 12) {
                 if let hint = costHint {

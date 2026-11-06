@@ -141,7 +141,8 @@ struct MediaViewer: View {
         }
         #if os(iOS)
         if app.config.isOn("saveToPhotos"), !isAudio {
-            barButton("Save to Photos", "photo.badge.arrow.down") { saveToPhotos() }
+            // On a finished film, saving it is the main action.
+            barButton("Save to Photos", "photo.badge.arrow.down", prominent: isFilm) { saveToPhotos() }
         }
         barButton("Save to Files", "folder") { saveToFiles() }
         #else
@@ -207,6 +208,7 @@ struct MediaViewer: View {
             }
             .menuIndicator(.hidden)
             .buttonStyle(.plain)
+            .disabled(busy != nil)
         }
         if !isAudio {
             if !item.isVideo, app.config.isOn("create") {
@@ -229,14 +231,18 @@ struct MediaViewer: View {
         return app.tools.first { $0.id.localizedCaseInsensitiveContains("upscale") && $0.output == out }
     }
 
-    private func barButton(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+    private var isFilm: Bool { item.model == "Long-form master" }
+
+    private func barButton(_ title: String, _ symbol: String, prominent: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 3) {
-                Image(systemName: symbol).font(.system(size: 17, weight: .semibold))
-                Text(title).font(.system(size: 10, weight: .semibold))
+                // A fixed icon box keeps every label on the same baseline.
+                Image(systemName: symbol).font(.system(size: 17, weight: .semibold)).frame(height: 22)
+                Text(title).font(.system(size: 10, weight: .semibold)).lineLimit(1)
             }
             .frame(width: title.count > 8 ? 88 : 54, height: 44)
-            .foregroundStyle(.white)
+            .foregroundStyle(prominent ? Color.onEmber : .white)
+            .background { if prominent { RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.ember) } }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -280,9 +286,11 @@ struct MediaViewer: View {
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .trailing) {
+            #if os(macOS)
             if let busy {
                 ProgressView().controlSize(.small).help(busy)
             }
+            #endif
             Menu {
                 exportMenu
                 Divider()

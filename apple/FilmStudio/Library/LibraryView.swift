@@ -24,7 +24,8 @@ struct LibraryView: View {
     @State private var pendingDelete: MediaItem?
     @State private var exportTask: Task<Void, Never>?
     @State private var exportStatus: String?
-    @State private var exportMessage: String?
+    @State private var exportMessage: String? // success: a short toast
+    @State private var exportError: String?   // failure: an alert
     @State private var downloadedFiles: [String: URL] = [:]
     @FocusState private var searchFocused: Bool
 
@@ -114,11 +115,19 @@ struct LibraryView: View {
                         }
                     }
                     .padding(14).studioGlass().padding()
+                } else if let exportMessage {
+                    Label(exportMessage, systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 16).padding(.vertical, 10).studioGlass(Capsule())
+                        .padding(.bottom, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .task(id: exportMessage) { try? await Task.sleep(for: .seconds(2.5)); withAnimation { self.exportMessage = nil } }
                 }
             }
-            .alert("Media export", isPresented: Binding(get: { exportMessage != nil }, set: { if !$0 { exportMessage = nil } })) {
-                Button("OK", role: .cancel) { exportMessage = nil }
-            } message: { Text(exportMessage ?? "") }
+            .animation(.snappy, value: exportMessage)
+            .alert("Export failed", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
+                Button("OK", role: .cancel) { exportError = nil }
+            } message: { Text(exportError ?? "") }
         }
     }
 
@@ -271,8 +280,20 @@ struct LibraryView: View {
         .frame(maxWidth: .infinity, minHeight: 420)
     }
 
+    /// Search applies to films too (by title).
+    private var shownFilms: [ProductionSummary] {
+        search.isEmpty ? films : films.filter { $0.title.localizedCaseInsensitiveContains(search) }
+    }
+
     @ViewBuilder private var filmsGrid: some View {
-        if films.isEmpty {
+        if !films.isEmpty, shownFilms.isEmpty {
+            VStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").font(.system(size: 40, weight: .semibold)).foregroundStyle(Color.textTertiary)
+                DisplayTitle("No matches", size: 28).foregroundStyle(.white)
+                Text("No film title contains “\(search)”.").foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 300)
+        } else if films.isEmpty {
             VStack(spacing: 14) {
                 DisplayTitle("No films yet", size: 28).foregroundStyle(.white)
                 Button { app.requestNewFilm = true; app.requestedTab = "films" } label: { Label("New film", systemImage: "plus") }.buttonStyle(.ember)
@@ -280,7 +301,7 @@ struct LibraryView: View {
             .frame(maxWidth: .infinity, minHeight: 360)
         } else {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 12)], spacing: 16) {
-                ForEach(films) { p in
+                ForEach(shownFilms) { p in
                     Button { openFilm = p.id } label: { FilmCard(p: p) }.buttonStyle(PressScale())
                 }
             }
@@ -359,7 +380,7 @@ struct LibraryView: View {
             } catch is CancellationError {
                 exportMessage = "Download cancelled"
             } catch {
-                exportMessage = error.localizedDescription
+                exportError = error.localizedDescription
                 app.report(error, screen: "library", action: "Export")
             }
         }

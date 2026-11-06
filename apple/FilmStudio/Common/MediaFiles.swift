@@ -133,8 +133,10 @@ enum MediaFiles {
         guard let top = presenter else { return }
         let vc = UIActivityViewController(activityItems: [file], applicationActivities: nil)
         if let pop = vc.popoverPresentationController {
+            // iPad: point at the action bar at the bottom, where Share was tapped.
             pop.sourceView = top.view
-            pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.minY + 60, width: 1, height: 1)
+            pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.maxY - 110, width: 1, height: 1)
+            pop.permittedArrowDirections = [.down]
         }
         top.present(vc, animated: true)
     }

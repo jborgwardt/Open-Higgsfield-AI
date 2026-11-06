@@ -101,6 +101,10 @@ extension View {
     /// The grouped form look on every platform.
     @ViewBuilder func studioForm() -> some View {
         formStyle(.grouped).scrollContentBackground(.hidden).background(Color.canvas.ignoresSafeArea())
+            #if os(iOS)
+            // The last rows (e.g. the Settings credit) must scroll fully clear of the floating tab bar + status pill.
+            .contentMargins(.bottom, 72, for: .scrollContent)
+            #endif
     }
 
     func card(padding: CGFloat = 14) -> some View {

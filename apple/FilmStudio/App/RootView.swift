@@ -68,7 +68,9 @@ struct MainView: View {
     }
     private var compact: Bool {
         #if os(iOS)
-        sizeClass == .compact
+        // A phone keeps its tab layout in landscape too (a Pro Max turns "regular" width sideways): switching to
+        // the sidebar rebuilt the navigation and threw people out of the film they were watching.
+        UIDevice.current.userInterfaceIdiom == .phone || sizeClass == .compact
         #else
         false
         #endif
