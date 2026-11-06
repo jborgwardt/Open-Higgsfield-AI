@@ -13,6 +13,9 @@ import { makeMusic, makeVoice, pickVoiceProvider } from './sound.js';
 import { elevenVoiceChange } from './providers/eleven.js';
 import * as post from './post.js';
 import { resolveBriefCharacters, characterVoice, characterFallback, identityModels, isRealCast, refsOk } from './characters.js';
+
+/** A 0–2 mix level from the brief; 0 is a real value (mute the clips under a song), not "use the default". */
+const vol = (v, d) => { const n = Number(v); return v !== null && v !== '' && Number.isFinite(n) ? Math.min(2, Math.max(0, n)) : d; };
 import { checkLikeness } from './likeness.js';
 import { planRefs } from './charref.js';
 
@@ -784,7 +787,7 @@ export async function assemble(id) {
       if (sound.music.length || sound.voice.length) {
         await mutate(id, (x) => { x.message = 'Mixing music and narration'; });
         stage = cut.replace(/\.mp4$/, '.mix.mov'); // float PCM: the master's AAC encode is the only lossy audio step
-        await ff.mixSoundtrack({ video: cut, out: stage, music: sound.music, voice: sound.voice, musicVolume: Number(b.musicVolume) || 0.35, clipVolume: Number(b.clipVolume) || 1, normalize: false });
+        await ff.mixSoundtrack({ video: cut, out: stage, music: sound.music, voice: sound.voice, musicVolume: vol(b.musicVolume, 0.35), clipVolume: vol(b.clipVolume, 1), normalize: false });
       }
     }
     // Finish: subtitles (whisper.cpp) + two-pass loudness to −16 LUFS; picture is copied unless captions are burned in.
