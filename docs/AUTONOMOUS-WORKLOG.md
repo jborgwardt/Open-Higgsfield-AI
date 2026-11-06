@@ -15,10 +15,11 @@ Started 2026-11-06 ~06:45Z. Justin authorized 24–48 h autonomous work. Handoff
 - [x] (1) Movie: verified SHA-256 4e8f4e03…5704; copied to iCloud Drive `FINISHED FILM - The Road on Side B.mp4` — iCloud reports uploaded. Photos import blocked (Photos AppleEvents time out; Photos control denied). **Waiting on Justin: Files → iCloud Drive → tap → Share → Save Video.** Not verified on phone yet.
 - [x] (2) iOS export: background URLSession (survives app switch/lock), 6 resumable retries, cached finished file reused by Photos/Files/Share, files named after the film. **Verified on iPhone 15 Pro Max sim with the 147 MB master**: backgrounded mid-download → completed by nsurlsessiond; SHA-256 matches; Photos got a 155.375 s video; Files got 146,802,253 bytes; Share sheet instant, named. Physical phone not yet verified.
 - [x] (2) Server stream leak fixed (pipeline), ETag/Last-Modified/If-Range for resume; test proves 18→0 leaked fds. Deployed 07:2xZ as studio:streamfix-20261106 (rollback = studio:rollback-prev = old 15d46a93). Live: 0 fds after 8 aborts; resume 206.
-- [ ] (2) Concurrency/session check: simultaneous downloads from two devices/sessions.
+- [x] (2) Concurrency: 3 simultaneous full master downloads all 200/exact (~1 s each on loopback); sessions are per sign-in, no single-login limit (createSession never revokes others).
 - [x] (2) Finished-film Drive link: engine `filmUrl` (live: file/d/1C_XYDKavmOPQPvtFbEkWprwQVuo6cVxc) + app 'Open Finished Film in Google Drive' / 'Open Project Folder'.
 - [ ] (3) QA workers: iPhone 15 Pro Max + iPad Pro M4 — compact readability, export controls, busy/progress/cancel/retry, navigation, long-press, iPad popovers/landscape.
-- [ ] (4) Bump version/build, OTA staged rebuild, SignTools upload, Feather source, report one install link.
+- [x] (4a) Shipped 1.0.2 (12) at ~07:45Z: OTA + Feather (version fixed to 1.0.2; script now sets version) + SignTools 343636bd-9d01-4670-ad29-599feae66065 (signed, verified) + Mac /Applications. Phone install = Justin's tap.
+- [ ] (4b) Next build after QA fixes.
 
 ## Progress notes
 - 06:45Z handoff read; main HEAD f2e4931 (check `git log`).
