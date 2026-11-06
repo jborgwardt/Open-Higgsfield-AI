@@ -65,9 +65,17 @@ struct BriefEditor: View {
                                 .focused($focused, equals: .length)
                                 .accessibilityIdentifier("brief.lengthMinutes")
                             Text("min").foregroundStyle(.secondary)
-                            Stepper("Length", value: $brief.targetMinutes, in: 0.5...maxMinutes, step: brief.targetMinutes < 2 ? 0.5 : 1)
-                                .labelsHidden()
                         }
+                        // Exact amounts by dragging (half-minute steps); the typed number above stays in sync.
+                        Slider(value: $brief.targetMinutes, in: 0.5...maxMinutes, step: 0.5) {
+                            Text("Length")
+                        } minimumValueLabel: {
+                            Text("0.5").font(.caption).foregroundStyle(.secondary)
+                        } maximumValueLabel: {
+                            Text("\(Int(maxMinutes))").font(.caption).foregroundStyle(.secondary)
+                        }
+                        .accessibilityIdentifier("brief.lengthSlider")
+                        .accessibilityValue(brief.lengthText)
                         .onChange(of: brief.targetMinutes) { _, v in
                             let clamped = min(max(v, 0.5), maxMinutes)
                             if clamped != v { brief.targetMinutes = clamped }
