@@ -360,7 +360,7 @@ struct FilmDetailView: View {
         if p.shots.isEmpty || canPlan {
             LabeledContent("Director", value: p.brief.directorProvider.isEmpty
                 ? (app.directors.map { $0.describe($0.current) } ?? "…")
-                : (app.directors.map { $0.describe(DirectorChoice(provider: p.brief.directorProvider, model: p.brief.directorModel)) } ?? DirectorCatalog.displayName(p.brief.directorProvider)) + " (this film)")
+                : [DirectorCatalog.displayName(p.brief.directorProvider), p.brief.directorModel.nonEmpty].compactMap { $0 }.joined(separator: " · "))
                 .font(.callout)
                 .task { if app.directors == nil { try? await app.loadDirectors() } }
         }

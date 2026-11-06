@@ -11,6 +11,7 @@ struct FilmExportRow: View {
     @State private var message: String?
     @State private var task: Task<Void, Never>?
     @State private var failure: String?
+    @State private var shareFrame: CGRect = .zero
 
     private var item: MediaItem {
         MediaItem(id: "master-export", url: masterURL, kind: "videos", model: "Long-form master", prompt: title)
@@ -33,9 +34,10 @@ struct FilmExportRow: View {
                 }
                 #endif
                 exportButton("Share", "square.and.arrow.up") { file in
-                    MediaFiles.share(file)
+                    MediaFiles.share(file, anchor: shareFrame)
                     return nil
                 }
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { shareFrame = $0 }
             }
             if let status {
                 HStack(spacing: 8) {

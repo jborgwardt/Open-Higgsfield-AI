@@ -17,9 +17,10 @@ Started 2026-11-06 ~06:45Z. Justin authorized 24–48 h autonomous work. Handoff
 - [x] (2) Server stream leak fixed (pipeline), ETag/Last-Modified/If-Range for resume; test proves 18→0 leaked fds. Deployed 07:2xZ as studio:streamfix-20261106 (rollback = studio:rollback-prev = old 15d46a93). Live: 0 fds after 8 aborts; resume 206.
 - [x] (2) Concurrency: 3 simultaneous full master downloads all 200/exact (~1 s each on loopback); sessions are per sign-in, no single-login limit (createSession never revokes others).
 - [x] (2) Finished-film Drive link: engine `filmUrl` (live: file/d/1C_XYDKavmOPQPvtFbEkWprwQVuo6cVxc) + app 'Open Finished Film in Google Drive' / 'Open Project Folder'.
-- [ ] (3) QA workers: iPhone 15 Pro Max + iPad Pro M4 — compact readability, export controls, busy/progress/cancel/retry, navigation, long-press, iPad popovers/landscape.
+- [x] (3) QA round 1 (2 workers, one per sim) → 37 findings. Fixed + verified on sims: tribute visible above tab bar; phone keeps tabs in landscape (viewer survives rotation); film page Save to Photos/Files/Share row; Re-assemble demoted + confirm; Save to Photos primary in viewer, no prominent paid Upscale on films; aligned bar; landscape viewer layout; iPad share popover anchored to button; Make a Film → Films list when films exist; m:ss lengths; short director label; video loading/failed overlay; composer keyboard dismiss; Library film search + success toasts; readable shot rows.
+- [ ] (3b) Remaining low items: iPad portrait sidebar width, Library grid trailing margin/placeholders, context-menu thumbnails, New Film sheet polish, model picker size on iPad, 'Done 9/11' wording, Settings copy (ChatGPT 'connect on Mac' when connected), unmute master by default (unverified).
 - [x] (4a) Shipped 1.0.2 (12) at ~07:45Z: OTA + Feather (version fixed to 1.0.2; script now sets version) + SignTools 343636bd-9d01-4670-ad29-599feae66065 (signed, verified) + Mac /Applications. Phone install = Justin's tap.
-- [ ] (4b) Next build after QA fixes.
+- [x] (4b) 1.0.3 (13) = QA fixes (shipping now).
 
 ## Progress notes
 - 06:45Z handoff read; main HEAD f2e4931 (check `git log`).

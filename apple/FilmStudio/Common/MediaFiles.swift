@@ -129,19 +129,24 @@ enum MediaFiles {
         return top
     }
 
-    static func share(_ file: URL) {
+    /// `anchor`: the tapped button's frame in window coordinates, so the iPad popover points at it.
+    static func share(_ file: URL, anchor: CGRect? = nil) {
         guard let top = presenter else { return }
         let vc = UIActivityViewController(activityItems: [file], applicationActivities: nil)
         if let pop = vc.popoverPresentationController {
-            // iPad: point at the action bar at the bottom, where Share was tapped.
             pop.sourceView = top.view
-            pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.maxY - 110, width: 1, height: 1)
-            pop.permittedArrowDirections = [.down]
+            if let anchor, anchor.width > 0 {
+                pop.sourceRect = top.view.convert(anchor, from: nil)
+            } else {
+                // Otherwise: the action bar at the bottom, where Share lives.
+                pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.maxY - 110, width: 1, height: 1)
+                pop.permittedArrowDirections = [.down]
+            }
         }
         top.present(vc, animated: true)
     }
     #else
-    static func share(_ file: URL) {
+    static func share(_ file: URL, anchor: CGRect? = nil) {
         guard let view = NSApp.keyWindow?.contentView else { return }
         NSSharingServicePicker(items: [file]).show(relativeTo: CGRect(x: view.bounds.maxX - 60, y: view.bounds.maxY - 10, width: 1, height: 1), of: view, preferredEdge: .minY)
     }

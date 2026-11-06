@@ -39,7 +39,7 @@ struct MediaViewer: View {
                 media
                     .aspectRatio(aspect, contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.bottom, 150)
+                    .padding(.bottom, landscapePhone ? 96 : 150)
                     .contextMenu { exportMenu }
             }
             .navigationTitle(item.isVideo ? "Video" : isAudio ? "Audio" : "Image")
@@ -85,7 +85,8 @@ struct MediaViewer: View {
                         .frame(maxWidth: .infinity)
                         .transition(.scale.combined(with: .opacity))
                     }
-                    info
+                    // Landscape phone: the picture needs the height; the title is on the film page anyway.
+                    if !landscapePhone { info }
                     GlassEffectContainer(spacing: 12) { actionBar }
                         .frame(maxWidth: .infinity)
                 }
@@ -232,6 +233,12 @@ struct MediaViewer: View {
     }
 
     private var isFilm: Bool { item.model == "Long-form master" }
+    #if os(iOS)
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    private var landscapePhone: Bool { verticalSizeClass == .compact }
+    #else
+    private var landscapePhone: Bool { false }
+    #endif
 
     private func barButton(_ title: String, _ symbol: String, prominent: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
