@@ -35,7 +35,11 @@ export async function fetchJSON(provider, url, opts = {}) {
   try {
     res = await fetch(url, opts);
   } catch (e) {
-    if (opts.signal?.aborted) throw new Error('cancelled');
+    if (opts.signal?.aborted) {
+      // A time limit is not a user cancel: say which provider ran out of time (and let callers retry).
+      if (opts.signal.reason?.name === 'TimeoutError') throw new ProviderError(provider, 0, 'did not answer in time (the request timed out)', { retryable: true });
+      throw new Error('cancelled');
+    }
     throw new ProviderError(provider, 0, e.cause?.code || e.message, { retryable: true });
   }
   if (!res.ok) throw await httpError(provider, res);
