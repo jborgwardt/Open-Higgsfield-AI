@@ -4,7 +4,8 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { REPO_ROOT, MEDIA, getSettings, publicSettings, updateSettings, addAsset, mimeForExt, listAssets, updateAsset, getAsset, accessToken, tokenMatches } from './lib/store.js';
+import { REPO_ROOT, DATA, MEDIA, getSettings, publicSettings, updateSettings, addAsset, mimeForExt, listAssets, updateAsset, getAsset, accessToken, tokenMatches } from './lib/store.js';
+import { createArchiveManager } from './lib/archive.js';
 import { publicCatalog, availableProviders, PROVIDERS } from './lib/catalog.js';
 import * as jobs from './lib/jobs.js';
 import * as lf from './lib/longform.js';
@@ -156,6 +157,13 @@ async function status(fresh, owner) {
 const routes = [];
 const route = (method, pattern, handler) => routes.push({ method, re: new RegExp(`^/engine/api${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), handler });
 const prod = (id) => { const p = lf.getProduction(id); if (!p) throw new HttpError(404, 'production not found'); return p; };
+const archive = createArchiveManager({ data: DATA, media: MEDIA, getAsset, listAssets,
+  listProductions: lf.listProductions, getProduction: lf.getProduction, getCharacter: characters.getCharacter,
+  listCharacters: characters.list,
+  isBusy: () => jobs.hasActiveJobs() || post.listJobs().some((j) => ['running', 'queued'].includes(j.status)) || lf.listProductions().some((m) => {
+    const p = lf.getProduction(m.id); return ['running', 'planning'].includes(p.status) || p.assembling || p.screening?.status === 'running';
+  }),
+});
 
 route('GET', '/health', ({ req, url }) => {
   const cfg = oidcConfig();
@@ -187,6 +195,16 @@ route('POST', '/app/log', ({ req, body }) => appendAppLog(body, { user: currentU
 route('GET', '/app/log', ({ url }) => readAppLog(Object.fromEntries(url.searchParams)));
 route('DELETE', '/app/log', () => clearAppLog());
 route('POST', '/settings', async ({ body }) => ({ settings: await updateSettings(body), status: await status(true) }));
+// Server-owned Google Drive connection; no OAuth tokens or filesystem paths leave these endpoints.
+route('GET', '/archive/status', ({ url }) => archive.status({ fresh: url.searchParams.has('fresh') }));
+route('PATCH', '/archive/settings', ({ body }) => archive.settings(body));
+route('POST', '/archive/run', () => archive.requestRun({ manual: true }));
+route('GET', '/productions/:id/archive', ({ params }) => archive.projectStatus(params.id));
+route('POST', '/productions/:id/archive', ({ params }) => {
+  const queued = archive.requestRun({ manual: true, projectId: params.id });
+  return { ...archive.projectStatus(params.id), queued: queued.queued, busy: queued.busy };
+});
+route('POST', '/productions/:id/restore', ({ params }) => archive.restoreProject(params.id));
 
 route('POST', '/xai/login', () => xai.startDeviceLogin());
 route('GET', '/xai/login', () => xai.loginStatus());
@@ -440,6 +458,15 @@ const server = http.createServer(async (req, res) => {
         const m = p.match(r.re);
         if (!m) continue;
         const body = ['POST', 'PATCH', 'PUT'].includes(req.method) && !p.endsWith('/upload') ? await readJSONBody(req) : {};
+        // Finished videos may have been offloaded. Restore referenced inputs before a job can use
+        // their local paths. Source clips, reference photos and soundtrack uploads are never evicted.
+        if (['POST', 'PATCH', 'PUT'].includes(req.method) && !p.includes('/archive') && !p.endsWith('/restore')) {
+          await archive.restoreReferences(body);
+          if (m.groups?.id?.startsWith('prod_') && !p.endsWith('/pause')) {
+            const production = lf.getProduction(m.groups.id);
+            if (production) await archive.restoreReferences(production);
+          }
+        }
         const out = await r.handler({ req, url, params: m.groups || {}, body });
         if (out && out.__cookie) {
           const { __cookie, ...rest } = out;
@@ -451,6 +478,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (p.startsWith('/engine/media/')) {
       const f = path.basename(p);
+      const id = f.match(/^(a_[a-zA-Z0-9]+)\.[a-zA-Z0-9]+$/)?.[1];
+      if (id && getAsset(id)?.file === f) await archive.ensureLocal(id);
       if (!serveFile(req, res, path.join(MEDIA, f), mimeForExt(path.extname(f)), true)) send(res, 404, 'not found');
       return;
     }
@@ -470,6 +499,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
+  archive.start();
   console.log(`\n  Open Higgsfield engine → http://${HOST}:${PORT}${fs.existsSync(DIST) ? '  (serving the app)' : ''}`);
   const cfg = oidcConfig();
   if (cfg) console.log(`  Sign-in: ${cfg.label} only (${cfg.issuer})`);

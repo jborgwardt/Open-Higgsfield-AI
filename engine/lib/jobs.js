@@ -4,6 +4,7 @@ import { generate } from './catalog.js';
 
 const jobs = new Map();
 const view = ({ ctrl, ...j }) => j;
+export const hasActiveJobs = () => [...jobs.values()].some((j) => j.status === 'running');
 
 export function startJob(params) {
   const job = { id: uid('j_'), status: 'running', message: 'Starting', progress: null, createdAt: now(), model: params.model, ctrl: new AbortController() };
