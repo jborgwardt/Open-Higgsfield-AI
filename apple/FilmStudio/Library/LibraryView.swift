@@ -22,6 +22,9 @@ struct LibraryView: View {
     @State private var openFilm: String?
     @State private var openCharacter: String?
     @State private var pendingDelete: MediaItem?
+    @State private var exportTask: Task<Void, Never>?
+    @State private var exportStatus: String?
+    @State private var exportMessage: String?
     @FocusState private var searchFocused: Bool
 
     private var filters: [Filter] {
@@ -92,6 +95,27 @@ struct LibraryView: View {
             .confirmationDialog("Remove from the library?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }), titleVisibility: .visible, presenting: pendingDelete) { item in
                 Button("Remove", role: .destructive) { Task { await hide(item) } }
             } message: { _ in Text("The file stays on the studio server; it's only hidden from the library.") }
+            .safeAreaInset(edge: .bottom) {
+                if let exportStatus {
+                    HStack(spacing: 10) {
+                        ProgressView().controlSize(.small)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(exportStatus).font(.subheadline.monospacedDigit())
+                            #if os(iOS)
+                            Text("Keep Film Studio open until saving finishes.").font(.caption).foregroundStyle(.secondary)
+                            #endif
+                        }
+                        Spacer()
+                        if exportStatus.hasPrefix("Downloading") || exportStatus.hasPrefix("Connection") {
+                            Button("Cancel") { exportTask?.cancel() }
+                        }
+                    }
+                    .padding(14).studioGlass().padding()
+                }
+            }
+            .alert("Media export", isPresented: Binding(get: { exportMessage != nil }, set: { if !$0 { exportMessage = nil } })) {
+                Button("OK", role: .cancel) { exportMessage = nil }
+            } message: { Text(exportMessage ?? "") }
         }
     }
 
@@ -274,14 +298,21 @@ struct LibraryView: View {
         Button("Open", systemImage: "arrow.up.left.and.arrow.down.right") { open = item }
         if app.config.isOn("shareMedia") {
             Button("Share…", systemImage: "square.and.arrow.up") {
-                Task { if let f = try? await MediaFiles.download(item.url, app: app) { MediaFiles.share(f) } }
+                export(item) { MediaFiles.share($0) }
             }
+            .disabled(exportTask != nil)
         }
         #if os(iOS)
-        if app.config.isOn("saveToPhotos") {
+        if app.config.isOn("saveToPhotos"), item.kind != "audio" {
             Button("Save to Photos", systemImage: "photo.badge.arrow.down") {
-                Task { if let f = try? await MediaFiles.download(item.url, app: app) { try? await MediaFiles.saveToPhotos(f, isVideo: item.isVideo); Platform.haptic() } }
+                export(item) { file in
+                    exportStatus = "Saving to Photos…"
+                    try await MediaFiles.saveToPhotos(file, isVideo: item.isVideo)
+                    Platform.haptic()
+                    exportMessage = "Saved to Photos"
+                }
             }
+            .disabled(exportTask != nil)
         }
         #endif
         if !item.isVideo, app.config.isOn("create") {
@@ -296,6 +327,27 @@ struct LibraryView: View {
     }
 
     // MARK: Data
+
+    private func export(_ item: MediaItem, then: @escaping (URL) async throws -> Void) {
+        guard exportTask == nil else { return }
+        exportStatus = "Downloading…"
+        exportTask = Task {
+            defer { exportStatus = nil; exportTask = nil }
+            do {
+                try await MediaFiles.withExportTime {
+                    let file = try await MediaFiles.download(item.url, app: app) { exportStatus = $0 }
+                    try Task.checkCancellation()
+                    exportStatus = "Preparing export…"
+                    try await then(file)
+                }
+            } catch is CancellationError {
+                exportMessage = "Download cancelled"
+            } catch {
+                exportMessage = error.localizedDescription
+                app.report(error, screen: "library", action: "Export")
+            }
+        }
+    }
 
     private func load() async {
         async let f: [ProductionSummary]? = app.config.isOn("films") ? try? await app.fetchProductions() : nil

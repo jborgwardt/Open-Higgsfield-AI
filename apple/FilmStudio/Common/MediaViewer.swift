@@ -9,6 +9,8 @@ struct MediaViewer: View {
     @Environment(\.dismiss) private var dismiss
     @State private var busy: String?
     @State private var message: String?
+    @State private var exportError: String?
+    @State private var exportTask: Task<Void, Never>?
     @State private var confirmDelete = false
     @State private var scale: CGFloat = 1
     @State private var baseScale: CGFloat = 1
@@ -47,6 +49,22 @@ struct MediaViewer: View {
             .toolbar { toolbar }
             .overlay(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 12) {
+                    if let busy {
+                        HStack(spacing: 10) {
+                            ProgressView().controlSize(.small)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(busy).font(.subheadline.monospacedDigit())
+                                #if os(iOS)
+                                Text("Keep Film Studio open until saving finishes.").font(.caption).foregroundStyle(.secondary)
+                                #endif
+                            }
+                            Spacer()
+                            if busy.hasPrefix("Downloading") || busy.hasPrefix("Connection") {
+                                Button("Cancel") { exportTask?.cancel() }
+                            }
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 10).studioGlass()
+                    }
                     if let message {
                         Text(message).font(.subheadline.weight(.medium)).padding(.horizontal, 16).padding(.vertical, 10)
                             .studioGlass()
@@ -87,6 +105,9 @@ struct MediaViewer: View {
             .confirmationDialog("Remove from the library?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Remove", role: .destructive) { Task { await onDelete?(); dismiss() } }
             } message: { Text("The file stays on the studio server; it's only hidden from the library.") }
+            .alert("Export failed", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
+                Button("OK", role: .cancel) { exportError = nil }
+            } message: { Text(exportError ?? "") }
         }
     }
 
@@ -100,14 +121,15 @@ struct MediaViewer: View {
             if app.config.isOn("saveToPhotos"), !isAudio {
                 barButton("Save", "arrow.down.to.line") {
                     export { file in
-                        Task {
-                            do { try await MediaFiles.saveToPhotos(file, isVideo: item.isVideo); Platform.haptic(); flash("Saved to Photos") } catch { flash(error.localizedDescription) }
-                        }
+                        busy = "Saving to Photos…"
+                        try await MediaFiles.saveToPhotos(file, isVideo: item.isVideo)
+                        Platform.haptic()
+                        flash("Saved to Photos")
                     }
                 }
             }
             #else
-            barButton("Save", "arrow.down.to.line") { export { MediaFiles.saveAs($0) } }
+            barButton("Save", "arrow.down.to.line") { export { if try MediaFiles.saveAs($0) { flash("Saved") } } }
             #endif
             if !isAudio, app.config.isOn("create") || upscaleTool != nil {
                 Menu {
@@ -212,8 +234,9 @@ struct MediaViewer: View {
             }
             Menu {
                 #if os(macOS)
-                Button("Save…", systemImage: "square.and.arrow.down") { export { MediaFiles.saveAs($0) } }
+                Button("Save…", systemImage: "square.and.arrow.down") { export { if try MediaFiles.saveAs($0) { flash("Saved") } } }
                     .keyboardShortcut("s")
+                    .disabled(busy != nil)
                 #endif
                 Button("Copy Prompt", systemImage: "doc.on.doc") { Platform.copy(item.prompt) }.disabled(item.prompt.isEmpty)
                 OpenOnWebButton(path: app.config.presentation(for: "library").path ?? "/", title: "Library")
@@ -225,14 +248,24 @@ struct MediaViewer: View {
         }
     }
 
-    private func export(_ then: @escaping (URL) -> Void) {
+    private func export(_ then: @escaping (URL) async throws -> Void) {
+        guard exportTask == nil else { return }
         busy = "Downloading…"
-        Task {
-            do { then(try await MediaFiles.download(item.url, app: app)) } catch {
-                flash(error.localizedDescription)
-                app.report(error, screen: "mediaViewer", action: "Download")
+        exportTask = Task {
+            defer { busy = nil; exportTask = nil }
+            do {
+                try await MediaFiles.withExportTime {
+                    let file = try await MediaFiles.download(item.url, app: app) { busy = $0 }
+                    try Task.checkCancellation()
+                    busy = "Preparing export…"
+                    try await then(file)
+                }
+            } catch is CancellationError {
+                flash("Download cancelled")
+            } catch {
+                exportError = error.localizedDescription
+                app.report(error, screen: "mediaViewer", action: "Export")
             }
-            busy = nil
         }
     }
 

@@ -13,9 +13,53 @@ import AppKit
 
 /// Exporting engine media: download (authed), share, save to Photos / disk.
 enum MediaFiles {
-    static func download(_ urlString: String, app: AppModel) async throws -> URL {
+    /// Give an export a short chance to finish if the phone locks or the user switches apps.
+    /// This is best-effort grace time, not a persistent background download.
+    static func withExportTime<T>(_ operation: () async throws -> T) async rethrows -> T {
+        #if os(iOS)
+        let backgroundTime = ExportBackgroundTime()
+        defer { backgroundTime.end() }
+        #endif
+        return try await operation()
+    }
+
+    static func download(_ urlString: String, app: AppModel,
+                         progress: @escaping @MainActor @Sendable (String) -> Void = { _ in }) async throws -> URL {
         guard let url = app.client.resolve(urlString) else { throw APIError.invalidResponse }
-        let (tmp, response) = try await app.client.session.download(for: app.client.authorized(url))
+        var request = app.client.authorized(url)
+        // A large finished film may briefly stall on a busy server or a mobile connection.
+        // This is an inactivity timeout; URLSession still bounds the whole transfer to 30 minutes.
+        request.timeoutInterval = 180
+        let delegate = ExportDownloadProgress { received, expected in
+            Task { @MainActor in
+                let receivedText = ByteCountFormatter.string(fromByteCount: received, countStyle: .file)
+                let detail = expected > 0 ? "\(receivedText) of \(ByteCountFormatter.string(fromByteCount: expected, countStyle: .file))" : receivedText
+                progress("Downloading \(detail)")
+            }
+        }
+        var result: (URL, URLResponse)?
+        var resumeData: Data?
+        for attempt in 0..<2 {
+            do {
+                try Task.checkCancellation()
+                if let resumeData {
+                    result = try await app.client.session.download(resumeFrom: resumeData, delegate: delegate)
+                } else {
+                    result = try await app.client.session.download(for: request, delegate: delegate)
+                }
+                break
+            } catch {
+                if Task.isCancelled || (error as? URLError)?.code == .cancelled { throw CancellationError() }
+                let code = (error as? URLError)?.code
+                guard attempt == 0, code == .timedOut || code == .networkConnectionLost else { throw error }
+                resumeData = (error as NSError).userInfo["NSURLSessionDownloadTaskResumeData"] as? Data
+                progress(resumeData == nil ? "Connection interrupted. Retrying download…" : "Connection interrupted. Resuming download…")
+                try await Task.sleep(for: .seconds(1))
+            }
+        }
+        guard let (tmp, response) = result else { throw APIError.invalidResponse }
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        try Task.checkCancellation()
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw http.statusCode == 401 ? APIError.unauthorized("") : APIError.server(status: http.statusCode, message: "Download failed")
         }
@@ -23,8 +67,11 @@ enum MediaFiles {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let name = url.lastPathComponent.isEmpty ? "media" : url.lastPathComponent
         let dest = dir.appendingPathComponent("FilmStudio-\(name)")
-        try? FileManager.default.removeItem(at: dest)
-        try FileManager.default.moveItem(at: tmp, to: dest)
+        if FileManager.default.fileExists(atPath: dest.path) {
+            _ = try FileManager.default.replaceItemAt(dest, withItemAt: tmp)
+        } else {
+            try FileManager.default.moveItem(at: tmp, to: dest)
+        }
         return dest
     }
 
@@ -60,16 +107,65 @@ enum MediaFiles {
         NSSharingServicePicker(items: [file]).show(relativeTo: CGRect(x: view.bounds.maxX - 60, y: view.bounds.maxY - 10, width: 1, height: 1), of: view, preferredEdge: .minY)
     }
 
-    static func saveAs(_ file: URL) {
+    @discardableResult static func saveAs(_ file: URL) throws -> Bool {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = file.lastPathComponent
         panel.canCreateDirectories = true
-        if panel.runModal() == .OK, let dest = panel.url {
-            try? FileManager.default.removeItem(at: dest)
-            try? FileManager.default.copyItem(at: file, to: dest)
+        guard panel.runModal() == .OK, let dest = panel.url else { return false }
+        guard file.standardizedFileURL != dest.standardizedFileURL else { return true }
+        let manager = FileManager.default
+        if manager.fileExists(atPath: dest.path) {
+            // Keep an existing export intact if copying the new file fails (for example, a full disk).
+            let staging = try manager.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: dest, create: true)
+            defer { try? manager.removeItem(at: staging) }
+            let replacement = staging.appendingPathComponent(dest.lastPathComponent)
+            try manager.copyItem(at: file, to: replacement)
+            _ = try manager.replaceItemAt(dest, withItemAt: replacement)
+        } else {
+            try manager.copyItem(at: file, to: dest)
         }
+        return true
     }
     #endif
+}
+
+#if os(iOS)
+private final class ExportBackgroundTime {
+    private var identifier: UIBackgroundTaskIdentifier = .invalid
+
+    init() {
+        identifier = UIApplication.shared.beginBackgroundTask(withName: "Save finished media") { [weak self] in
+            Task { @MainActor in self?.end() }
+        }
+    }
+
+    func end() {
+        guard identifier != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(identifier)
+        identifier = .invalid
+    }
+}
+#endif
+
+/// URLSession writes the video to disk; progress never buffers the video in memory.
+private final class ExportDownloadProgress: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    nonisolated private let report: @Sendable (Int64, Int64) -> Void
+    nonisolated private let lock = NSLock()
+    nonisolated(unsafe) private var lastReport: TimeInterval = 0
+
+    nonisolated init(report: @escaping @Sendable (Int64, Int64) -> Void) { self.report = report }
+
+    nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                               didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        let now = Date.timeIntervalSinceReferenceDate
+        lock.lock()
+        let shouldReport = now - lastReport > 0.25 || totalBytesWritten == totalBytesExpectedToWrite
+        if shouldReport { lastReport = now }
+        lock.unlock()
+        if shouldReport { report(totalBytesWritten, totalBytesExpectedToWrite) }
+    }
+
+    nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
 }
 
 #if os(macOS)
