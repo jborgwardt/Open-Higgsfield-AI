@@ -38,6 +38,9 @@ async function discover(cfg) {
 const b64url = (buf) => Buffer.from(buf).toString('base64url');
 const pending = new Map(); // state -> { verifier, nonce, next, at }
 
+/** This studio's public origin (PUBLIC_URL, else the forwarded host). */
+export const publicBase = (req) => baseUrl(oidcConfig() || {}, req);
+
 function baseUrl(cfg, req) {
   if (cfg.publicUrl) return cfg.publicUrl;
   const proto = req.headers['x-forwarded-proto'] || 'http';
@@ -64,6 +67,9 @@ export async function loginRedirect(req, next = '/') {
     code_challenge: challenge,
     code_challenge_method: 'S256',
   });
+  // Signing in another app or device always runs the passkey again, even if Pocket ID still has a session
+  // in this browser (checked against auth_time in completeLogin).
+  if (isNativeNext(next) || isDeviceNext(next)) { q.set('prompt', 'login'); q.set('max_age', '0'); }
   return `${doc.authorization_endpoint}?${q}`;
 }
 
@@ -105,6 +111,10 @@ async function completeLogin(req, url, st) {
   if (!aud.includes(cfg.clientId)) throw new Error('Sign-in was for a different app');
   if (c.nonce !== st.nonce) throw new Error('Sign-in check failed (nonce)');
   if (c.exp && c.exp * 1000 < Date.now() - 60000) throw new Error('Sign-in expired');
+  // A device sign-in must come from a passkey used just now, not an older Pocket ID session.
+  const fresh = typeof c.auth_time === 'number' && c.auth_time * 1000 >= st.at - 60000;
+  if (isDeviceNext(st.next) && !fresh) throw new Error('Sign in with your passkey again to approve another device');
+  if (isNativeNext(st.next) && typeof c.auth_time === 'number' && !fresh) throw new Error('Sign in with your passkey again');
   let claims = c;
   if ((!c.email || !c.groups) && doc.userinfo_endpoint && tok.access_token) {
     const ui = await fetch(doc.userinfo_endpoint, { headers: { Authorization: `Bearer ${tok.access_token}` } }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
@@ -112,7 +122,8 @@ async function completeLogin(req, url, st) {
   }
   const user = { sub: claims.sub, email: (claims.email || '').toLowerCase(), name: claims.name || claims.preferred_username || claims.email || 'You', groups: claims.groups || [] };
   authorize(cfg, user);
-  return { session: createSession(isNativeNext(st.next) ? { ...user, client: 'native' } : user), next: st.next };
+  const client = isNativeNext(st.next) ? 'native' : isDeviceNext(st.next) ? 'device' : null;
+  return { session: createSession(client ? { ...user, client } : user), next: st.next };
 }
 
 /** Allowlist by email/group if configured; otherwise the first person to sign in owns this studio. */
@@ -167,6 +178,8 @@ export const clearSessionCookie = () => 'engine_session=; Path=/; HttpOnly; Same
 export const NATIVE_PATH = '/engine/auth/native';
 const NATIVE_CALLBACK = 'filmstudio://auth'; // the only place a native sign-in ever redirects to
 const HANDOFF_MS = 120000;
+const DEVICE_HANDOFF_MS = 300000; // device approval: time to type the code from the other screen
+const handoffTTL = (purpose) => (purpose === 'device' ? DEVICE_HANDOFF_MS : HANDOFF_MS);
 const handoffs = new Map(); // sha256(code) -> { session, at }
 const sha = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
 
@@ -178,19 +191,28 @@ export function isNativeNext(next) {
 export const nativeState = (v) => (/^[\w-]{1,128}$/.test(String(v ?? '')) ? String(v) : '');
 
 /** One-time, short-lived code that carries a fresh session from the callback to the native redirect. */
-export function nativeHandoff(session) {
-  for (const [k, v] of handoffs) if (Date.now() - v.at > HANDOFF_MS) handoffs.delete(k);
+export function nativeHandoff(session, { purpose = 'native', userCode = '' } = {}) {
+  for (const [k, v] of handoffs) if (Date.now() - v.at > handoffTTL(v.purpose)) handoffs.delete(k);
   const code = b64url(crypto.randomBytes(24));
-  handoffs.set(sha(code), { session, at: Date.now() });
+  handoffs.set(sha(code), { session, at: Date.now(), purpose, userCode });
   return code;
 }
 
-export function redeemHandoff(code) {
-  if (!code) return null;
+/** Is this handoff code still good? (Does not use it up — for showing a confirmation page.) */
+export function handoffValid(code, purpose = 'native', userCode = '') {
+  const h = code ? handoffs.get(sha(code)) : null;
+  return !!h && h.purpose === purpose && h.userCode === userCode && Date.now() - h.at <= handoffTTL(purpose) && !!sessionFor(h.session);
+}
+
+/** Use up a handoff. Only one minted for this purpose (and, for devices, this exact code) is accepted. */
+export function redeemHandoff(code, purpose = 'native', userCode = '') {
+  if (!code || typeof code !== 'string') return null;
   const k = sha(code);
   const h = handoffs.get(k);
+  if (!h) return null;
   handoffs.delete(k);
-  return h && Date.now() - h.at <= HANDOFF_MS && sessionFor(h.session) ? h.session : null;
+  if (h.purpose !== purpose || h.userCode !== userCode) { endSession(h.session); return null; }
+  return Date.now() - h.at <= handoffTTL(purpose) && sessionFor(h.session) ? h.session : null;
 }
 
 export function nativeRedirect({ session, state, error } = {}) {
@@ -200,3 +222,93 @@ export function nativeRedirect({ session, state, error } = {}) {
   if (nativeState(state)) q.set('state', nativeState(state));
   return `${NATIVE_CALLBACK}?${q}`;
 }
+
+/* ---------------- device sign-in (code shown in the app, approved in any browser) ---------------- */
+// For a device that can't do the passkey itself (the iOS Simulator, a borrowed iPad, a Mac without the
+// passkey), modelled on OAuth 2.0 Device Authorization (RFC 8628):
+//   app  POST /engine/api/auth/device        → { deviceCode (secret, kept in the app), userCode "BCDF-GHJK", verifyUrl }
+//   you  open verifyUrl in any browser → passkey (forced fresh: prompt=login + auth_time) → TYPE the code
+//        from the app → details page (claimed name, requesting address, age) → "Approve"
+//   app  POST /engine/api/auth/device/poll { deviceCode } → pending … then { session } (grace-repeated 30 s).
+// The link never carries the code (a link someone sends you can't pre-fill one), the one-time handoff
+// lives in an HttpOnly cookie scoped to this page (not the URL), and handoffs only work for their own flow.
+// Approval always needs a fresh passkey sign-in plus an explicit click on a page that shows the code, the
+// approving browser never gets a cookie, and the session goes only to whoever holds the device code.
+
+export const DEVICE_PATH = '/engine/auth/device';
+export const DEVICE_MS = 600000; // codes live 10 minutes
+const DEVICE_MAX = 200;          // sign-ins in progress at once; the oldest waiting one makes room
+const DEVICE_PER_CLIENT = 3;
+const POLL_GRACE_MS = 30000;     // an approved session can be fetched again for this long (lost responses)     // waiting codes per requester address
+const USER_ALPHABET = 'BCDFGHJKLMNPQRSTVWXZ'; // RFC 8628 §6.1: no vowels (no words), no look-alike digits
+const devices = new Map(); // sha(deviceCode) -> { userCode, name, at, session|null }
+
+export function isDeviceNext(next) {
+  try { return new URL(String(next), 'http://engine.invalid').pathname === DEVICE_PATH; } catch { return false; }
+}
+/** "bcdf-ghjk", "BCDFGHJK", " bcdf ghjk " → "BCDFGHJK" (or '' if it can't be one of ours). */
+export function normalizeUserCode(v) {
+  const c = String(v ?? '').toUpperCase().replace(/[\s-]/g, '');
+  return c.length === 8 && [...c].every((ch) => USER_ALPHABET.includes(ch)) ? c : '';
+}
+export const formatUserCode = (c) => `${c.slice(0, 4)}-${c.slice(4)}`;
+
+function pruneDevices() {
+  for (const [k, v] of devices) if (Date.now() - v.at > DEVICE_MS) devices.delete(k);
+}
+function deviceByUserCode(code) {
+  const c = normalizeUserCode(code);
+  if (!c) return null;
+  for (const v of devices.values()) if (v.userCode === c && Date.now() - v.at <= DEVICE_MS) return v;
+  return null;
+}
+
+/** Start a device sign-in. `name` is a label the app sends ("iPhone 15 Pro Max") — shown, escaped, on the approval page. */
+export function startDevice(name, { ip = '' } = {}) {
+  pruneDevices();
+  // One requester can't hold more than a few codes (its oldest gives way), and a full table drops the
+  // oldest waiting code — so a flood can't lock the owner out for ten minutes.
+  const mine = [...devices].filter(([, v]) => v.ip === ip && !v.session).sort((a, b) => a[1].at - b[1].at);
+  while (mine.length >= DEVICE_PER_CLIENT) devices.delete(mine.shift()[0]);
+  if (devices.size >= DEVICE_MAX) {
+    const oldest = [...devices].filter(([, v]) => !v.session).sort((a, b) => a[1].at - b[1].at)[0];
+    if (oldest) devices.delete(oldest[0]);
+    else { const e = new Error('Too many sign-ins in progress — try again in a few minutes'); e.status = 429; throw e; }
+  }
+  const deviceCode = b64url(crypto.randomBytes(32));
+  let userCode;
+  do { userCode = Array.from({ length: 8 }, () => USER_ALPHABET[crypto.randomInt(USER_ALPHABET.length)]).join(''); } while (deviceByUserCode(userCode));
+  const label = String(name ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60);
+  devices.set(sha(deviceCode), { userCode, name: label, ip: String(ip).slice(0, 64), at: Date.now(), session: null });
+  return { deviceCode, userCode: formatUserCode(userCode), expiresIn: DEVICE_MS / 1000, interval: 3 };
+}
+
+/** The pending sign-in for a code someone typed, if it is still waiting (not expired, not approved). */
+export function pendingDevice(userCode) {
+  const d = deviceByUserCode(userCode);
+  return d && !d.session ? { userCode: formatUserCode(d.userCode), name: d.name, ip: d.ip, at: d.at } : null;
+}
+
+/** Bind a fresh session to the waiting device. False if the code expired or was already approved. */
+export function approveDevice(userCode, session) {
+  const d = deviceByUserCode(userCode);
+  if (!d || d.session || !sessionFor(session)) return false;
+  d.session = session;
+  return true;
+}
+
+/** What the app sees while it waits: pending → { session } once → expired. */
+export function pollDevice(deviceCode) {
+  if (typeof deviceCode !== 'string' || !deviceCode || deviceCode.length > 200) return { status: 'expired' };
+  const k = sha(deviceCode);
+  const d = devices.get(k);
+  if (!d || Date.now() - d.at > DEVICE_MS) { devices.delete(k); return { status: 'expired' }; }
+  if (!d.session) return { status: 'pending' };
+  // Handed to the device-code holder; repeated for a short grace window in case that response got lost.
+  d.handedAt ??= Date.now();
+  if (Date.now() - d.handedAt > POLL_GRACE_MS) { devices.delete(k); return { status: 'expired' }; }
+  return sessionFor(d.session) ? { status: 'approved', session: d.session } : { status: 'expired' };
+}
+
+/** Test hook. */
+export function _resetDevices() { devices.clear(); }

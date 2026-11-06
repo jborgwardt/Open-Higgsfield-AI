@@ -1,6 +1,9 @@
 import SwiftUI
 import AuthenticationServices
 import WebKit
+#if os(macOS)
+import SystemConfiguration
+#endif
 import FilmStudioKit
 
 /// App-wide state: which server, the session, the server-driven config, shared catalogs, diagnostics.
@@ -297,6 +300,7 @@ final class AppModel {
     // MARK: Sign-in
 
     func signIn(using session: WebAuthenticationSession) async {
+        cancelDeviceSignIn()
         isSigningIn = true
         signInError = nil
         defer { isSigningIn = false }
@@ -319,6 +323,88 @@ final class AppModel {
 
     /// Lets the user back out of a passkey window that never appeared (the button is usable again at once).
     func cancelSignIn() { isSigningIn = false }
+
+    // MARK: Sign in with a code (approve in another browser)
+
+    /// The code on screen while waiting for approval in a browser; nil when not signing in this way.
+    var deviceCode: DeviceSignInCode?
+    /// Set when the shown code ran out; the UI offers a new one.
+    var deviceCodeExpired = false
+    /// Waiting for the server to hand out a code.
+    var isFetchingDeviceCode = false
+    @ObservationIgnored private var devicePoll: Task<Void, Never>?
+
+    /// Gets a code to show, then waits (polling) until it is approved in a browser, expires, or is cancelled.
+    func startDeviceSignIn() {
+        devicePoll?.cancel()
+        signInError = nil
+        deviceCodeExpired = false
+        deviceCode = nil // never show an old code while a new one loads
+        isFetchingDeviceCode = true
+        let label = Self.deviceLabel
+        devicePoll = Task { [weak self] in
+            guard let self else { return }
+            defer { if !Task.isCancelled { isFetchingDeviceCode = false } }
+            do {
+                let code = try await client.startDeviceSignIn(name: label)
+                guard !Task.isCancelled else { return } // cancelled (or passkey chosen) while it loaded
+                deviceCode = code
+                isFetchingDeviceCode = false
+                let deadline = Date().addingTimeInterval(code.expiresIn)
+                while !Task.isCancelled, Date() < deadline {
+                    try await Task.sleep(for: .seconds(max(code.interval, 2)))
+                    let poll: DeviceSignInPoll
+                    do { poll = try await client.pollDeviceSignIn(code.deviceCode) }
+                    catch is CancellationError { return }
+                    catch { continue } // a network blip: keep waiting
+                    switch poll.status {
+                    case .pending: continue
+                    case .expired: break
+                    case .approved:
+                        guard let session = poll.session, !Task.isCancelled else { break }
+                        // The server repeats an approved session briefly, so a failed check can be retried.
+                        do { try await adopt(token: session) } catch where !(error is CancellationError) {
+                            try await Task.sleep(for: .seconds(2))
+                            try await adopt(token: session)
+                        }
+                        deviceCode = nil
+                        return
+                    }
+                    break
+                }
+                if !Task.isCancelled { deviceCodeExpired = true }
+            } catch is CancellationError {
+            } catch {
+                if Task.isCancelled { return }
+                deviceCode = nil
+                signInError = error.localizedDescription
+                record(DiagnosticEntry(level: "warn", kind: "error", message: "Code sign-in failed: \(error.localizedDescription)", screen: "signIn"))
+            }
+        }
+    }
+
+    func cancelDeviceSignIn() {
+        devicePoll?.cancel()
+        devicePoll = nil
+        deviceCode = nil
+        deviceCodeExpired = false
+        isFetchingDeviceCode = false
+    }
+
+    /// Shown on the approval page so you know which device you're letting in ("iPhone 15 Pro Max (Simulator)").
+    static var deviceLabel: String {
+        #if targetEnvironment(simulator)
+        let sim = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? "iOS"
+        return "\(sim) (Simulator)"
+        #elseif os(iOS)
+        return UIDevice.current.model // "iPhone" / "iPad" (the user-set name needs an entitlement)
+        #elseif os(macOS)
+        // Not Host.current(): it resolves names synchronously and can stall the UI on slow DNS.
+        return (SCDynamicStoreCopyComputerName(nil, nil) as String?) ?? "Mac"
+        #else
+        return "Film Studio"
+        #endif
+    }
 
     /// For engines in access-code mode (no Pocket ID): the code itself is the Bearer token.
     func signIn(accessCode: String) async {

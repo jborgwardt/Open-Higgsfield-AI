@@ -141,3 +141,34 @@ public final class MemoryTokenStore: TokenStore, @unchecked Sendable {
     public func token(for server: URL) -> String? { lock.lock(); defer { lock.unlock() }; return tokens[server.absoluteString] }
     public func setToken(_ token: String?, for server: URL) { lock.lock(); defer { lock.unlock() }; tokens[server.absoluteString] = token }
 }
+
+/// Sign in with a code: the app shows a short code, you approve it in any browser with your passkey
+/// (`<server>/engine/auth/device`), and the app picks up the session. For devices that can't do the passkey
+/// themselves — the iOS Simulator, a borrowed iPad, a Mac without the passkey.
+public struct DeviceSignInCode: Decodable, Sendable, Equatable {
+    /// Secret: stays in the app, used only to poll.
+    public let deviceCode: String
+    /// What you type or compare in the browser, e.g. "BCDF-GHJK".
+    public let userCode: String
+    /// The page to open in a browser. It never carries the code: you type it there (anti-phishing).
+    public let verifyUrl: String
+    public let expiresIn: Double
+    public let interval: Double
+}
+
+public struct DeviceSignInPoll: Decodable, Sendable, Equatable {
+    public enum Status: String, Decodable, Sendable { case pending, approved, expired }
+    public let status: Status
+    public let session: String?
+}
+
+public extension APIClient {
+    func startDeviceSignIn(name: String) async throws -> DeviceSignInCode {
+        try await send("POST", "/auth/device", json: ["name": .string(name)])
+    }
+    func pollDeviceSignIn(_ deviceCode: String) async throws -> DeviceSignInPoll {
+        let body = try JSONEncoder().encode(["deviceCode": deviceCode])
+        let data = try await perform(makeRequest("POST", "/auth/device/poll", body: body), route: "/auth/device/poll", report: false)
+        return try decode(DeviceSignInPoll.self, from: data, route: "/auth/device/poll")
+    }
+}

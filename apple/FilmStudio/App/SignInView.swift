@@ -1,5 +1,6 @@
 import SwiftUI
 import AuthenticationServices
+import CoreImage
 import FilmStudioKit
 
 /// Pocket ID passkey sign-in (ASWebAuthenticationSession), or an access code on code-mode engines.
@@ -94,6 +95,16 @@ struct SignInControls: View {
                     Text("Uses your passkey. Your session is stored in the Keychain on this device.")
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
+                if app.deviceCode != nil || app.deviceCodeExpired || app.isFetchingDeviceCode {
+                    DeviceCodeCard()
+                } else if !app.isSigningIn {
+                    // No passkey on this device (Simulator, a borrowed iPad…): approve a code from your phone or computer.
+                    Button { app.startDeviceSignIn() } label: {
+                        Label("Sign in with a code", systemImage: "qrcode")
+                    }
+                    .buttonStyle(.darkPill)
+                    .accessibilityIdentifier("signIn.code")
+                }
             } else {
                 SecureField("Access code", text: $code)
                     .textContentType(.password)
@@ -113,6 +124,96 @@ struct SignInControls: View {
                     .font(.callout).foregroundStyle(.red).multilineTextAlignment(.center)
             }
         }
+    }
+}
+
+/// The code to approve in another browser, with a QR code and the link, while the app waits.
+struct DeviceCodeCard: View {
+    @Environment(AppModel.self) private var app
+    @State private var copied = false
+
+    var body: some View {
+        VStack(spacing: 14) {
+            if app.isFetchingDeviceCode {
+                ProgressView().padding(.vertical, 30)
+                Text("Getting a code…").font(.footnote).foregroundStyle(.secondary)
+            } else if let code = app.deviceCode, !app.deviceCodeExpired {
+                Text("On your phone or computer, open this page and sign in with your passkey:")
+                    .font(.callout).foregroundStyle(Color.textSecondary).multilineTextAlignment(.center)
+                if let url = URL(string: code.verifyUrl) {
+                    QRCodeImage(text: url.absoluteString)
+                        .frame(width: 168, height: 168)
+                        .accessibilityLabel("QR code for the sign-in link")
+                }
+                Text(displayLink(code.verifyUrl))
+                    .font(.footnote.monospaced()).foregroundStyle(Color.textSecondary)
+                    .textSelection(.enabled)
+                Text(code.userCode)
+                    .font(.system(size: 34, weight: .semibold, design: .monospaced)).tracking(3)
+                    .foregroundStyle(.white)
+                    .textSelection(.enabled)
+                    .accessibilityLabel("Code \(code.userCode.map(String.init).joined(separator: " "))")
+                    .accessibilityIdentifier("signIn.userCode")
+                Text("Then type this code there and tap Approve.")
+                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                HStack(spacing: 10) {
+                    Button { copy(code.verifyUrl) } label: {
+                        Label(copied ? "Copied" : "Copy link", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    }
+                    .buttonStyle(.darkPill)
+                    .accessibilityIdentifier("signIn.copyLink")
+                    if let url = URL(string: code.verifyUrl) {
+                        ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }
+                            .buttonStyle(.darkPill)
+                    }
+                }
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Waiting for approval…").font(.footnote).foregroundStyle(.secondary)
+                }
+            } else {
+                Text("That code expired.").font(.callout).foregroundStyle(Color.textSecondary)
+                Button("Get a new code") { app.startDeviceSignIn() }.buttonStyle(.darkPill)
+            }
+            Button("Cancel") { app.cancelDeviceSignIn() }
+                .buttonStyle(.plain).font(.callout.weight(.semibold)).foregroundStyle(Color.ember)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity)
+        .glassFill(RoundedRectangle(cornerRadius: 24, style: .continuous), interactive: false, fallback: .surface)
+    }
+
+    private func displayLink(_ s: String) -> String { s.replacingOccurrences(of: "https://", with: "") }
+
+    private func copy(_ s: String) {
+        #if os(iOS)
+        UIPasteboard.general.string = s
+        #else
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(s, forType: .string)
+        #endif
+        copied = true
+        Platform.haptic()
+        Task { try? await Task.sleep(for: .seconds(2)); copied = false }
+    }
+}
+
+/// A crisp QR code (CoreImage), black on white with a quiet zone so phone cameras read it on a dark screen.
+struct QRCodeImage: View {
+    let text: String
+    var body: some View {
+        if let image = Self.render(text) {
+            image.interpolation(.none).resizable().scaledToFit()
+                .padding(10).background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+    static func render(_ text: String) -> Image? {
+        let filter = CIFilter(name: "CIQRCodeGenerator")
+        filter?.setValue(Data(text.utf8), forKey: "inputMessage")
+        filter?.setValue("M", forKey: "inputCorrectionLevel")
+        guard let out = filter?.outputImage?.transformed(by: CGAffineTransform(scaleX: 8, y: 8)),
+              let cg = CIContext().createCGImage(out, from: out.extent) else { return nil }
+        return Image(decorative: cg, scale: 1)
     }
 }
 

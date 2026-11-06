@@ -16,7 +16,8 @@ import { claudeStatus } from './lib/providers/claude-cli.js';
 import * as screening from './lib/screening.js';
 import { hasFfmpeg } from './lib/ffmpeg.js';
 import { soundCatalog } from './lib/sound.js';
-import { oidcConfig, loginRedirect, finishLogin, sessionFor, endSession, sessionCookie, clearSessionCookie, NATIVE_PATH, isNativeNext, nativeState, nativeHandoff, redeemHandoff, nativeRedirect } from './lib/oidc.js';
+import { oidcConfig, loginRedirect, finishLogin, sessionFor, endSession, sessionCookie, clearSessionCookie, NATIVE_PATH, isNativeNext, nativeState, nativeHandoff, redeemHandoff, nativeRedirect, publicBase, handoffValid, DEVICE_PATH, isDeviceNext, normalizeUserCode, startDevice, pendingDevice, approveDevice, pollDevice } from './lib/oidc.js';
+import { DEVICE_PAGE_HEADERS, enterCodePage, confirmPage, donePage, messagePage } from './lib/devicepage.js';
 import { fetchJSON } from './lib/http.js';
 import { apimartModels, APIMART_LLMS } from './lib/providers/apimart.js';
 import { elevenSubscription, elevenVoices, elevenAvailable, ELEVEN_TTS_MODELS } from './lib/providers/eleven.js';
@@ -285,6 +286,68 @@ route('POST', '/productions/:id/shots/:sid/import', async ({ params, body }) => 
 // Post-production: /post/enhance, /post/transcribe, /post/jobs/:id, /post/transcripts/:assetId, /post/capabilities
 post.mountRoutes(route, HttpError);
 
+/* ---------------- device sign-in ---------------- */
+// App: POST /auth/device → code to show; POST /auth/device/poll → the session once approved in a browser.
+const deviceStarts = new Map(); // per-IP starts in the last minute (unauthenticated endpoint)
+route('POST', '/auth/device', async ({ req, body }) => {
+  if (!oidcConfig()) throw new HttpError(404, 'Pocket ID sign-in is not configured on this server');
+  const ip = clientIp(req);
+  const w = deviceStarts.get(ip) || { n: 0, at: Date.now() };
+  if (Date.now() - w.at > 60000) { w.n = 0; w.at = Date.now(); }
+  deviceStarts.set(ip, w);
+  if (deviceStarts.size > 1000) for (const [k, v] of deviceStarts) if (Date.now() - v.at > 60000) deviceStarts.delete(k);
+  if (++w.n > 10) throw new HttpError(429, 'Too many sign-in codes — wait a minute');
+  let d;
+  try { d = startDevice(body?.name, { ip }); } catch (e) { throw new HttpError(e.status || 500, e.message); }
+  // Deliberately no "complete" link with the code in it: the code is always typed (RFC 8628 §5.4).
+  return { ...d, verifyUrl: `${publicBase(req)}${DEVICE_PATH}` };
+});
+route('POST', '/auth/device/poll', async ({ body }) => pollDevice(body?.deviceCode));
+
+/** The client's address as our own reverse proxy saw it (rightmost X-Forwarded-For hop; clients can forge the rest). */
+function clientIp(req) {
+  const hops = String(req.headers['x-forwarded-for'] || '').split(',').map((h) => h.trim()).filter(Boolean);
+  return hops.at(-1) || req.socket.remoteAddress || '';
+}
+const DEVICE_COOKIE = 'device_handoff';
+const deviceHandoffCookie = (v, secure) => `${DEVICE_COOKIE}=${v}; Path=${DEVICE_PATH}; HttpOnly; SameSite=Lax; Max-Age=${v ? 300 : 0}${secure ? '; Secure' : ''}`;
+
+async function devicePage(req, res, url) {
+  const secure = secureReq(req);
+  const html = (status, body, clear = false) => send(res, status, body, { ...DEVICE_PAGE_HEADERS, ...(clear ? { 'Set-Cookie': deviceHandoffCookie('', secure) } : {}) });
+  if (!oidcConfig()) return html(404, messagePage('Not available', 'Pocket ID sign-in is not configured on this server.'));
+  const handoff = cookie(req, DEVICE_COOKIE);
+  const signedIn = handoffValid(handoff, 'device');
+  if (req.method === 'GET') {
+    if (signedIn) return html(200, enterCodePage());
+    // Always a fresh passkey (prompt=login, checked via auth_time): an existing session never approves a device.
+    try {
+      return send(res, 302, '', { Location: await loginRedirect(req, DEVICE_PATH) });
+    } catch (e) {
+      return html(502, messagePage('Pocket ID unreachable', e.message));
+    }
+  }
+  if (req.method !== 'POST') return html(405, messagePage('Not allowed', 'Use the sign-in page.'));
+  // Same-site form posts only carry the SameSite=Lax handoff cookie; a cross-site form can't.
+  const form = new URLSearchParams((await readRaw(req, 4096)).toString('utf8'));
+  const action = form.get('action');
+  if (action === 'cancel') {
+    const s = redeemHandoff(handoff, 'device');
+    if (s) endSession(s);
+    return html(200, messagePage('Cancelled', 'Nothing was approved. You can close this page.'), true);
+  }
+  if (!signedIn) return html(400, messagePage('Sign-in expired', 'Sign in with your passkey again to approve a device.'), true);
+  const code = normalizeUserCode(form.get('code'));
+  const pending = code && pendingDevice(code);
+  if (!pending) return html(200, enterCodePage({ error: "That code isn't valid or has expired. Check the app for the current code." }));
+  if (action === 'check') return html(200, confirmPage(pending));
+  if (action !== 'approve') return html(400, messagePage('Not allowed', 'Use the sign-in page.'));
+  const session = redeemHandoff(handoff, 'device');
+  if (!session) return html(400, messagePage('Sign-in expired', 'Sign in with your passkey again to approve a device.'), true);
+  if (!approveDevice(code, session)) { endSession(session); return html(410, messagePage('Code expired', 'That code expired or was already used. Get a new one in the app.'), true); }
+  return html(200, donePage(), true);
+}
+
 /* ---------------- server ---------------- */
 
 const server = http.createServer(async (req, res) => {
@@ -299,6 +362,11 @@ const server = http.createServer(async (req, res) => {
     if (p === '/engine/auth/callback') {
       try {
         const { session, next } = await finishLogin(req, url);
+        if (isDeviceNext(next)) {
+          // Device sign-in: no session cookie. The fresh session waits behind a one-time handoff kept in an
+          // HttpOnly cookie scoped to the device page (never in the URL / history).
+          return send(res, 302, '', { Location: DEVICE_PATH, 'Set-Cookie': deviceHandoffCookie(nativeHandoff(session, { purpose: 'device' }), secureReq(req)) });
+        }
         if (isNativeNext(next)) {
           // App sign-in: no browser cookie; hand the fresh session to /engine/auth/native with a one-time code.
           const u = new URL(next, 'http://engine.invalid');
@@ -307,6 +375,7 @@ const server = http.createServer(async (req, res) => {
         }
         return send(res, 302, '', { Location: next, 'Set-Cookie': sessionCookie(session, secureReq(req)) });
       } catch (e) {
+        if (isDeviceNext(e.next)) return send(res, 200, messagePage('Sign-in failed', e.message), DEVICE_PAGE_HEADERS);
         if (isNativeNext(e.next)) {
           const state = nativeState(new URL(e.next, 'http://engine.invalid').searchParams.get('state'));
           return send(res, 302, '', { Location: nativeRedirect({ error: e.message, state }) });
@@ -314,6 +383,8 @@ const server = http.createServer(async (req, res) => {
         return send(res, 302, '', { Location: `/?auth_error=${encodeURIComponent(e.message)}` });
       }
     }
+    // Device sign-in: approve, in any browser, a code shown in the app (see "device sign-in" in lib/oidc.js).
+    if (p === DEVICE_PATH) return await devicePage(req, res, url);
     // Native (Film Studio app) sign-in via ASWebAuthenticationSession. Only ever redirects to filmstudio://auth.
     if (p === NATIVE_PATH) {
       const state = nativeState(url.searchParams.get('state'));
@@ -330,7 +401,8 @@ const server = http.createServer(async (req, res) => {
         return send(res, 302, '', { Location: nativeRedirect({ error: `Pocket ID unreachable: ${e.message}`, state }) });
       }
     }
-    const open = p === '/engine/api/health' || p === '/engine/api/login' || p === '/engine/api/logout' || (p === '/engine/api/app/version' && req.method === 'GET');
+    const open = p === '/engine/api/health' || p === '/engine/api/login' || p === '/engine/api/logout' || (p === '/engine/api/app/version' && req.method === 'GET')
+      || (req.method === 'POST' && (p === '/engine/api/auth/device' || p === '/engine/api/auth/device/poll'));
     if ((p.startsWith('/engine/api/') || p.startsWith('/engine/media/')) && !open && !authed(req, url)) {
       return send(res, 401, { error: 'access code required', auth: true });
     }
