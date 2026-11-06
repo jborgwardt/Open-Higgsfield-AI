@@ -4,6 +4,7 @@ Owner: integration session. Updated 2026-11-06.
 
 ## Current release: 1.0.1 (11) — reliable export and Google Drive backups
 
+- Follow-up public-transfer mitigation: Film Studio alone now clears HTTP/3 alternative-service advertisements. A real authenticated Mac download used HTTP/2 and transferred the complete 146.8 MB master in **2.997 seconds**, then saved with the exact original SHA-256. The phone still needs a fresh retry. See [network evidence and rollback](video-transfer-network.md).
 - The iPhone's three logged save failures were `Download: The request timed out.` on build 8. The VPS had about 45 GiB available memory and 60 GB free disk, so memory/disk exhaustion was not the cause established by diagnostics.
 - Downloads stream to disk, allow 180 seconds of inactivity, retry a transient failure once with resume data when available, show progress/cancellation, and reuse a completed download when switching destinations. Photos completion is awaited and errors remain visible.
 - iOS now exposes **Save to Photos**, **Save to Files**, and **Share**, plus viewer/Library context menus. Files uses a document export picker; iPad popovers are anchored.
