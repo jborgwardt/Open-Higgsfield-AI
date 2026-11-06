@@ -5,7 +5,7 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { createArchiveManager, sanitizedSnapshot, remoteMD5 } from '../lib/archive.js';
+import { createArchiveManager, sanitizedSnapshot, remoteMD5, rcloneFailure } from '../lib/archive.js';
 
 const md5 = (b) => crypto.createHash('md5').update(b).digest('hex');
 test('normalizes actual rclone lowercase hashes and uppercase legacy examples', () => {
@@ -18,12 +18,12 @@ test('normalizes actual rclone lowercase hashes and uppercase legacy examples', 
 async function fixture(t) {
   const data = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-archive-')), media = path.join(data, 'media');
   await fsp.mkdir(media);
-  let time = Date.parse('2026-11-06T12:00:00Z'), active = false, offline = false, failUpload = false, corruptDownload = false;
+  let time = Date.parse('2026-11-06T12:00:00Z'), active = false, offline = false, failUpload = false, corruptDownload = false, rateLimited = false;
   const assets = {}, projects = {}, chars = {}, remote = new Map();
-  const calls = { uploads: 0, downloads: 0 };
+  const calls = { uploads: 0, downloads: 0, probes: 0 };
   const adapter = {
     configured: () => true,
-    async probe() { if (offline) throw new Error('Drive is offline'); },
+    async probe() { calls.probes++; if (offline) throw new Error('Drive is offline'); if (rateLimited) throw rcloneFailure('RATE_LIMIT_EXCEEDED'); },
     async upload(file, key) { calls.uploads++; if (failUpload) throw new Error('upload failed'); remote.set(key, await fsp.readFile(file)); },
     async stat(key) {
       if (offline) throw new Error('Drive is offline');
@@ -50,7 +50,7 @@ async function fixture(t) {
     get m() { return manager; },
     async enable() { await manager.settings({ enabled: true }); manager.stop(); },
     advance(hours) { time += hours * 3600_000; },
-    active(v) { active = v; }, offline(v) { offline = v; }, failUpload(v) { failUpload = v; }, corruptDownload(v) { corruptDownload = v; },
+    active(v) { active = v; }, offline(v) { offline = v; }, failUpload(v) { failUpload = v; }, corruptDownload(v) { corruptDownload = v; }, rateLimit(v) { rateLimited = v; },
     restart() { manager.stop(); manager = createArchiveManager(opts); return manager; },
     exists(id) { return fs.existsSync(path.join(media, assets[id].file)); },
   };
@@ -169,4 +169,17 @@ test('changed project status is visibly stale and corrupt archive history never 
     await f.m.run({ manual: true }); assert.equal(f.exists('a_master'), true);
     assert.equal(await fsp.readFile(history, 'utf8'), bad);
   }
+});
+
+test('rate-limit diagnostics disclose no stderr and scheduled retries back off for fifteen minutes', async (t) => {
+  const error = rcloneFailure('access_token=synthetic-secret googleapi: Error403 RATE_LIMIT_EXCEEDED project=private-value');
+  assert.equal(error.rateLimited, true); assert.equal(error.retryable, true);
+  assert.match(error.message, /connection is rate-limited/); assert.ok(!error.message.includes('synthetic-secret')); assert.ok(!error.message.includes('private-value'));
+  const f = await fixture(t); await f.project(); await f.enable(); f.rateLimit(true);
+  const failed = await f.m.run(); assert.ok(failed.nextRetryAt); assert.match(failed.lastError, /rate-limited/); assert.equal(f.exists('a_master'), true);
+  const probes = f.calls.probes;
+  f.advance(0.1); await f.m.run(); assert.equal(f.calls.probes, probes, 'background does not retry inside backoff');
+  await f.m.run({ manual: true }); assert.equal(f.calls.probes, probes + 1, 'explicit retry bypasses backoff');
+  f.restart(); await f.m.run(); assert.equal(f.calls.probes, probes + 1, 'backoff survives restart');
+  f.advance(0.3); f.rateLimit(false); const success = await f.m.run(); assert.equal(success.nextRetryAt, null); assert.equal(f.m.projectStatus('prod_one').status, 'verified');
 });

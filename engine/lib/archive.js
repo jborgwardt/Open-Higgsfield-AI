@@ -7,7 +7,14 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 
 const HOUR = 3600_000;
+const RATE_LIMIT_BACKOFF = 15 * 60_000;
 const fail = (status, message) => Object.assign(new Error(message), { status });
+export function rcloneFailure(stderr = '') {
+  if (/RATE_LIMIT_EXCEEDED|rateLimitExceeded|userRateLimitExceeded|Quota exceeded/i.test(stderr)) {
+    return Object.assign(fail(503, 'Google Drive connection is rate-limited. Retry later or use a private Google connection.'), { retryable: true, rateLimited: true });
+  }
+  return fail(502, 'Google Drive could not complete the request; local files were kept');
+}
 // Current rclone emits Hashes.md5; older examples use Hashes.MD5. Both name the same digest.
 export const remoteMD5 = (metadata) => String(Object.entries(metadata?.Hashes || {}).find(([name]) => name.toLowerCase() === 'md5')?.[1] || '').toLowerCase();
 const digest = async (file) => {
@@ -47,15 +54,15 @@ export function rcloneAdapter({ data, env = process.env } = {}) {
   const run = (args, timeout = 30 * 60_000) => new Promise((resolve, reject) => {
     if (!configured()) return reject(fail(503, 'Google Drive is not configured on this studio'));
     const child = spawn(binary, ['--config', config, '--contimeout', '15s', '--timeout', '2m', '--retries', '2', '--low-level-retries', '3', ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
-    let output = '', settled = false;
+    let output = '', stderr = '', settled = false;
     const finish = (error, value) => { if (settled) return; settled = true; clearTimeout(timer); error ? reject(error) : resolve(value); };
     const timer = setTimeout(() => { child.kill('SIGKILL'); finish(fail(504, 'Google Drive transfer timed out; the local file was kept')); }, timeout);
     timer.unref();
     child.stdout.on('data', (s) => { output += s; if (output.length > 2_000_000) { child.kill('SIGKILL'); finish(fail(502, 'Google Drive returned too much metadata')); } });
-    // Do not forward provider logs/config paths or credentials into app diagnostics.
-    child.stderr.resume();
+    // Keep a bounded diagnostic only for classification; never forward raw provider logs or tokens.
+    child.stderr.on('data', (s) => { stderr = (stderr + s).slice(-16_000); });
     child.on('error', () => finish(fail(503, 'Google Drive transfer tool is unavailable on this studio')));
-    child.on('close', (code) => finish(code === 0 ? null : fail(502, 'Google Drive could not complete the request; local files were kept'), output));
+    child.on('close', (code) => finish(code === 0 ? null : rcloneFailure(stderr), output));
   });
   return {
     configured,
@@ -98,7 +105,7 @@ export function createArchiveManager({ data, media, getAsset, listAssets, listPr
   const state = { version: 1, policy: { enabled: false, uploadDelayHours: 0, removeLocalAfterHours: 48, ...saved.policy }, projects: {}, assets: {}, videos: {}, localBytesFreed: 0, ...saved };
   state.policy = { enabled: false, uploadDelayHours: 0, removeLocalAfterHours: 48, ...saved.policy };
   const drive = adapter || rcloneAdapter({ data });
-  let busy = false, saveQueue = Promise.resolve(), connected = false, checkedAt = 0, connectionError = null, timer, pendingRun = null;
+  let busy = false, saveQueue = Promise.resolve(), connected = false, checkedAt = 0, connectionError = null, probeError = null, timer, pendingRun = null;
   const restores = new Map();
   const stamp = () => new Date(clock()).toISOString();
   const save = () => {
@@ -138,14 +145,14 @@ export function createArchiveManager({ data, media, getAsset, listAssets, listPr
       policy: { ...state.policy }, busy, stats: { projects: projects.filter((p) => p.status === 'verified').length, videos: videos.filter((v) => v.status === 'verified').length,
         verifiedBytes: Object.values(state.assets).reduce((n, a) => n + (a.size || 0), 0), localBytesFreed: state.localBytesFreed || 0,
         pending: [...projects, ...videos].filter((p) => p.status !== 'verified').length },
-      lastRunAt: state.lastRunAt || null, lastError: stateError || connectionError || state.lastError || null };
+      lastRunAt: state.lastRunAt || null, nextRetryAt: state.nextRetryAt || null, lastError: stateError || connectionError || state.lastError || null };
   }
   async function probe(fresh = false) {
     if (stateError) return false;
     if (!fresh && checkedAt && clock() - checkedAt < 60_000) return connected;
     checkedAt = clock();
-    try { await drive.probe(); connected = true; connectionError = null; state.folderUrl ||= await folderUrl('Film Studio'); }
-    catch (e) { connected = false; connectionError = e.message; }
+    try { await drive.probe(); connected = true; connectionError = null; probeError = null; state.folderUrl ||= await folderUrl('Film Studio'); }
+    catch (e) { connected = false; connectionError = e.message; probeError = e; }
     return connected;
   }
   async function status({ fresh = false } = {}) { await probe(fresh); return statusView(); }
@@ -301,23 +308,28 @@ export function createArchiveManager({ data, media, getAsset, listAssets, listPr
     if (stateError) return statusView();
     if (busy) return statusView();
     if (!manual && !state.policy.enabled) return statusView();
+    if (!manual && Date.parse(state.nextRetryAt || '') > clock()) return statusView();
     busy = true; state.lastError = null;
+    let rateLimited = false;
     try {
-      if (!await probe(true)) throw fail(503, connectionError || 'Google Drive is not connected');
+      if (!await probe(true)) throw probeError || fail(503, connectionError || 'Google Drive is not connected');
       if (projectId) await archiveProject(projectId, manual);
       else {
         const delay = manual ? 0 : state.policy.uploadDelayHours * HOUR;
         for (const p of allProductions()) if (complete(p) && clock() - Date.parse(p.master.createdAt || p.updatedAt) >= delay) {
-          try { await archiveProject(p.id, manual); } catch (e) { state.lastError = e.message; }
+          try { await archiveProject(p.id, manual); } catch (e) { if (e.rateLimited) throw e; state.lastError = e.message; }
         }
         // Don't mistake an in-progress job result for a finished standalone video.
         if (!isBusy()) for (const a of standaloneVideos()) if (clock() - Date.parse(a.createdAt) >= delay) {
-          try { await archiveVideo(a, manual); } catch (e) { state.lastError = e.message; }
+          try { await archiveVideo(a, manual); } catch (e) { if (e.rateLimited) throw e; state.lastError = e.message; }
         }
       }
       await cleanup();
-    } catch (e) { state.lastError = e.message; }
-    finally { busy = false; state.lastRunAt = stamp(); await save(); }
+    } catch (e) {
+      state.lastError = e.message;
+      if (e.rateLimited) { rateLimited = true; state.nextRetryAt = new Date(clock() + RATE_LIMIT_BACKOFF).toISOString(); }
+    }
+    finally { if (!rateLimited) state.nextRetryAt = null; busy = false; state.lastRunAt = stamp(); await save(); }
     return statusView();
   }
   function requestRun(opts = {}) {
