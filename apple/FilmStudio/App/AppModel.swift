@@ -40,6 +40,8 @@ final class AppModel {
     /// Cross-screen requests (handled by the window that shows the target screen).
     var requestedTab: String?
     var requestNewFilm = false
+    /// From the Home "Make a film" card: open a new brief only when there are no films yet; otherwise show the list.
+    var requestNewFilmIfNone = false
     var requestNewCharacter = false
     /// > 0 while a full-screen viewer is pushed: the floating tab bar steps aside.
     var immersiveDepth = 0

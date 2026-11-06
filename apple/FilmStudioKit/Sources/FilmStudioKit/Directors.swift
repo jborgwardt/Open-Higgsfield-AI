@@ -78,7 +78,23 @@ public struct DirectorCatalog: Sendable, Hashable {
         guard let c, c.isChosen else { return "Not chosen" }
         let o = option(c.provider)
         let model = o?.models.first { $0.id == c.model }?.label ?? c.model
-        return [o?.label ?? c.provider, model.nonEmpty].compactMap { $0 }.joined(separator: " · ")
+        return [o?.label ?? Self.displayName(c.provider), model.nonEmpty].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// A readable name for a director id when the server's list doesn't provide one ("codex" → "ChatGPT / Codex").
+    public static func displayName(_ id: String) -> String {
+        switch id {
+        case "codex": "ChatGPT / Codex"
+        case "claude": "Claude"
+        case "google": "Gemini"
+        case "xai": "Grok"
+        case "apimart": "ApiMart"
+        case "qwen": "Qwen"
+        case "venice": "Venice"
+        case "openai": "Local LLM"
+        case "split": "No AI (split my script)"
+        default: id
+        }
     }
 
     /// For engines without a directors list: what the old /status exposes.

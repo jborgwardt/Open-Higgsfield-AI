@@ -125,7 +125,8 @@ struct HomeView: View {
             Task { await openTool(a) }
         case "tools": if tabs.contains("tools") { app.requestedTab = "tools" } else { route = .allTools }
         case "films":
-            if a.flag("new") { app.requestNewFilm = true } // FilmsView opens the brief as soon as it appears
+            // A first film starts the brief straight away; with films already there, show them (New film is one tap away).
+            if a.flag("new") { app.requestNewFilmIfNone = true }
             if tabs.contains("films") { app.requestedTab = "films" } else { route = .films }
         case "characters", "character":
             if let id = a.param("id") { route = .character(id); break }

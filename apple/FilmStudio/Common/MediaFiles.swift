@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import Combine
 import ImageIO
 import PhotosUI
 import UniformTypeIdentifiers
@@ -251,6 +252,8 @@ struct EngineVideoPlayer: View {
     var autoplay = true
     @Environment(AppModel.self) private var app
     @State private var player: AVPlayer?
+    @State private var loadState: LoadState = .loading
+    private enum LoadState { case loading, ready, failed }
 
     var body: some View {
         Group {
@@ -260,6 +263,16 @@ struct EngineVideoPlayer: View {
             VideoPlayer(player: player)
             #endif
         }
+            // Never a silent black box: a spinner while the film loads, a plain message if it can't.
+            .overlay {
+                switch loadState {
+                case .loading: ProgressView().controlSize(.large).tint(.white).allowsHitTesting(false)
+                case .failed:
+                    Label("Couldn't load this video. Check the connection and open it again.", systemImage: "exclamationmark.triangle")
+                        .font(.callout).foregroundStyle(.white).padding(12).background(.black.opacity(0.6), in: Capsule())
+                case .ready: EmptyView()
+                }
+            }
             .task(id: url) {
                 guard let u = app.client.resolve(url) else { return }
                 var options: [String: Any] = [:]
@@ -273,9 +286,15 @@ struct EngineVideoPlayer: View {
                 try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
                 try? AVAudioSession.sharedInstance().setActive(true)
                 #endif
-                let p = AVPlayer(playerItem: AVPlayerItem(asset: AVURLAsset(url: u, options: options)))
+                let item = AVPlayerItem(asset: AVURLAsset(url: u, options: options))
+                let p = AVPlayer(playerItem: item)
+                loadState = .loading
                 player = p
                 if autoplay { p.play() }
+                for await status in item.publisher(for: \.status).values {
+                    if status == .readyToPlay { loadState = .ready; break }
+                    if status == .failed { loadState = .failed; break }
+                }
             }
             .onDisappear {
                 player?.pause()

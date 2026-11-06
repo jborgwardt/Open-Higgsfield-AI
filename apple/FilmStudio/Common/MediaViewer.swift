@@ -212,7 +212,8 @@ struct MediaViewer: View {
             if !item.isVideo, app.config.isOn("create") {
                 Button { app.openCreate(startFrame: asset, mode: .video) } label: { Label("Animate", systemImage: "play.rectangle") }
                     .buttonStyle(.ember)
-            } else if let t = upscaleTool {
+            } else if let t = upscaleTool, item.model != "Long-form master" {
+                // A finished film's next step is saving/sharing it, not a paid upscale (still in the Remix menu).
                 Button { upscale = t } label: { Label("Upscale", systemImage: "arrow.up.left.and.arrow.down.right") }
                     .buttonStyle(.ember)
             }

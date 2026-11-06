@@ -5,6 +5,7 @@ import FilmStudioKit
 struct FilmsView: View {
     @Environment(AppModel.self) private var app
     @State private var state: Loadable<[ProductionSummary]> = .loading
+    @State private var newIfNone = false
     @State private var creating = false
     @State private var opened: String?
     @State private var pendingDelete: ProductionSummary?
@@ -74,6 +75,11 @@ struct FilmsView: View {
             .refreshable { await load() }
             .task(id: app.refreshTick) { await poll() }
             .onChange(of: app.requestNewFilm, initial: true) { _, v in if v { creating = true; app.requestNewFilm = false } }
+            .onChange(of: app.requestNewFilmIfNone, initial: true) { _, v in
+                guard v else { return }
+                app.requestNewFilmIfNone = false
+                if let list = state.value { if list.isEmpty { creating = true } } else { newIfNone = true }
+            }
             .sheet(isPresented: $creating) {
                 BriefEditor(production: nil) { p in
                     Task { await load() }
@@ -99,7 +105,11 @@ struct FilmsView: View {
     }
 
     private func load() async {
-        do { state = .loaded(try await app.fetchProductions()) } catch is CancellationError {
+        do {
+            let list = try await app.fetchProductions()
+            state = .loaded(list)
+            if newIfNone { newIfNone = false; if list.isEmpty { creating = true } }
+        } catch is CancellationError {
         } catch {
             if state.value == nil { state = .failed(error.localizedDescription) }
         }
@@ -130,7 +140,12 @@ extension FilmsView {
 
 /// One production: plan, render, assemble, watch.
 extension Brief {
-    var lengthText: String { targetMinutes < 1 ? "\(Int((targetMinutes * 60).rounded())) s" : "\(targetMinutes.formatted()) min" }
+    var lengthText: String {
+        if targetMinutes < 1 { return "\(Int((targetMinutes * 60).rounded())) s" }
+        if (targetMinutes * 2).rounded() == targetMinutes * 2 { return "\(targetMinutes.formatted()) min" }
+        let secs = Int((targetMinutes * 60).rounded())
+        return String(format: "%d:%02d min", secs / 60, secs % 60)
+    }
 }
 
 struct FilmDetailView: View {
@@ -320,7 +335,7 @@ struct FilmDetailView: View {
         if p.shots.isEmpty || canPlan {
             LabeledContent("Director", value: p.brief.directorProvider.isEmpty
                 ? (app.directors.map { $0.describe($0.current) } ?? "…")
-                : (app.directors.map { $0.describe(DirectorChoice(provider: p.brief.directorProvider, model: p.brief.directorModel)) } ?? p.brief.directorProvider) + " (this film)")
+                : (app.directors.map { $0.describe(DirectorChoice(provider: p.brief.directorProvider, model: p.brief.directorModel)) } ?? DirectorCatalog.displayName(p.brief.directorProvider)) + " (this film)")
                 .font(.callout)
                 .task { if app.directors == nil { try? await app.loadDirectors() } }
         }
@@ -355,7 +370,12 @@ struct FilmDetailView: View {
     }
 
     /// Planning needs an explicitly chosen director; ask for one first instead of failing.
-    private func lengthText(_ m: Double) -> String { m < 1 ? "\(Int((m * 60).rounded())) s" : "\(m.formatted()) min" }
+    private func lengthText(_ m: Double) -> String {
+        if m < 1 { return "\(Int((m * 60).rounded())) s" }
+        if (m * 2).rounded() == m * 2 { return "\(m.formatted()) min" }  // 2, 2.5, 5 …
+        let secs = Int((m * 60).rounded())
+        return String(format: "%d:%02d min", secs / 60, secs % 60)        // 2.589511 → "2:35 min"
+    }
 
     private func setLength(_ minutes: Double) async {
         do { production = try await app.client.updateProduction(id, ["targetMinutes": .number(minutes)]); draftMinutes = nil }
