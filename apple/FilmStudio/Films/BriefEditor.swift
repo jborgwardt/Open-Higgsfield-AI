@@ -1,4 +1,6 @@
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
 import FilmStudioKit
 
 /// Create a film or edit its brief. Defaults (models, length, look) come from the server config.
@@ -13,6 +15,17 @@ struct BriefEditor: View {
     @State private var error: String?
     @State private var ready = false
     @State private var confirmDiscard = false
+    // "+" — reference photos for the film and your own soundtrack.
+    @State private var refPicks: [PhotosPickerItem] = []
+    @State private var showPhotoPicker = false
+    @State private var showCamera = false
+    @State private var importingFiles = false
+    @State private var importingAudio = false
+    @State private var adding = false
+    @State private var addError: String?
+    /// asset id → URL for thumbnails (server URLs on load, upload URLs after adding).
+    @State private var refURL: [String: String] = [:]
+    @State private var musicName: String?
     @FocusState private var focused: Field?
     private enum Field: Hashable { case title, script, style, length }
     private var dirty: Bool { ready && brief != original }
@@ -49,6 +62,32 @@ struct BriefEditor: View {
                         TextField("Visual style (optional) — e.g. 35 mm film, soft dawn light, muted greens", text: $brief.style, axis: .vertical)
                             .lineLimit(1...3)
                             .focused($focused, equals: .style)
+                    }
+
+                    Section {
+                        HStack(spacing: 10) {
+                            addMenu
+                            if brief.refAssetIds.isEmpty && brief.musicAssetId.isEmpty && !adding {
+                                Text("Add photos or audio").foregroundStyle(.secondary)
+                            }
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(brief.refAssetIds, id: \.self) { id in refThumb(id) }
+                                    if adding { ProgressView().frame(width: 56, height: 56) }
+                                }
+                            }
+                        }
+                        if !brief.musicAssetId.isEmpty {
+                            HStack {
+                                Label(musicName ?? "Your soundtrack", systemImage: "music.note").lineLimit(1)
+                                Spacer()
+                                Button(role: .destructive) { brief.musicAssetId = ""; musicName = nil; if brief.music == "upload" { brief.music = "off" } } label: { Image(systemName: "xmark.circle.fill") }
+                                    .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Remove soundtrack")
+                            }
+                        }
+                        if let addError { Text(addError).font(.footnote).foregroundStyle(.red) }
+                    } header: { Text("References & audio") } footer: {
+                        Text("Photos guide the look of every shot — places, props, wardrobe, mood. An audio file is laid under the finished film as its soundtrack (it is not lip-synced).")
                     }
 
                     Section {
@@ -128,6 +167,31 @@ struct BriefEditor: View {
             }
             // A drag-down never throws a typed script away (QA-07).
             .interactiveDismissDisabled(dirty)
+            .photosPicker(isPresented: $showPhotoPicker, selection: $refPicks, maxSelectionCount: 10, matching: .images, photoLibrary: .shared())
+            .onChange(of: refPicks) { _, items in
+                guard !items.isEmpty else { return }
+                refPicks = []
+                addPhotos { var out: [UploadedAsset] = []; for i in items { out.append(try await MediaUpload.upload(i, app: app)) }; return out }
+            }
+            .fileImporter(isPresented: $importingFiles, allowedContentTypes: [.image, .audio], allowsMultipleSelection: true) { result in
+                guard case .success(let urls) = result else { return }
+                let audio = urls.filter { UTType(filenameExtension: $0.pathExtension)?.conforms(to: .audio) == true }
+                let images = urls.filter { !audio.contains($0) }
+                if let a = audio.first { addSoundtrack(a) }
+                if !images.isEmpty { addPhotos { var out: [UploadedAsset] = []; for u in images { out.append(try await MediaUpload.imported(u, app: app)) }; return out } }
+            }
+            .fileImporter(isPresented: $importingAudio, allowedContentTypes: [.audio]) { result in
+                if case .success(let url) = result { addSoundtrack(url) }
+            }
+            #if os(iOS)
+            .fullScreenCover(isPresented: $showCamera) {
+                CameraCapture { r in
+                    showCamera = false
+                    if case .photo(let data)? = r { addPhotos { [try await MediaUpload.image(data, app: app)] } }
+                }
+                .ignoresSafeArea()
+            }
+            #endif
             .onChange(of: brief.videoModel) { _, id in
                 // Picking a free / offline video model for a new film turns the paid checks off with it.
                 if isNew, ready, ["local", "handoff"].contains(app.catalog?.model(id)?.provider ?? "") { brief.autoScreen = false; brief.likenessQA = false }
@@ -159,6 +223,8 @@ struct BriefEditor: View {
                 await app.catalogIfNeeded()
                 if let p = production { brief = p.brief } else { brief = defaults() }
                 original = brief
+                for (id, u) in zip(brief.refAssetIds, brief.refUrls) { refURL[id] = u }
+                if !brief.musicAssetId.isEmpty { musicName = "Your soundtrack" }
                 ready = true
             }
         }
@@ -199,8 +265,9 @@ struct BriefEditor: View {
                 Picker("Music", selection: $brief.music) {
                     Text("No music").tag("off")
                     Text("AI score per scene").tag("ai").disabled(!app.sound.music.contains(where: \.available))
-                    if brief.music == "upload" { Text("Your music file").tag("upload") }
+                    Text(brief.musicAssetId.isEmpty ? "Your music file…" : "Your music file").tag("upload")
                 }
+                .onChange(of: brief.music) { _, v in if v == "upload", brief.musicAssetId.isEmpty { importingAudio = true } }
                 if brief.music == "ai" {
                     TextField("Overall feel (optional)", text: $brief.musicPrompt)
                 }
@@ -212,6 +279,58 @@ struct BriefEditor: View {
             }
         } header: { Text("Sound") } footer: {
             Text("Narration and music are mixed when the film is assembled — change them any time and re-assemble; clips aren't re-rendered.")
+        }
+    }
+
+    private var addMenu: some View {
+        Menu {
+            #if os(iOS)
+            if CameraCapture.isAvailable { Button("Camera", systemImage: "camera") { showCamera = true } }
+            #endif
+            Button("Photos", systemImage: "photo.on.rectangle") { showPhotoPicker = true }
+            Button("Files (photos or audio)", systemImage: "paperclip") { importingFiles = true }
+            Button("Soundtrack (audio file)…", systemImage: "music.note") { importingAudio = true }
+        } label: {
+            Image(systemName: "plus").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                .frame(width: 36, height: 36).background(Color.white.opacity(0.12), in: Circle())
+        }
+        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add photos or audio")
+        .accessibilityIdentifier("brief.add")
+    }
+
+    private func refThumb(_ id: String) -> some View {
+        AuthedImage(url: refURL[id])
+            .frame(width: 56, height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(alignment: .topTrailing) {
+                Button { brief.refAssetIds.removeAll { $0 == id } } label: {
+                    Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.6))
+                }
+                .buttonStyle(.plain).padding(2).accessibilityLabel("Remove reference photo")
+            }
+    }
+
+    private func addPhotos(_ work: @escaping () async throws -> [UploadedAsset]) {
+        adding = true; addError = nil
+        Task {
+            do {
+                let assets = try await work()
+                for a in assets where !brief.refAssetIds.contains(a.id) { brief.refAssetIds.append(a.id); refURL[a.id] = a.url }
+            } catch { addError = error.localizedDescription; app.report(error, screen: "newFilm", action: "Add photo") }
+            adding = false
+        }
+    }
+
+    private func addSoundtrack(_ url: URL) {
+        adding = true; addError = nil
+        Task {
+            do {
+                let a = try await MediaUpload.imported(url, app: app)
+                brief.musicAssetId = a.id; brief.music = "upload"; musicName = url.lastPathComponent
+            } catch { addError = error.localizedDescription; app.report(error, screen: "newFilm", action: "Add soundtrack") }
+            adding = false
         }
     }
 

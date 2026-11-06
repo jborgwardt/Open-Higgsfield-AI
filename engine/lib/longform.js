@@ -91,6 +91,7 @@ const DEFAULT_BRIEF = {
   identityLock: true, // real people: reference-to-video models first, never a lone still that must invent the face
   likenessQA: true, // score every character shot against the references (advisory: shot.likeness)
   likenessRetry: false, // opt-in: re-render once with the next identity model when the score drops below threshold
+  refAssetIds: [], // reference photos for the whole film (look, places, props) — added to every keyframe
   characters: [], // { characterId } from the Characters page, or inline { name, description, refAssetId, refAssetIds: [] }
   sceneFades: true,
   autoAssemble: true,
@@ -438,7 +439,11 @@ async function inputsFor(p, s, m, signal, onStatus, cast = []) {
     if (!im) throw new Error(`image model ${p.brief.imageModel} not found`);
     onStatus({ message: `Keyframe · ${im.label}` });
     const { refs, guide } = characterRefs(castFor(p, s), im.refs ?? 0);
-    const kf = await generate({ model: im.id, prompt: `Cinematic film still, ${p.brief.aspect} frame. ${guide}${s.prompt}`, refs, aspect: p.brief.aspect }, { onStatus, signal });
+    // The film's own reference photos (look, places, props) ride along after the cast, within the model's limit.
+    const filmRefs = (p.brief.refAssetIds || []).filter((id) => getAsset(id));
+    const allRefs = [...refs, ...filmRefs].slice(0, im.refs ?? 0);
+    const lookNote = filmRefs.length && allRefs.length > refs.length ? 'Match the look, places and props of the reference photos. ' : '';
+    const kf = await generate({ model: im.id, prompt: `Cinematic film still, ${p.brief.aspect} frame. ${guide}${lookNote}${s.prompt}`, refs: allRefs, aspect: p.brief.aspect }, { onStatus, signal });
     await setShot(p.id, s.id, { keyframeId: kf.asset.id, keyframeAuto: true });
     return withRefs({ image: kf.asset.id, startFrameId: kf.asset.id });
   }
@@ -824,7 +829,7 @@ export function hydrate(p) {
     ...p,
     running: runners.has(p.id),
     shotCount: shotCountFor(p.brief),
-    brief: { ...briefOf(p), musicUrl: u(p.brief.musicAssetId), characters: (p.brief.characters || []).map((c) => {
+    brief: { ...briefOf(p), musicUrl: u(p.brief.musicAssetId), refUrls: (p.brief.refAssetIds || []).map(u).filter(Boolean), characters: (p.brief.characters || []).map((c) => {
       const r = c.characterId ? resolveBriefCharacters([c])[0] : null; // library character: show its name + best refs
       const ids = r ? r.refAssetIds || [] : refIdsOf(c);
       return { ...c, ...(r && { linked: true, resolvedName: r.name, resolvedDescription: r.description || '', hasVoice: !!r.voice }), refUrl: u(r ? ids[0] : c.refAssetId || c.refAssetIds?.[0]), refUrls: ids.map(u) };

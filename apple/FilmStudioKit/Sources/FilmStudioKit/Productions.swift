@@ -102,6 +102,12 @@ public struct Brief: Sendable, Hashable {
     /// This film's own director (set on the server), overriding the studio-wide choice. Read-only here: not sent back.
     public var directorProvider = ""
     public var directorModel = ""
+    /// Reference photos for the whole film (look, places, props, people) — fed into every keyframe.
+    public var refAssetIds: [String] = []
+    public var refUrls: [String] = [] // read-only, from the server
+    /// Your own soundtrack (music == "upload").
+    public var musicAssetId = ""
+    public var musicUrl: String? // read-only
 
     public init() {}
 
@@ -122,6 +128,10 @@ public struct Brief: Sendable, Hashable {
         narratorStyle = s("narratorStyle", narratorStyle); voiceProvider = s("voiceProvider", voiceProvider); voice = s("voice", voice)
         characterNames = (o["characters"]?.array ?? []).compactMap { $0["name"]?.string ?? $0["resolvedName"]?.string }
         directorProvider = s("directorProvider", directorProvider); directorModel = s("directorModel", directorModel)
+        refAssetIds = (o["refAssetIds"]?.array ?? []).compactMap(\.string)
+        refUrls = (o["refUrls"]?.array ?? []).compactMap(\.string)
+        musicAssetId = s("musicAssetId", "")
+        musicUrl = o["musicUrl"]?.string
     }
 
     /// Body for POST /productions or PATCH /productions/:id.
@@ -135,6 +145,7 @@ public struct Brief: Sendable, Hashable {
             "autoScreen": .bool(autoScreen), "likenessQA": .bool(likenessQA),
             "music": .string(music), "musicModel": .string(musicModel), "musicPrompt": .string(musicPrompt), "musicVolume": .number(musicVolume),
             "narration": .bool(narration), "narratorStyle": .string(narratorStyle), "voiceProvider": .string(voiceProvider), "voice": .string(voice),
+            "refAssetIds": JSONValue(refAssetIds), "musicAssetId": .string(musicAssetId),
         ]
     }
 
