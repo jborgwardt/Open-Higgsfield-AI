@@ -3,6 +3,7 @@
 // `npm run local` serves the built UI from ./dist on the same port.
 import http from 'node:http';
 import fs from 'node:fs';
+import { pipeline } from 'node:stream';
 import path from 'node:path';
 import { REPO_ROOT, DATA, MEDIA, getSettings, publicSettings, updateSettings, addAsset, mimeForExt, listAssets, updateAsset, getAsset, accessToken, tokenMatches } from './lib/store.js';
 import { createArchiveManager } from './lib/archive.js';
@@ -114,12 +115,24 @@ function serveFile(req, res, abs, type, immutable) {
     const end = m[1] && m[2] ? Math.min(Number(m[2]), st.size - 1) : st.size - 1;
     if (start >= st.size || start > end) { send(res, 416, 'bad range', { 'Content-Range': `bytes */${st.size}` }); return true; }
     res.writeHead(206, { ...headers, 'Content-Range': `bytes ${start}-${end}/${st.size}`, 'Content-Length': end - start + 1 });
-    fs.createReadStream(abs, { start, end }).pipe(res);
+    streamFile(req, res, abs, { start, end });
     return true;
   }
   res.writeHead(200, { ...headers, 'Content-Length': st.size });
-  if (req.method === 'HEAD') res.end(); else fs.createReadStream(abs).pipe(res);
+  streamFile(req, res, abs);
   return true;
+}
+
+/**
+ * Send a file body. pipeline() destroys the read stream when the client disconnects, seeks away (a new range
+ * request aborts the old one) or a read fails — `.pipe()` kept those file descriptors open (dozens for one
+ * big master after a few seeks). HEAD gets headers only.
+ */
+function streamFile(req, res, abs, range) {
+  if (req.method === 'HEAD') { res.end(); return; }
+  pipeline(fs.createReadStream(abs, range), res, (err) => {
+    if (err && err.code !== 'ERR_STREAM_PREMATURE_CLOSE' && !res.destroyed) res.destroy(err);
+  });
 }
 
 /* ---------------- provider status ---------------- */
