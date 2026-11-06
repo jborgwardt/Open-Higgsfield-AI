@@ -27,3 +27,5 @@ Started 2026-11-06 ~06:45Z. Justin authorized 24–48 h autonomous work. Handoff
 - 06:45Z handoff read; main HEAD f2e4931 (check `git log`).
 
 - QA notes found while testing (to fix in step 3): Home "Make a Film" card opens a blank New Film sheet even when films exist; film header shows "2.589511 min" (format); Director row shows raw "codex"; master viewer's primary orange button is "Upscale" (paid) instead of export; player area black until tapped/loaded.
+
+- 2026-11-06: CORRECTION from Justin. ChatGPT director is connected (j_borgwardt@icloud.com) and it is the default (settings director = codex). The finished film "The Road on Side B" (prod_e578cbb9952c, master a_960be31d6a0a) IS Part 2 (The Prodigal Son), planned by codex · gpt-6-astra. The old paused prod_bf8722b6f222 "waiting for the Astra re-plan" is obsolete. Do not re-plan or re-render.
