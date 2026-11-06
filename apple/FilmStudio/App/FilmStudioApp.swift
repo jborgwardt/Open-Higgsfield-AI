@@ -4,6 +4,9 @@ import FilmStudioKit
 @main
 struct FilmStudioApp: App {
     @State private var app = AppModel()
+    #if os(iOS)
+    @UIApplicationDelegateAdaptor(FilmStudioAppDelegate.self) private var appDelegate
+    #endif
 
     init() {
         #if os(macOS)

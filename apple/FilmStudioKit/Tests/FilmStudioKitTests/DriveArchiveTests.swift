@@ -15,6 +15,19 @@ private let archiveStatusJSON = #"{"connected":true,"provider":"google-drive","r
         #expect(status.folderURL?.host == "drive.google.com")
     }
 
+    @Test func finishedFilmLinkIsASingleDriveFileOnly() throws {
+        let json = #"{"id":"prod_x","status":"verified","title":"Film","folderUrl":"https://drive.google.com/drive/folders/f1","error":null,"verifiedAt":null,"localOffloaded":false,"filmUrl":"https://drive.google.com/file/d/1C_XYDKavmOPQPvtFbEkWprwQVuo6cVxc/view"}"#
+        let archive = try JSONDecoder().decode(ProjectDriveArchive.self, from: Data(json.utf8))
+        #expect(archive.filmURL?.path == "/file/d/1C_XYDKavmOPQPvtFbEkWprwQVuo6cVxc/view")
+        #expect(archive.folderURL != nil)
+        for value in ["https://drive.google.com/drive/folders/x", "https://drive.google.com.evil.example/file/d/x/view", "http://drive.google.com/file/d/x/view", "https://u:p@drive.google.com/file/d/x/view", "javascript:alert(1)"] {
+            #expect(DriveArchiveStatus.privateFileURL(value) == nil)
+        }
+        // An older engine without the field still decodes.
+        let old = #"{"id":"p","status":"not_archived","folderUrl":null,"localOffloaded":false}"#
+        #expect(try JSONDecoder().decode(ProjectDriveArchive.self, from: Data(old.utf8)).filmURL == nil)
+    }
+
     @Test func rejectUntrustedFolderLinks() {
         for value in ["https://drive.google.com.evil.example/drive/folders/x", "javascript:alert(1)", "http://drive.google.com/drive/folders/x", "https://user:pass@drive.google.com/drive/folders/x", "https://drive.google.com:8443/drive/folders/x", "https://drive.google.com/open?id=x"] {
             #expect(DriveArchiveStatus.privateFolderURL(value) == nil)

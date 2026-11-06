@@ -38,6 +38,15 @@ public struct DriveArchiveStatus: Decodable, Sendable {
               url.path.hasPrefix("/drive/folders/") else { return nil }
         return url.url
     }
+
+    /// A single private Drive file (https://drive.google.com/file/d/<id>/view) — never an arbitrary link.
+    public static func privateFileURL(_ value: String?) -> URL? {
+        guard let value, let url = URLComponents(string: value),
+              url.scheme?.lowercased() == "https", url.host?.lowercased() == "drive.google.com",
+              url.user == nil, url.password == nil, url.port == nil || url.port == 443,
+              url.path.hasPrefix("/file/d/") else { return nil }
+        return url.url
+    }
 }
 
 public extension APIClient {
@@ -65,7 +74,10 @@ public struct ProjectDriveArchive: Decodable, Sendable {
     public let error: String?
     public let verifiedAt: String?
     public let localOffloaded: Bool
+    /// The finished film's own backed-up file (not the project folder).
+    public let filmUrl: String?
     public var folderURL: URL? { DriveArchiveStatus.privateFolderURL(folderUrl) }
+    public var filmURL: URL? { DriveArchiveStatus.privateFileURL(filmUrl) }
     public var label: String {
         switch status {
         case "verified": localOffloaded ? "Stored in Google Drive" : "Backup verified"

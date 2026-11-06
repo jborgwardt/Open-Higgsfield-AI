@@ -62,6 +62,7 @@ test('archives a self-contained private project including original song and char
   const state = f.m.projectStatus('prod_one');
   assert.equal(state.status, 'verified'); assert.match(state.folderUrl, /^https:\/\/drive.google.com\/drive\/folders\//);
   assert.ok(!state.folder.includes('..')); assert.ok(state.folder.endsWith('--prod_one'));
+  assert.equal(state.filmUrl, 'https://drive.google.com/file/d/file-id/view', 'direct link to the finished film itself');
   const manifest = JSON.parse(f.remote.get(`${state.folder}/project.json`));
   assert.deepEqual(manifest.assets.map((a) => a.id).sort(), ['a_clip', 'a_master', 'a_ref', 'a_song']);
   assert.equal(manifest.characters[0].name, 'Dog');

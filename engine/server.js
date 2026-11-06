@@ -108,8 +108,14 @@ function serveFile(req, res, abs, type, immutable) {
   let st;
   try { st = fs.statSync(abs); } catch { return false; }
   if (!st.isFile()) return false;
-  const headers = { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Cache-Control': immutable ? 'private, max-age=31536000, immutable' : 'no-cache' };
-  const m = req.headers.range?.match(/bytes=(\d*)-(\d*)/);
+  // Validators let a phone resume a dropped download (URLSession resume data sends If-Range + Range).
+  const etag = `"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
+  const lastModified = st.mtime.toUTCString();
+  const headers = { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Cache-Control': immutable ? 'private, max-age=31536000, immutable' : 'no-cache', ETag: etag, 'Last-Modified': lastModified };
+  // If-Range: only honour the range when the file is still the one the client started with (RFC 9110 13.1.5).
+  const ifRange = req.headers['if-range'];
+  const rangeOk = !ifRange || ifRange === etag || ifRange === lastModified;
+  const m = rangeOk ? req.headers.range?.match(/bytes=(\d*)-(\d*)/) : null;
   if (m) {
     const start = m[1] ? Number(m[1]) : st.size - Number(m[2]);
     const end = m[1] && m[2] ? Math.min(Number(m[2]), st.size - 1) : st.size - 1;

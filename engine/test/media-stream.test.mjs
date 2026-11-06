@@ -35,9 +35,9 @@ async function settledFds(ms = 4000) {
   return n;
 }
 
-function request({ method = 'GET', range, abortAfter } = {}) {
+function request({ method = 'GET', range, abortAfter, headers: extra = {} } = {}) {
   return new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port: PORT, path: `/engine/media/${FILE}`, method, headers: range ? { Range: range } : {} }, (res) => {
+    const req = http.request({ host: '127.0.0.1', port: PORT, path: `/engine/media/${FILE}`, method, headers: { ...(range ? { Range: range } : {}), ...extra } }, (res) => {
       const chunks = []; let got = 0;
       res.on('data', (c) => {
         got += c.length;
@@ -107,4 +107,18 @@ test('aborted downloads and rapid seeks leave no open file descriptors', { skip:
   const r = await request({ range: 'bytes=0-9' });
   assert.ok(r.body.equals(BYTES.subarray(0, 10)));
   assert.equal(await settledFds(), 0);
+});
+
+test('validators + If-Range let an interrupted download resume (and restart if the file changed)', async () => {
+  const h = await request({ method: 'HEAD' });
+  assert.match(h.headers.etag, /^"[0-9a-f]+-[0-9a-f]+"$/);
+  assert.ok(h.headers['last-modified']);
+  const resumed = await request({ range: 'bytes=1000-1999', headers: { 'If-Range': h.headers.etag } });
+  assert.equal(resumed.status, 206);
+  assert.ok(resumed.body.equals(BYTES.subarray(1000, 2000)));
+  const byDate = await request({ range: 'bytes=0-9', headers: { 'If-Range': h.headers['last-modified'] } });
+  assert.equal(byDate.status, 206);
+  const stale = await request({ range: 'bytes=1000-1999', headers: { 'If-Range': '"stale-etag"' } });
+  assert.equal(stale.status, 200, 'a different file version gets the whole file, not a mismatched piece');
+  assert.equal(stale.body.length, SIZE);
 });

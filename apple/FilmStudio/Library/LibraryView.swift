@@ -103,7 +103,9 @@ struct LibraryView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(exportStatus).font(.subheadline.monospacedDigit())
                             #if os(iOS)
-                            Text("Keep Film Studio open until saving finishes.").font(.caption).foregroundStyle(.secondary)
+                            Text(exportStatus.hasPrefix("Downloading") || exportStatus.hasPrefix("Connection")
+                                 ? "You can switch apps: the download keeps going."
+                                 : "Keep Film Studio open until saving finishes.").font(.caption).foregroundStyle(.secondary)
                             #endif
                         }
                         Spacer()

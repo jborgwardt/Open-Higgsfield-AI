@@ -15,8 +15,15 @@ struct ProjectDriveArchiveSection: View {
             if let archive {
                 Label(archive.label, systemImage: archive.status == "verified" ? "checkmark.icloud.fill" : "icloud")
                     .foregroundStyle(archive.status == "verified" ? .green : .secondary)
+                if let url = archive.filmURL {
+                    // The movie itself: watch, download or share it from Google Drive.
+                    Button { Platform.open(url) } label: { Label("Open Finished Film in Google Drive", systemImage: "play.rectangle.fill") }
+                        .fontWeight(.semibold)
+                        .accessibilityIdentifier("drive.finishedFilm")
+                }
                 if let url = archive.folderURL {
-                    Button { Platform.open(url) } label: { Label("Open Project in Google Drive", systemImage: "arrow.up.right.square") }
+                    Button { Platform.open(url) } label: { Label("Open Project Folder", systemImage: "folder") }
+                        .accessibilityIdentifier("drive.projectFolder")
                 }
                 if let date = archive.verifiedAt.flatMap(ISODate.parse) {
                     LabeledContent("Verified", value: date.formatted(date: .abbreviated, time: .shortened))
@@ -33,7 +40,7 @@ struct ProjectDriveArchiveSection: View {
             if let problem { Text(problem).font(.caption).foregroundStyle(.red) }
             if let notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
         } header: { Text("Google Drive") } footer: {
-            Text(canBackUp ? "This project’s videos and project files are saved together. Open the folder to download or share videos from Google Drive." : "Finish rendering and assembling the film before backing it up.")
+            Text(canBackUp ? "“Open Finished Film” goes straight to the movie in Google Drive, to watch, download or share it. The project folder also holds every source clip and the project files." : "Finish rendering and assembling the film before backing it up.")
         }
         .task(id: productionID) { await load() }
     }

@@ -57,7 +57,9 @@ struct MediaViewer: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(busy).font(.subheadline.monospacedDigit())
                                 #if os(iOS)
-                                Text("Keep Film Studio open until saving finishes.").font(.caption).foregroundStyle(.secondary)
+                                Text(busy.hasPrefix("Downloading") || busy.hasPrefix("Connection")
+                                     ? "You can switch apps: the download keeps going."
+                                     : "Keep Film Studio open until saving finishes.").font(.caption).foregroundStyle(.secondary)
                                 #endif
                             }
                             Spacer()

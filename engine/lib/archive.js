@@ -368,7 +368,12 @@ export function createArchiveManager({ data, media, getAsset, listAssets, listPr
         try { if (!complete(p) || r.revision !== fingerprint(projectSnapshot(p))) r = { ...r, status: 'not_archived', error: 'Project changed since its last backup' }; }
         catch { r = { ...r, status: 'not_archived', error: 'Project references changed since its last backup' }; }
       }
+      // The finished film itself (its backed-up master file), so people can open/download the movie directly
+      // instead of digging through a project folder full of source clips.
+      const masterId = p.master?.assetId;
+      const masterDrive = masterId && state.assets[masterId]?.driveId;
       return { ...(r || { id, title: p.title, status: 'not_archived', folderUrl: null }),
-        localOffloaded: !!state.assets[p.master?.assetId]?.localEvictedAt };
+        localOffloaded: !!state.assets[masterId]?.localEvictedAt,
+        filmUrl: masterDrive && /^[\w-]{5,200}$/.test(masterDrive) ? `https://drive.google.com/file/d/${masterDrive}/view` : null };
     } };
 }
