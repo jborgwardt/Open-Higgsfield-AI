@@ -173,7 +173,7 @@ struct ToolRunView: View {
                 }
                 Section {
                     Button(action: run) {
-                        Label("Run \(tool.title)", systemImage: "sparkle")
+                        Label("Run \(tool.title)", systemImage: "play.fill")
                     }
                     .buttonStyle(.ember(.large, fullWidth: true))
                     .disabled(!missing.isEmpty)

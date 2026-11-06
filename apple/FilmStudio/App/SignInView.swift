@@ -28,7 +28,7 @@ struct SignInView: View {
                         Text(app.serverURL.host ?? app.serverURL.absoluteString)
                             .font(.caption.monospaced()).foregroundStyle(Color.textTertiary)
                             .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(Color.surfaceHigh, in: Capsule())
+                            .glassFill(Capsule(), interactive: false)
                     }
                     SignInControls()
                         .frame(maxWidth: 380)

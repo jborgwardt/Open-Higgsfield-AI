@@ -65,7 +65,7 @@ struct HomeView: View {
             Text("FILM STUDIO").font(.display(26)).tracking(0.2).foregroundStyle(.white)
             Spacer()
             if app.config.isOn("create"), sizeClass == .regular || Platform.isMac {
-                Button { app.openComposer() } label: { Label("Create", systemImage: "sparkle") }
+                Button { app.openComposer() } label: { Label("Create", systemImage: "plus") }
                     .buttonStyle(.ember(.small))
             }
         }

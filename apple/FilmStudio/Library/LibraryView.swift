@@ -107,7 +107,7 @@ struct LibraryView: View {
                         .onSubmit { searchFocused = false } // the keyboard's Search key closes it
                 }
                 .padding(.horizontal, 14).padding(.vertical, 10)
-                .background(Color.surfaceHigh, in: Capsule())
+                .glassFill(Capsule(), interactive: false)
                 Button("Cancel") { withAnimation(.snappy) { searching = false; search = "" } }.foregroundStyle(.white)
             } else {
                 DisplayTitle("Library", size: 34, lineLimit: 1).foregroundStyle(.white)
@@ -237,7 +237,7 @@ struct LibraryView: View {
             Text(search.isEmpty ? "Images and videos you generate — and finished films — show up here." : "Try another word.")
                 .font(.subheadline).foregroundStyle(Color.textSecondary).multilineTextAlignment(.center)
             if search.isEmpty, app.config.isOn("create") {
-                Button { app.openComposer() } label: { Label("Create something", systemImage: "sparkle") }.buttonStyle(.ember).padding(.top, 6)
+                Button { app.openComposer() } label: { Label("Create something", systemImage: "plus") }.buttonStyle(.ember).padding(.top, 6)
             }
         }
         .padding(32)
@@ -285,7 +285,7 @@ struct LibraryView: View {
         }
         #endif
         if !item.isVideo, app.config.isOn("create") {
-            Button("Animate", systemImage: "wand.and.stars") { app.openCreate(startFrame: UploadedAsset(id: item.id, url: item.url, kind: "image")) }
+            Button("Animate", systemImage: "play.rectangle") { app.openCreate(startFrame: UploadedAsset(id: item.id, url: item.url, kind: "image")) }
             Button("Use as Reference", systemImage: "photo.on.rectangle") { app.openCreate(startFrame: UploadedAsset(id: item.id, url: item.url, kind: "image"), mode: .image) }
         }
         Button("Copy Prompt", systemImage: "doc.on.doc") { Platform.copy(item.prompt) }

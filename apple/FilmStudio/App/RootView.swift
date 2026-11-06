@@ -150,7 +150,7 @@ struct MainView: View {
         NavigationSplitView {
             List(selection: Binding<String?>(get: { tab }, set: { if let v = $0 { tab = v } })) {
                 if app.config.isOn("create") {
-                    Label { Text("Create").font(.headline) } icon: { Image(systemName: "sparkle").foregroundStyle(Color.onEmber).padding(5).background(Color.ember, in: Circle()) }
+                    Label { Text("Create").font(.headline) } icon: { Image(systemName: "plus").foregroundStyle(Color.onEmber).padding(5).background(Color.ember, in: Circle()) }
                         .tag("create")
                 }
                 Section {
@@ -261,8 +261,8 @@ struct StudioTabBar: View {
             Platform.impact()
             create()
         } label: {
-            Image(systemName: "sparkle")
-                .font(.system(size: 24, weight: .heavy))
+            Image(systemName: "plus")
+                .font(.system(size: 24, weight: .semibold))
                 .foregroundStyle(Color.onEmber)
                 .frame(width: 64, height: slim ? 40 : 50)
                 .background(Capsule().fill(Color.ember))

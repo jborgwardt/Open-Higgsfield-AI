@@ -107,7 +107,7 @@ struct CharactersView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .glassFill(RoundedRectangle(cornerRadius: 22, style: .continuous), interactive: false, fallback: .surface)
         .padding(.horizontal, 16)
     }
 

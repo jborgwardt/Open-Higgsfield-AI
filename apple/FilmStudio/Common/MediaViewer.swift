@@ -123,7 +123,7 @@ struct MediaViewer: View {
                     if let t = upscaleTool { Button("Upscale", systemImage: "arrow.up.left.and.arrow.down.right") { upscale = t } }
                 } label: {
                     VStack(spacing: 3) {
-                        Image(systemName: "wand.and.stars").font(.system(size: 17, weight: .semibold))
+                        Image(systemName: "slider.horizontal.3").font(.system(size: 17, weight: .semibold))
                         Text("Remix").font(.system(size: 10, weight: .semibold))
                     }
                     .frame(width: 54, height: 44)
@@ -134,10 +134,10 @@ struct MediaViewer: View {
             }
             if !isAudio {
                 if !item.isVideo, app.config.isOn("create") {
-                    Button { app.openCreate(startFrame: asset, mode: .video) } label: { Label("Animate", systemImage: "sparkle") }
+                    Button { app.openCreate(startFrame: asset, mode: .video) } label: { Label("Animate", systemImage: "play.rectangle") }
                         .buttonStyle(.ember)
                 } else if let t = upscaleTool {
-                    Button { upscale = t } label: { Label("Upscale", systemImage: "sparkle") }
+                    Button { upscale = t } label: { Label("Upscale", systemImage: "arrow.up.left.and.arrow.down.right") }
                         .buttonStyle(.ember)
                 }
             }

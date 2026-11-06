@@ -64,7 +64,7 @@ struct ProfileView: View {
     private func row(_ title: String, _ subtitle: String, _ symbol: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.ember)
-                .frame(width: 36, height: 36).background(Color.surfaceHigh, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .frame(width: 36, height: 36).glassFill(RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.body.weight(.semibold)).foregroundStyle(.white)
                 Text(subtitle).font(.caption).foregroundStyle(Color.textSecondary).lineLimit(3)

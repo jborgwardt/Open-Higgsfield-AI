@@ -68,7 +68,7 @@ struct BriefEditor: View {
                         HStack(spacing: 10) {
                             addMenu
                             if brief.refAssetIds.isEmpty && brief.musicAssetId.isEmpty && !adding {
-                                Text("Add photos or audio").foregroundStyle(.secondary)
+                                Text("Add photos or audio").foregroundStyle(.secondary).lineLimit(1).fixedSize()
                             }
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
@@ -292,7 +292,7 @@ struct BriefEditor: View {
             Button("Soundtrack (audio file)…", systemImage: "music.note") { importingAudio = true }
         } label: {
             Image(systemName: "plus").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
-                .frame(width: 36, height: 36).background(Color.white.opacity(0.12), in: Circle())
+                .frame(width: 36, height: 36).glassFill(Circle())
         }
         .menuIndicator(.hidden)
         .buttonStyle(.plain)

@@ -80,7 +80,7 @@ struct ComposerView: View {
     struct VideoToolRoute: Identifiable { let id = UUID(); let tool: Tool; let clip: UploadedAsset; let prompt: String }
     /// Tools that take a reference video, in the order offered.
     private static let videoToolIDs: [(id: String, title: String, icon: String)] = [
-        ("video-edit", "Edit this video with a prompt", "wand.and.stars"),
+        ("video-edit", "Edit this video with a prompt", "pencil.and.outline"),
         ("motion-control", "Copy its motion onto a photo or character", "figure.walk.motion"),
         ("restyle", "Restyle it (new look, same motion)", "paintpalette"),
         ("recast", "Swap a person or object in it", "person.2.crop.square.stack"),
@@ -377,7 +377,7 @@ struct ComposerView: View {
                     HStack(spacing: 8) {
                         // Say why Generate is waiting instead of just greying it out (QA-19).
                         if uploading { ProgressView().controlSize(.small).tint(Color.onEmber); Text("Uploading…") }
-                        else { Text("Generate"); Image(systemName: "sparkle") }
+                        else { Text("Generate"); Image(systemName: "arrow.up") }
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -475,7 +475,7 @@ struct ComposerView: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 36, height: 36)
-                .background(Color.white.opacity(0.12), in: Circle())
+                .glassFill(Circle())
         }
         .menuIndicator(.hidden)
         .buttonStyle(.plain)

@@ -29,7 +29,7 @@ struct FilmsView: View {
                                 }
                                 .padding(20)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                                .glassFill(RoundedRectangle(cornerRadius: 22, style: .continuous), interactive: false, fallback: .surface)
                                 .padding(.horizontal, 16)
                             } else {
                                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 12)], spacing: 14) {
@@ -145,6 +145,7 @@ struct FilmDetailView: View {
     @State private var actionError: String?
     @State private var askDirector = false
     @State private var confirmReplan = false
+    @State private var draftMinutes: Double?
 
     var body: some View {
         ScreenGate(id: "filmDetail", params: ["id": id], title: production?.title ?? "Film") {
@@ -199,6 +200,7 @@ struct FilmDetailView: View {
         List {
             Section { header(p) }
             Section { actions(p) }
+            Section { actionDetails(p) }
             if p.shots.isEmpty {
                 Section {
                     Text(p.status == .planning ? "The director is writing the shot list…" : "No shots yet. Write a script in the brief, then plan with the director.")
@@ -255,7 +257,20 @@ struct FilmDetailView: View {
                 StatusBadge(text: p.assembling ? "Assembling" : p.status.label, tint: p.assembling ? .purple : p.status.tint, spinning: p.isLive)
                 if !p.shots.isEmpty { Text("\(p.doneCount)/\(p.shots.count) shots").font(.subheadline).foregroundStyle(.secondary).monospacedDigit() }
                 Spacer()
-                Text("\(p.brief.lengthText) · \(Int(p.brief.clipSeconds)) s clips").font(.caption).foregroundStyle(.secondary)
+                Text("\(lengthText(draftMinutes ?? p.brief.targetMinutes)) · \(Int(p.brief.clipSeconds)) s clips").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            }
+            if p.shots.isEmpty, p.status == .draft {
+                // Set the length right here (also in the brief); saved when you let go.
+                HStack(spacing: 10) {
+                    Text("Length").font(.subheadline.weight(.medium))
+                    Slider(value: Binding(get: { draftMinutes ?? p.brief.targetMinutes }, set: { draftMinutes = $0 }),
+                           in: 0.5...max(app.config.limit("filmMaxMinutes", default: 30), p.brief.targetMinutes), step: 0.5) { editing in
+                        if !editing, let m = draftMinutes { Task { await setLength(m) } }
+                    }
+                    .tint(Color.ember)
+                    .accessibilityLabel("Film length")
+                    .accessibilityValue(lengthText(draftMinutes ?? p.brief.targetMinutes))
+                }
             }
             if !p.shots.isEmpty { ProgressView(value: Double(p.doneCount), total: Double(max(p.shots.count, 1))) }
             if let plan = p.plan, !plan.logline.isEmpty { Text(plan.logline).font(.callout).italic() }
@@ -271,10 +286,10 @@ struct FilmDetailView: View {
                 if p.shots.isEmpty || p.status == .draft {
                     Button { Task { await plan() } } label: {
                         HStack {
-                            if busy == "Plan" { ProgressView().controlSize(.small) } else { Image(systemName: "wand.and.stars") }
-                            Text("Plan with Director")
+                            if busy == "Plan" { ProgressView().controlSize(.small) } else { Image(systemName: "list.and.film") }
+                            Text("Plan the Film")
                         }
-                        .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 4)
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(Color.onEmber).frame(maxWidth: .infinity).padding(.vertical, 4)
                     }
                     .glassButton(prominent: true)
                     .controlSize(.large)
@@ -289,8 +304,15 @@ struct FilmDetailView: View {
                 }
             }
         }
+        .padding(.bottom, 14)
         .listRowBackground(Color.clear)
         .listRowInsets(EdgeInsets())
+        .listRowSeparator(.hidden)
+    }
+
+    /// Script prompt + director under the buttons, as their own rounded card.
+    @ViewBuilder private func actionDetails(_ p: Production) -> some View {
+        let canPlan = p.status != .running && p.status != .planning
         if p.brief.script.trimmingCharacters(in: .whitespaces).isEmpty, p.shots.isEmpty {
             Button("Write the script…") { editingBrief = true }
         }
@@ -332,6 +354,13 @@ struct FilmDetailView: View {
     }
 
     /// Planning needs an explicitly chosen director; ask for one first instead of failing.
+    private func lengthText(_ m: Double) -> String { m < 1 ? "\(Int((m * 60).rounded())) s" : "\(m.formatted()) min" }
+
+    private func setLength(_ minutes: Double) async {
+        do { production = try await app.client.updateProduction(id, ["targetMinutes": .number(minutes)]); draftMinutes = nil }
+        catch { actionError = error.localizedDescription; draftMinutes = nil }
+    }
+
     private func plan() async {
         // A film with its own director plans with it; the studio-wide choice is only needed when it has none.
         if production?.brief.directorProvider.isEmpty == false {

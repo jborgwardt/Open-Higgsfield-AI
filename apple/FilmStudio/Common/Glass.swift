@@ -27,7 +27,28 @@ private struct StudioGlass<S: InsettableShape>: ViewModifier {
     }
 }
 
+/// Glass instead of a solid fill: `tint` colours it (selected chips, the ember primary), Reduce Transparency → `fallback`.
+private struct GlassFill<S: Shape>: ViewModifier {
+    let shape: S
+    var tint: Color?
+    var interactive: Bool
+    var fallback: Color
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    func body(content: Content) -> some View {
+        if reduceTransparency {
+            content.background(tint ?? fallback, in: shape)
+        } else {
+            content.glassEffect({ var g = Glass.regular; if let tint { g = g.tint(tint) }; if interactive { g = g.interactive() }; return g }(), in: shape)
+        }
+    }
+}
+
 extension View {
+    /// Liquid Glass background in `shape` (solid `fallback` with Reduce Transparency).
+    func glassFill<S: Shape>(_ shape: S, tint: Color? = nil, interactive: Bool = true, fallback: Color = .surfaceHigh) -> some View {
+        modifier(GlassFill(shape: shape, tint: tint, interactive: interactive, fallback: fallback))
+    }
+
     /// Floating glass surface in `shape`; `interactive` for things you tap.
     func studioGlass<S: InsettableShape>(_ shape: S, tint: Color? = nil, interactive: Bool = false) -> some View {
         modifier(StudioGlass(shape: shape, tint: tint, interactive: interactive))

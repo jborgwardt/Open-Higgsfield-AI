@@ -100,12 +100,12 @@ struct EmberButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: size == .large ? 17 : 14, weight: .heavy))
+            .font(.system(size: size == .large ? 17 : 14, weight: .semibold))
             .foregroundStyle(Color.onEmber.opacity(isEnabled ? 1 : 0.45))
             .padding(.horizontal, size == .large ? 22 : 14)
             .padding(.vertical, size == .large ? 15 : 9)
             .frame(maxWidth: fullWidth ? .infinity : nil)
-            .background(Capsule().fill(Color.ember.opacity(isEnabled ? 1 : 0.35)))
+            .glassFill(Capsule(), tint: Color.ember.opacity(isEnabled ? 0.92 : 0.3))
             .contentShape(Capsule())
             .scaleEffect(configuration.isPressed ? 0.965 : 1)
             .brightness(configuration.isPressed ? -0.06 : 0)
@@ -122,8 +122,7 @@ struct DarkPillButtonStyle: ButtonStyle {
             .foregroundStyle(.white)
             .padding(.horizontal, size == .large ? 20 : 14)
             .padding(.vertical, size == .large ? 13 : 9)
-            .background(Capsule().fill(Color.surfaceHigh))
-            .overlay(Capsule().strokeBorder(Color.hairline))
+            .glassFill(Capsule())
             .contentShape(Capsule())
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
@@ -154,8 +153,7 @@ struct StudioChip: View {
         .foregroundStyle(selected ? Color.onEmber : .white)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Capsule().fill(selected ? Color.ember : Color.surfaceHigh))
-        .overlay(Capsule().strokeBorder(selected ? .clear : Color.hairline))
+        .glassFill(Capsule(), tint: selected ? Color.ember.opacity(0.92) : nil)
         .contentShape(Capsule())
     }
 }
