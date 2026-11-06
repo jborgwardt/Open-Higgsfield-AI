@@ -126,11 +126,17 @@ export function createArchiveManager({ data, media, getAsset, listAssets, listPr
   }
   const allProductions = () => listProductions().map((p) => getProduction(p.id)).filter(Boolean);
   const complete = (p) => p?.status === 'done' && !p.assembling && p.screening?.status !== 'running' && p.master?.assetId && !(p.shots || []).some((s) => s.status === 'running');
+  function assetReferenceClosure(value) {
+    const ids = referencedAssetIds(value);
+    // Cached inputs such as Topaz upscales live on source asset metadata, not on the shot.
+    // Set iteration visits newly discovered IDs and terminates for parent/child cycles.
+    for (const id of ids) { const asset = getAsset(id); if (asset) referencedAssetIds(asset, ids); }
+    return ids;
+  }
   function projectSnapshot(p) {
     const chars = (p.brief?.characters || []).map((c) => c.characterId ? getCharacter(c.characterId) : c).filter(Boolean);
-    const ids = referencedAssetIds([p, chars]);
     // Include poster / subtitle / derived-asset links stored on assets themselves.
-    for (const id of ids) { const a = getAsset(id); if (a) referencedAssetIds(a, ids); }
+    const ids = assetReferenceClosure([p, chars]);
     const assets = [...ids].map((id) => {
       const asset = getAsset(id);
       if (!asset) throw fail(409, `Project references missing media ${id}; backup is incomplete`);
@@ -215,8 +221,8 @@ export function createArchiveManager({ data, media, getAsset, listAssets, listPr
     } catch (e) { Object.assign(record, { status: 'error', error: e.message }); await save(); throw e; }
   }
   function standaloneVideos() {
-    const referenced = referencedAssetIds([allProductions(), listCharacters()]);
-    return listAssets().filter((a) => a.kind === 'video' && !['upload', 'handoff', 'poster', 'last-frame', 'continuity', 'preview'].includes(a.source) && !referenced.has(a.id));
+    const referenced = assetReferenceClosure([allProductions(), listCharacters()]);
+    return listAssets().filter((a) => a.kind === 'video' && !a.hidden && !['upload', 'handoff', 'poster', 'last-frame', 'continuity', 'preview', 'upscaled'].includes(a.source) && !referenced.has(a.id));
   }
   async function archiveVideo(a, verifyExisting = false) {
     const old = state.videos[a.id];
@@ -235,13 +241,13 @@ export function createArchiveManager({ data, media, getAsset, listAssets, listPr
   function evictionCandidates() {
     const projects = allProductions();
     // A master used as a reference/music/input anywhere else must remain local.
-    const protectedIds = referencedAssetIds(listCharacters());
+    const protectedIds = assetReferenceClosure(listCharacters());
     for (const p of projects) {
       const copy = { ...p, master: null,
         // Completed review metadata points to its own master, but does not consume it as an input.
         screening: p.screening ? { ...p.screening, masterAssetId: p.screening.masterAssetId === p.master?.assetId ? null : p.screening.masterAssetId } : null };
-      referencedAssetIds(copy, protectedIds);
-      if (!complete(p)) referencedAssetIds(p, protectedIds);
+      for (const id of assetReferenceClosure(copy)) protectedIds.add(id);
+      if (!complete(p)) for (const id of assetReferenceClosure(p)) protectedIds.add(id);
     }
     const ids = new Set();
     for (const p of projects) if (complete(p) && state.projects[p.id]?.status === 'verified' && state.projects[p.id].revision === fingerprint(projectSnapshot(p))) ids.add(p.master.assetId);
@@ -296,7 +302,7 @@ export function createArchiveManager({ data, media, getAsset, listAssets, listPr
     try { return await task; } finally { restores.delete(id); }
   }
   async function restoreReferences(value) {
-    for (const id of referencedAssetIds(value)) if (getAsset(id) && state.assets[id]) await ensureLocal(id);
+    for (const id of assetReferenceClosure(value)) if (getAsset(id) && state.assets[id]) await ensureLocal(id);
   }
   async function restoreProject(id) {
     const p = getProduction(id);

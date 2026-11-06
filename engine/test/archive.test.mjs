@@ -101,6 +101,27 @@ test('active work and masters shared by unfinished projects prevent offloading',
   f.projects.prod_one.status = 'running'; await f.m.run(); assert.equal(f.exists('a_master'), true);
 });
 
+test('cached Topaz inputs stay local and automatic input restore follows asset metadata', async (t) => {
+  const f = await fixture(t); await f.project();
+  await f.asset('a_topaz', { source: 'upscaled', hidden: true, parentId: 'a_clip' });
+  f.assets.a_clip.upscaled = { '3840x2160': 'a_topaz' };
+  await f.asset('a_orphanCache', { source: 'upscaled' });
+  await f.asset('a_hiddenCache', { hidden: true });
+  await f.enable(); await f.m.run(); f.advance(49); await f.m.run();
+  assert.equal(f.exists('a_master'), false, 'finished master remains eligible for offloading');
+  assert.equal(f.exists('a_topaz'), true, 'a hidden derived shot input is not a standalone finished video');
+  assert.equal(f.exists('a_orphanCache'), true, 'unreferenced upscale caches are conservatively retained');
+  assert.equal(f.exists('a_hiddenCache'), true, 'hidden intermediate videos are conservatively retained');
+
+  // Recover a cache evicted by a prior version. This is the production object passed by the
+  // POST /productions/:id/assemble interceptor, not the expanded archive manifest.
+  await fsp.unlink(path.join(f.media, f.assets.a_topaz.file));
+  await f.m.restoreReferences(f.projects.prod_one);
+  assert.equal(f.exists('a_topaz'), true, 'restores the transitive cached input before FFmpeg reuses it');
+  assert.equal(f.exists('a_master'), true);
+  assert.equal(f.calls.downloads, 2, 'the source/cache parent cycle does not duplicate transfers');
+});
+
 test('archived video restores after restart with a single checksum-verified transfer and resets retention', async (t) => {
   const f = await fixture(t); await f.project(); await f.enable(); await f.m.run(); f.advance(49); await f.m.run();
   f.restart(); assert.equal(f.m.projectStatus('prod_one').localOffloaded, true);
