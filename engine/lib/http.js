@@ -1,8 +1,10 @@
 export const sleep = (ms, signal) =>
   new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new Error('cancelled'));
-    const t = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => { clearTimeout(t); reject(new Error('cancelled')); }, { once: true });
+    const cleanup = () => signal?.removeEventListener('abort', onAbort);
+    const onAbort = () => { clearTimeout(t); cleanup(); reject(new Error('cancelled')); };
+    const t = setTimeout(() => { cleanup(); resolve(); }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 
 export class ProviderError extends Error {
