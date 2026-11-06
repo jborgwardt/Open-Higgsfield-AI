@@ -65,6 +65,7 @@ test('archives a self-contained private project including original song and char
 
 test('fresh backups are retained for 48 hours; only completed masters and standalone videos are offloaded', async (t) => {
   const f = await fixture(t); await f.project(); await f.asset('a_single'); await f.enable();
+  f.projects.prod_one.screening = { status: 'done', masterAssetId: 'a_master', score: 8 };
   await f.m.run({ manual: true });
   assert.equal(f.exists('a_master'), true); assert.equal(f.exists('a_single'), true);
   f.advance(47); await f.m.run(); assert.equal(f.exists('a_master'), true);

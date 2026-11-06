@@ -218,7 +218,9 @@ export function createArchiveManager({ data, media, getAsset, listAssets, listPr
     // A master used as a reference/music/input anywhere else must remain local.
     const protectedIds = referencedAssetIds(listCharacters());
     for (const p of projects) {
-      const copy = { ...p, master: null };
+      const copy = { ...p, master: null,
+        // Completed review metadata points to its own master, but does not consume it as an input.
+        screening: p.screening ? { ...p.screening, masterAssetId: p.screening.masterAssetId === p.master?.assetId ? null : p.screening.masterAssetId } : null };
       referencedAssetIds(copy, protectedIds);
       if (!complete(p)) referencedAssetIds(p, protectedIds);
     }

@@ -160,7 +160,7 @@ const prod = (id) => { const p = lf.getProduction(id); if (!p) throw new HttpErr
 const archive = createArchiveManager({ data: DATA, media: MEDIA, getAsset, listAssets,
   listProductions: lf.listProductions, getProduction: lf.getProduction, getCharacter: characters.getCharacter,
   listCharacters: characters.list,
-  isBusy: () => jobs.hasActiveJobs() || post.listJobs().some((j) => ['running', 'queued'].includes(j.status)) || lf.listProductions().some((m) => {
+  isBusy: () => jobs.hasActiveJobs() || characters.list().some((c) => c.processing?.length) || post.listJobs().some((j) => ['running', 'queued'].includes(j.status)) || lf.listProductions().some((m) => {
     const p = lf.getProduction(m.id); return ['running', 'planning'].includes(p.status) || p.assembling || p.screening?.status === 'running';
   }),
 });
