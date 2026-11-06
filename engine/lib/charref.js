@@ -258,16 +258,20 @@ export function pickRefs(character, limit = 6, { includeSheet = true, sheetLast 
   const refs = character?.refs || [];
   // A sheet ref only exists once a sheet is approved; it stays in force while a newer sheet awaits review.
   const sheet = includeSheet ? refs.find((r) => r.kind === 'sheet') : null;
-  const usable = refs.filter((r) => r.kind !== 'sheet' && r.status !== 'error' && !(r.quality?.flags || []).includes('no-face'))
-    .sort((a, b) => refScore(b) - refScore(a));
+  // The grader is built for human faces: an animal, creature or cartoon "has no face" and scores near zero.
+  // For characters that aren't real people that says nothing about the photo, so judge it on sharpness alone.
+  const human = character?.realPerson !== false;
+  const scoreOf = human ? refScore : (r) => Math.round(100 * (0.3 + 0.7 * (r.quality?.sharp ?? 0.6)));
+  const usable = refs.filter((r) => r.kind !== 'sheet' && r.status !== 'error' && !(human && (r.quality?.flags || []).includes('no-face')))
+    .sort((a, b) => scoreOf(b) - scoreOf(a));
   // Weak photos (< 30) only count when nothing better exists — one poor reference beats none.
-  const photos = usable.filter((r) => refScore(r) >= 30).length ? usable.filter((r) => refScore(r) >= 30) : usable.slice(0, 1);
+  const photos = usable.filter((r) => scoreOf(r) >= 30).length ? usable.filter((r) => scoreOf(r) >= 30) : usable.slice(0, 1);
   const chosen = [];
   const take = (r) => { if (r && !chosen.includes(r)) chosen.push(r); };
   for (const slot of PRIORITY) take(photos.find((r) => !chosen.includes(r) && slotsFor(r).includes(slot)));
   for (const r of photos) if (!chosen.some((c) => hamming(c.hash, r.hash) <= DUPLICATE)) take(r);
   // Keep the slot picks in priority order but put clearly better photos ahead of weak slot fillers.
-  const ordered = chosen.slice(0, Math.max(limit, 1)).sort((a, b) => (slotRank(a) - slotRank(b)) || (refScore(b) - refScore(a)));
+  const ordered = chosen.slice(0, Math.max(limit, 1)).sort((a, b) => (human ? slotRank(a) - slotRank(b) : 0) || (scoreOf(b) - scoreOf(a)));
   const photosOut = ordered.slice(0, sheet ? limit - 1 : limit);
   const out = sheet ? (sheetLast ? [...photosOut, sheet] : [sheet, ...photosOut]) : photosOut;
   return out.slice(0, limit).map((r) => ({ ...r, id: r.workId || r.assetId }));
