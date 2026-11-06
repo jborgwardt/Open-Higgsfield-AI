@@ -11,6 +11,7 @@ struct MediaViewer: View {
     @State private var message: String?
     @State private var exportError: String?
     @State private var exportTask: Task<Void, Never>?
+    @State private var downloadedFile: (source: String, file: URL)?
     @State private var confirmDelete = false
     @State private var scale: CGFloat = 1
     @State private var baseScale: CGFloat = 1
@@ -39,6 +40,7 @@ struct MediaViewer: View {
                     .aspectRatio(aspect, contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(.bottom, 150)
+                    .contextMenu { exportMenu }
             }
             .navigationTitle(item.isVideo ? "Video" : isAudio ? "Audio" : "Image")
             .inlineTitle()
@@ -111,62 +113,108 @@ struct MediaViewer: View {
         }
     }
 
-    /// Share · Save · Remix, and the ember primary next step (Animate for stills, Upscale for clips).
+    /// Keep every export destination visible; creative actions sit on a second row on a phone.
     private var actionBar: some View {
-        HStack(spacing: 8) {
-            if app.config.isOn("shareMedia") {
-                barButton("Share", "square.and.arrow.up") { export { MediaFiles.share($0) } }
-            }
+        Group {
             #if os(iOS)
-            if app.config.isOn("saveToPhotos"), !isAudio {
-                barButton("Save", "arrow.down.to.line") {
-                    export { file in
-                        busy = "Saving to Photos…"
-                        try await MediaFiles.saveToPhotos(file, isVideo: item.isVideo)
-                        Platform.haptic()
-                        flash("Saved to Photos")
-                    }
-                }
+            VStack(spacing: 6) {
+                HStack(spacing: 8) { exportActions }
+                if !isAudio { HStack(spacing: 8) { creativeActions } }
             }
             #else
-            barButton("Save", "arrow.down.to.line") { export { if try MediaFiles.saveAs($0) { flash("Saved") } } }
+            HStack(spacing: 8) { exportActions; creativeActions }
             #endif
-            if !isAudio, app.config.isOn("create") || upscaleTool != nil {
-                Menu {
-                    if !item.isVideo, app.config.isOn("create") {
-                        Button("Use as Start Frame", systemImage: "film") { app.openCreate(startFrame: asset, mode: .video) }
-                        Button("Use as Reference", systemImage: "photo.on.rectangle") { app.openCreate(startFrame: asset, mode: .image) }
-                    }
-                    if app.config.isOn("create"), !item.prompt.isEmpty {
-                        Button("Reuse Prompt", systemImage: "text.quote") {
-                            app.openComposer(ComposerRequest(mode: item.isVideo ? .video : .image, model: app.catalog?.model(item.model)?.id, prompt: item.prompt))
-                        }
-                    }
-                    if let t = upscaleTool { Button("Upscale", systemImage: "arrow.up.left.and.arrow.down.right") { upscale = t } }
-                } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: "slider.horizontal.3").font(.system(size: 17, weight: .semibold))
-                        Text("Remix").font(.system(size: 10, weight: .semibold))
-                    }
-                    .frame(width: 54, height: 44)
-                    .foregroundStyle(.white)
-                }
-                .menuIndicator(.hidden)
-                .buttonStyle(.plain)
-            }
-            if !isAudio {
+        }
+        .padding(8)
+        #if os(macOS)
+        .studioGlass(Capsule())
+        #else
+        .studioGlass(RoundedRectangle(cornerRadius: 26))
+        #endif
+    }
+
+    @ViewBuilder private var exportActions: some View {
+        if app.config.isOn("shareMedia") {
+            barButton("Share", "square.and.arrow.up") { export { MediaFiles.share($0) } }
+        }
+        #if os(iOS)
+        if app.config.isOn("saveToPhotos"), !isAudio {
+            barButton("Save to Photos", "photo.badge.arrow.down") { saveToPhotos() }
+        }
+        barButton("Save to Files", "folder") { saveToFiles() }
+        #else
+        barButton("Save…", "arrow.down.to.line") { export { if try MediaFiles.saveAs($0) { flash("Saved") } } }
+        #endif
+    }
+
+    @ViewBuilder private var exportMenu: some View {
+        #if os(iOS)
+        if app.config.isOn("saveToPhotos"), !isAudio {
+            Button("Save to Photos", systemImage: "photo.badge.arrow.down") { saveToPhotos() }
+                .disabled(busy != nil)
+        }
+        Button("Save to Files…", systemImage: "folder") { saveToFiles() }.disabled(busy != nil)
+        #else
+        Button("Save…", systemImage: "arrow.down.to.line") { export { if try MediaFiles.saveAs($0) { flash("Saved") } } }
+            .disabled(busy != nil)
+            .keyboardShortcut("s")
+        #endif
+        if app.config.isOn("shareMedia") {
+            Button("Share…", systemImage: "square.and.arrow.up") { export { MediaFiles.share($0) } }.disabled(busy != nil)
+        }
+    }
+
+    #if os(iOS)
+    private func saveToPhotos() {
+        export { file in
+            busy = "Saving to Photos…"
+            try await MediaFiles.saveToPhotos(file, isVideo: item.isVideo)
+            Platform.haptic()
+            flash("Saved to Photos")
+        }
+    }
+
+    private func saveToFiles() {
+        export { file in
+            busy = "Choose where to save…"
+            if try await MediaFiles.saveToFiles(file) { flash("Saved to Files") }
+        }
+    }
+    #endif
+
+    @ViewBuilder private var creativeActions: some View {
+        if !isAudio, app.config.isOn("create") || upscaleTool != nil {
+            Menu {
                 if !item.isVideo, app.config.isOn("create") {
-                    Button { app.openCreate(startFrame: asset, mode: .video) } label: { Label("Animate", systemImage: "play.rectangle") }
-                        .buttonStyle(.ember)
-                } else if let t = upscaleTool {
-                    Button { upscale = t } label: { Label("Upscale", systemImage: "arrow.up.left.and.arrow.down.right") }
-                        .buttonStyle(.ember)
+                    Button("Use as Start Frame", systemImage: "film") { app.openCreate(startFrame: asset, mode: .video) }
+                    Button("Use as Reference", systemImage: "photo.on.rectangle") { app.openCreate(startFrame: asset, mode: .image) }
                 }
+                if app.config.isOn("create"), !item.prompt.isEmpty {
+                    Button("Reuse Prompt", systemImage: "text.quote") {
+                        app.openComposer(ComposerRequest(mode: item.isVideo ? .video : .image, model: app.catalog?.model(item.model)?.id, prompt: item.prompt))
+                    }
+                }
+                if let t = upscaleTool { Button("Upscale", systemImage: "arrow.up.left.and.arrow.down.right") { upscale = t } }
+            } label: {
+                VStack(spacing: 3) {
+                    Image(systemName: "slider.horizontal.3").font(.system(size: 17, weight: .semibold))
+                    Text("Remix").font(.system(size: 10, weight: .semibold))
+                }
+                .frame(width: 54, height: 44)
+                .foregroundStyle(.white)
+            }
+            .menuIndicator(.hidden)
+            .buttonStyle(.plain)
+        }
+        if !isAudio {
+            if !item.isVideo, app.config.isOn("create") {
+                Button { app.openCreate(startFrame: asset, mode: .video) } label: { Label("Animate", systemImage: "play.rectangle") }
+                    .buttonStyle(.ember)
+            } else if let t = upscaleTool {
+                Button { upscale = t } label: { Label("Upscale", systemImage: "arrow.up.left.and.arrow.down.right") }
+                    .buttonStyle(.ember)
             }
         }
-        .padding(6)
-        .padding(.leading, 6)
-        .studioGlass(Capsule())
     }
 
     private var asset: UploadedAsset { UploadedAsset(id: item.id, url: item.url, kind: item.isVideo ? "video" : "image") }
@@ -184,7 +232,7 @@ struct MediaViewer: View {
                 Image(systemName: symbol).font(.system(size: 17, weight: .semibold))
                 Text(title).font(.system(size: 10, weight: .semibold))
             }
-            .frame(width: 54, height: 44)
+            .frame(width: title.count > 8 ? 88 : 54, height: 44)
             .foregroundStyle(.white)
             .contentShape(Rectangle())
         }
@@ -233,11 +281,8 @@ struct MediaViewer: View {
                 ProgressView().controlSize(.small).help(busy)
             }
             Menu {
-                #if os(macOS)
-                Button("Save…", systemImage: "square.and.arrow.down") { export { if try MediaFiles.saveAs($0) { flash("Saved") } } }
-                    .keyboardShortcut("s")
-                    .disabled(busy != nil)
-                #endif
+                exportMenu
+                Divider()
                 Button("Copy Prompt", systemImage: "doc.on.doc") { Platform.copy(item.prompt) }.disabled(item.prompt.isEmpty)
                 OpenOnWebButton(path: app.config.presentation(for: "library").path ?? "/", title: "Library")
                 if onDelete != nil, app.config.isOn("deleteMedia") {
@@ -255,7 +300,13 @@ struct MediaViewer: View {
             defer { busy = nil; exportTask = nil }
             do {
                 try await MediaFiles.withExportTime {
-                    let file = try await MediaFiles.download(item.url, app: app) { busy = $0 }
+                    let file: URL
+                    if let downloadedFile, downloadedFile.source == item.url, FileManager.default.fileExists(atPath: downloadedFile.file.path) {
+                        file = downloadedFile.file
+                    } else {
+                        file = try await MediaFiles.download(item.url, app: app) { busy = $0 }
+                        downloadedFile = (item.url, file)
+                    }
                     try Task.checkCancellation()
                     busy = "Preparing export…"
                     try await then(file)

@@ -90,10 +90,25 @@ enum MediaFiles {
         { PHAssetCreationRequest.forAsset().addResource(with: isVideo ? .video : .photo, fileURL: file, options: nil) }
     }
 
-    static func share(_ file: URL) {
-        guard let root = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController else { return }
+    /// A direct Files destination works even when Photos access is denied or the format isn't supported there.
+    static func saveToFiles(_ file: URL) async throws -> Bool {
+        guard let top = presenter else { throw APIError.transport("Open Film Studio and try saving again.") }
+        return await withCheckedContinuation { continuation in
+            FilesExportCoordinator.present(file: file, from: top) { continuation.resume(returning: $0) }
+        }
+    }
+
+    private static var presenter: UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard let root = scenes.first(where: { $0.activationState == .foregroundActive })?.windows.first(where: \.isKeyWindow)?.rootViewController
+                ?? scenes.flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController else { return nil }
         var top = root
-        while let p = top.presentedViewController { top = p }
+        while let presented = top.presentedViewController { top = presented }
+        return top
+    }
+
+    static func share(_ file: URL) {
+        guard let top = presenter else { return }
         let vc = UIActivityViewController(activityItems: [file], applicationActivities: nil)
         if let pop = vc.popoverPresentationController {
             pop.sourceView = top.view
@@ -130,6 +145,44 @@ enum MediaFiles {
 }
 
 #if os(iOS)
+private final class FilesExportCoordinator: NSObject, UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
+    private static var active: [UUID: FilesExportCoordinator] = [:]
+    private let id = UUID()
+    private let picker: UIDocumentPickerViewController
+    private var finished: ((Bool) -> Void)?
+
+    private init(file: URL, finished: @escaping (Bool) -> Void) {
+        picker = UIDocumentPickerViewController(forExporting: [file], asCopy: true)
+        self.finished = finished
+        super.init()
+        picker.delegate = self
+    }
+
+    static func present(file: URL, from presenter: UIViewController, finished: @escaping (Bool) -> Void) {
+        let coordinator = FilesExportCoordinator(file: file, finished: finished)
+        active[coordinator.id] = coordinator // UIKit's delegate is weak; retain it through Save or Cancel.
+        let picker = coordinator.picker
+        picker.modalPresentationStyle = .formSheet
+        if let popover = picker.popoverPresentationController {
+            popover.sourceView = presenter.view
+            popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
+        }
+        presenter.present(picker, animated: true)
+        picker.presentationController?.delegate = coordinator
+    }
+
+    private func complete(_ saved: Bool) {
+        let callback = finished
+        finished = nil
+        Self.active[id] = nil
+        callback?(saved)
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { complete(!urls.isEmpty) }
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { complete(false) }
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) { complete(false) }
+}
+
 private final class ExportBackgroundTime {
     private var identifier: UIBackgroundTaskIdentifier = .invalid
 

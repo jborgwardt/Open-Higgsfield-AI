@@ -25,6 +25,7 @@ struct LibraryView: View {
     @State private var exportTask: Task<Void, Never>?
     @State private var exportStatus: String?
     @State private var exportMessage: String?
+    @State private var downloadedFiles: [String: URL] = [:]
     @FocusState private var searchFocused: Bool
 
     private var filters: [Filter] {
@@ -303,6 +304,13 @@ struct LibraryView: View {
             .disabled(exportTask != nil)
         }
         #if os(iOS)
+        Button("Save to Files…", systemImage: "folder") {
+            export(item) { file in
+                exportStatus = "Choose where to save…"
+                if try await MediaFiles.saveToFiles(file) { exportMessage = "Saved to Files" }
+            }
+        }
+        .disabled(exportTask != nil)
         if app.config.isOn("saveToPhotos"), item.kind != "audio" {
             Button("Save to Photos", systemImage: "photo.badge.arrow.down") {
                 export(item) { file in
@@ -335,7 +343,13 @@ struct LibraryView: View {
             defer { exportStatus = nil; exportTask = nil }
             do {
                 try await MediaFiles.withExportTime {
-                    let file = try await MediaFiles.download(item.url, app: app) { exportStatus = $0 }
+                    let file: URL
+                    if let cached = downloadedFiles[item.url], FileManager.default.fileExists(atPath: cached.path) {
+                        file = cached
+                    } else {
+                        file = try await MediaFiles.download(item.url, app: app) { exportStatus = $0 }
+                        downloadedFiles[item.url] = file
+                    }
                     try Task.checkCancellation()
                     exportStatus = "Preparing export…"
                     try await then(file)
