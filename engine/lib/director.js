@@ -63,18 +63,25 @@ export function chosenDirector(brief = {}) {
 }
 
 const lists = new Map(); // id -> { at, models, error }
+let codexAvail = null; // { at, value } — last ChatGPT availability check
 async function availability(id, { fresh } = {}) {
   const d = DIRECTORS.find((x) => x.id === id);
   if (!d) return { available: false, detail: 'unknown director', models: [] };
   if (id === 'codex') {
     const st = await chatgptStatus();
     if (!st.available) return { available: false, detail: st.error || 'Connect ChatGPT in Film Studio on your Mac', models: [] };
+    // Listing directors must stay fast even when ChatGPT is slow or failing: a short time limit, and the
+    // last answer (good or bad) is reused for 2 minutes unless a fresh list is asked for.
+    if (!fresh && codexAvail && Date.now() - codexAvail.at < 120000) return codexAvail.value;
+    let value;
     try {
-      const models = await chatgptModels({ fresh });
-      return { available: models.length > 0, detail: models.length ? 'Connected with your ChatGPT plan' : 'No director models are available for this account', models };
+      const models = await chatgptModels({ fresh, signal: AbortSignal.timeout(6000) });
+      value = { available: models.length > 0, detail: models.length ? 'Connected with your ChatGPT plan' : 'No director models are available for this account', models };
     } catch (e) {
-      return { available: false, detail: e.message, models: [] };
+      value = { available: false, detail: e.message, models: [] };
     }
+    codexAvail = { at: Date.now(), value };
+    return value;
   }
   if (id === 'claude') {
     const st = await claudeStatus({ fresh });

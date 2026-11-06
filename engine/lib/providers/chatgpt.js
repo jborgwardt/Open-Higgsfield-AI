@@ -44,18 +44,29 @@ function officialAuthURL(value) {
 // logs/client errors. Known codes give useful recovery without exposing payloads.
 const ERRORS = {
   invalid_grant: 'ChatGPT authorization expired or was revoked. Connect again on your Mac.',
+  invalid_refresh_token: 'ChatGPT authorization expired or was revoked. Connect again on your Mac.',
+  refresh_token_expired: 'ChatGPT authorization expired. Connect again on your Mac.',
+  refresh_token_invalidated: 'ChatGPT authorization was revoked. Connect again on your Mac.',
+  refresh_token_reused: 'ChatGPT authorization was invalidated for safety. Connect again on your Mac.',
+  token_expired: 'ChatGPT authorization expired. Connect again on your Mac.',
   invalid_client: 'ChatGPT registration is no longer valid. Connect again on your Mac.',
   insufficient_scope: 'ChatGPT plan usage was not authorized. Connect again and approve plan usage.',
   subscription_sharing_usage_limit_exceeded: 'This app reached its ChatGPT plan usage limit. Review the app limit in ChatGPT Settings → Usage.',
-  subscription_sharing_usage_unavailable: 'ChatGPT plan usage is currently unavailable for this account.',
+  subscription_sharing_usage_unavailable: 'ChatGPT plan usage is temporarily unavailable. Try again shortly.',
+  subscription_sharing_user_unavailable: 'ChatGPT plan usage is temporarily unavailable for this account. Try again shortly.',
+  subscription_sharing_not_eligible: 'This ChatGPT account or plan cannot share plan usage with apps.',
+  unsupported_capability: 'The connected ChatGPT plan does not support this request.',
   rate_limit_exceeded: 'ChatGPT is rate limited. Try again later.',
   model_not_found: 'That model is no longer available to the connected ChatGPT account. Refresh the model list.',
 };
+/** Refresh failures that mean the stored grant (or the whole registration) can never work again. */
+const DEAD_GRANT = new Set(['invalid_grant', 'invalid_refresh_token', 'refresh_token_expired', 'refresh_token_invalidated', 'refresh_token_reused', 'token_expired']);
 function upstreamError(status, code) {
   const known = Object.hasOwn(ERRORS, code || '') ? code : null;
-  const e = problem(ERRORS[known] || (status === 401 ? 'ChatGPT authorization was rejected. Connect again on your Mac.' : `ChatGPT request failed (${status || 'stream error'}).`), status || 502, {
-    quota: status === 429 || known?.startsWith('subscription_sharing_usage_'),
-    retryable: status === 429 || status >= 500,
+  const e = problem(ERRORS[known] || (status === 401 ? 'ChatGPT rejected the request. Film Studio will refresh its access; if this keeps happening, connect again on your Mac.' : `ChatGPT request failed (${status || 'stream error'}).`), status || 502, {
+    // Only the usage limit is a hard stop; "unavailable" is temporary and worth retrying.
+    quota: known === 'subscription_sharing_usage_limit_exceeded',
+    retryable: status === 429 || status >= 500 || known === 'subscription_sharing_usage_unavailable' || known === 'subscription_sharing_user_unavailable',
   });
   e.code = known;
   return e;
@@ -253,7 +264,11 @@ export function createChatGPTProvider({ dataDir = DATA, fetch: fetcher = globalT
     return locked(async (state) => {
       checkBinding(state, hash);
       state.ownerHash = hash;
-      state.pending = { connectionId: opaque(), nonce: opaque(), expiresAt: now() + PENDING_MS, clientId: state.registration?.clientId, subject: state.registration?.subject };
+      // Reauthorising a live connection reuses its registration (same app, same account). With no live
+      // credentials (disconnected, revoked, or a dead client) start fresh: a new dynamic registration and
+      // any ChatGPT account — otherwise a dead client or a wrong first account could never be replaced.
+      const live = !!state.credentials?.refreshToken && !!state.registration;
+      state.pending = { connectionId: opaque(), nonce: opaque(), expiresAt: now() + PENDING_MS, clientId: live ? state.registration.clientId : undefined, subject: live ? state.registration.subject : undefined };
       state.error = null;
       await writeState(state); // Also persist this VM's identity before import.
       return { connectionId: state.pending.connectionId, nonce: state.pending.nonce, expiresAt: new Date(state.pending.expiresAt).toISOString(), ...(state.pending.clientId ? { clientId: state.pending.clientId } : {}) };
@@ -325,11 +340,18 @@ export function createChatGPTProvider({ dataDir = DATA, fetch: fetcher = globalT
         });
         tokens = await jsonResponse(response);
       } catch (e) {
-        if (e.code === 'invalid_grant' || e.code === 'invalid_client') {
+        if (DEAD_GRANT.has(e.code) || e.code === 'invalid_client') {
           state.credentials = null; state.sessionId = opaque(); state.error = e.message; modelsCache = null;
+          if (e.code === 'invalid_client') state.registration = null; // the issued client is gone: register anew
           await writeState(state);
         }
         throw e;
+      }
+      // The old refresh token is spent the moment OpenAI answers. Save the rotated one before any check that
+      // could fail (key fetch, scopes, lifetime), with the access token marked unusable until verified.
+      if (validString(tokens.refresh_token) && tokens.refresh_token !== state.credentials.refreshToken) {
+        state.credentials = { ...state.credentials, refreshToken: tokens.refresh_token, accessToken: null, expiresAt: 0, savedAt: now() };
+        await writeState(state);
       }
       // Refresh responses can omit an ID token. The signed new access token must
       // still belong to the same verified subject and issued registration.
@@ -338,7 +360,8 @@ export function createChatGPTProvider({ dataDir = DATA, fetch: fetcher = globalT
       requireScopes(access.scope);
       if (!validString(tokens.refresh_token) || String(tokens.token_type).toLowerCase() !== 'bearer') throw problem('ChatGPT returned an invalid refreshed session', 502);
       if (tokens.id_token) await verifyJWT(tokens.id_token, state.registration.clientId, { subject: state.registration.subject });
-      const lifetime = Number(tokens.expires_in) * 1000;
+      // expires_in is only RECOMMENDED (RFC 6749): fall back to the signed access token's own expiry.
+      const lifetime = tokens.expires_in == null ? access.exp * 1000 - now() : Number(tokens.expires_in) * 1000;
       if (!Number.isFinite(lifetime) || lifetime <= 0) throw problem('ChatGPT returned an invalid refreshed token lifetime', 502);
       state.credentials = { accessToken: tokens.access_token, refreshToken: tokens.refresh_token, idToken: tokens.id_token || state.credentials.idToken, tokenType: 'Bearer', scopes, expiresAt: Math.min(access.exp * 1000, now() + lifetime), savedAt: now() };
       state.error = null;
@@ -381,8 +404,9 @@ export function createChatGPTProvider({ dataDir = DATA, fetch: fetcher = globalT
     if (!Array.isArray(messages) || !messages.length || messages.some((message) => !['system', 'developer', 'user', 'assistant'].includes(message.role) || typeof message.content !== 'string')) throw problem('The ChatGPT director accepts text messages only');
     return activeRequest(owner, signal, async (activeSignal) => {
       const available = await models({ owner, signal: activeSignal });
-      const selected = model || available[0]?.id;
-      if (!selected || !available.some((item) => item.id === selected)) throw problem('Choose a model available to your connected ChatGPT account');
+      // A model id the account doesn't offer (left over from another director, or retired) uses the account's first model.
+      const selected = model && available.some((item) => item.id === model) ? model : available[0]?.id;
+      if (!selected) throw problem('No director models are available to your connected ChatGPT account', 403);
       let token = await credential(owner, { signal: activeSignal });
       const send = () => request(`${RESOURCE}/responses`, {
         method: 'POST', headers: { Authorization: `Bearer ${token.accessToken}`, 'Content-Type': 'application/json', Accept: 'text/event-stream' }, signal: activeSignal,
@@ -462,7 +486,15 @@ export async function readResponseStream(response, signal) {
   try {
     while (!completed) {
       if (signal?.aborted) throw cancelled();
-      const next = await reader.read();
+      let next;
+      try { next = await reader.read(); }
+      catch (e) {
+        if (signal?.aborted) {
+          if (signal.reason?.name === 'TimeoutError') throw problem('ChatGPT did not finish the director response in time.', 504, { retryable: true });
+          throw cancelled();
+        }
+        throw problem('ChatGPT response was interrupted before completion. No partial plan was accepted.', 502, { retryable: true });
+      }
       if (signal?.aborted) throw cancelled();
       if (next.done) { buffer += decoder.decode(); break; }
       bytes += next.value.byteLength;

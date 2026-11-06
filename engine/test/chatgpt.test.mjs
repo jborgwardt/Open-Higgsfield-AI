@@ -47,7 +47,7 @@ async function fixture(t) {
     assert.equal(options.redirect, 'error', 'Credential requests must not follow redirects');
     calls.push({ url, options });
     if (url === `${ISSUER}/.well-known/openid-configuration`) return json({ issuer: ISSUER, jwks_uri: `${ISSUER}/.well-known/jwks.json`, revocation_endpoint: `${ISSUER}/api/accounts/oauth/revoke` });
-    if (url === `${ISSUER}/.well-known/jwks.json`) return json({ keys: [jwk] });
+    if (url === `${ISSUER}/.well-known/jwks.json`) { if (state.jwksDown) throw new TypeError('network down'); return json({ keys: [jwk] }); }
     if (url === `${RESOURCE}/models`) {
       assert.match(options.headers.Authorization, /^Bearer /);
       if (state.catalog) return state.catalog(url, options);
@@ -61,7 +61,8 @@ async function fixture(t) {
       assert.equal(options.body.has('scope'), false);
       if (state.tokenGate) { state.tokenSignal = options.signal; await state.tokenGate; }
       if (state.refreshError) return json({ error: state.refreshError, error_description: 'SECRET-UPSTREAM-REFLECTION' }, 400);
-      return json({ access_token: signed(claims({ aud: RESOURCE, client_id: 'oaiapp_test_registration', scope: SCOPE })), refresh_token: `synthetic-refresh-rotated-${state.refreshes}`, token_type: 'Bearer', scope: SCOPE, expires_in: 3600 });
+      if (state.badJwks) state.jwksDown = true;
+      return json({ access_token: signed(claims({ aud: RESOURCE, client_id: 'oaiapp_test_registration', scope: SCOPE }), state.newKid ? { kid: 'rotated-key' } : {}), refresh_token: `synthetic-refresh-rotated-${state.refreshes}`, token_type: 'Bearer', scope: SCOPE, ...(state.noExpiresIn ? {} : { expires_in: 3600 }) });
     }
     if (url === `${ISSUER}/api/accounts/oauth/revoke`) {
       state.revocations++;
@@ -205,9 +206,10 @@ test('director uses only the account catalog and public streaming Responses endp
   assert.equal(await f.provider.chatgptChat({ messages }), '{"shots":[]}');
   const call = f.calls.find((call) => call.url === `${RESOURCE}/responses`);
   assert.deepEqual(JSON.parse(call.options.body), { model: 'model-b', input: messages, store: false, stream: true });
-  await assert.rejects(f.provider.chatgptChat({ model: 'not-in-catalog', messages }), /Choose a model/);
+  // An id the account doesn't offer falls back to its first model (see the stale-model test) rather than failing.
+  await f.provider.chatgptChat({ model: 'not-in-catalog', messages });
   await assert.rejects(f.provider.chatgptChat({ messages: [{ role: 'user', content: [{ type: 'image_url', url: 'secret' }] }] }), /text messages only/);
-  assert.equal(f.calls.filter((call) => call.url.endsWith('/responses')).length, 1);
+  assert.equal(f.calls.filter((call) => call.url.endsWith('/responses')).length, 2, 'the image message never reached OpenAI');
 });
 
 test('stream handling requires completion and rejects late quota errors, truncation, and incomplete output', async () => {
@@ -238,7 +240,8 @@ test('disconnect aborts active inference, clears all tokens, and preserves regis
   assert.equal(after.credentials, null);
   assert.equal(after.hostId, before.hostId);
   assert.deepEqual(after.registration, before.registration);
-  assert.equal((await f.provider.beginConnection('studio-owner')).clientId, before.registration.clientId);
+  // With no live session the next sign-in registers fresh (so a different ChatGPT account can be chosen).
+  assert.equal((await f.provider.beginConnection('studio-owner')).clientId, undefined);
 });
 
 test('failed remote revocation is reported accurately after local token removal', async (t) => {
@@ -295,4 +298,68 @@ test('identifier comparison is byte-safe (other lengths, multibyte text, non-str
     await assert.rejects(f.provider.completeConnection('studio-owner', { connectionId }), (e) => e.status === 409 || /expired or was cancelled/.test(e.message));
   }
   await assert.rejects(f.provider.chatgptStatus('ówner'), (e) => e.status === 403);
+});
+
+test('a rotated refresh token is saved even if checking the new tokens fails (key fetch down)', async (t) => {
+  const f = await fixture(t);
+  await f.connect();
+  f.advance(3550000);
+  f.state.newKid = true; f.state.badJwks = true; // new signing key + JWKS unreachable right after rotation
+  await assert.rejects(f.provider.chatgptModels({ fresh: true }), (e) => e.status === 503);
+  const saved = await f.saved();
+  assert.equal(saved.credentials.refreshToken, 'synthetic-refresh-rotated-1', 'the new refresh token survived');
+  assert.equal(saved.credentials.accessToken, null);
+  f.state.newKid = false; f.state.badJwks = false; f.state.jwksDown = false;
+  await f.provider.chatgptModels({ fresh: true }); // recovers with the stored rotated token
+  assert.equal((await f.saved()).credentials.refreshToken, 'synthetic-refresh-rotated-2');
+});
+
+test('a refresh reply without expires_in uses the access token expiry', async (t) => {
+  const f = await fixture(t);
+  await f.connect();
+  f.advance(3550000);
+  f.state.noExpiresIn = true;
+  await f.provider.chatgptModels({ fresh: true });
+  const saved = await f.saved();
+  assert.equal(saved.credentials.refreshToken, 'synthetic-refresh-rotated-1');
+  assert.ok(saved.credentials.expiresAt > 0 && saved.credentials.accessToken);
+});
+
+test('a dead client registration is forgotten so the next sign-in registers fresh', async (t) => {
+  const f = await fixture(t);
+  await f.connect();
+  f.advance(3550000);
+  f.state.refreshError = 'invalid_client';
+  await assert.rejects(f.provider.chatgptModels({ fresh: true }), /Connect again/);
+  const saved = await f.saved();
+  assert.equal(saved.credentials, null);
+  assert.equal(saved.registration, null);
+  assert.equal((await f.provider.beginConnection('studio-owner')).clientId, undefined);
+});
+
+test('other unusable refresh-token codes sign out instead of retrying a dead token', async (t) => {
+  for (const code of ['refresh_token_expired', 'refresh_token_reused', 'invalid_refresh_token']) {
+    const f = await fixture(t);
+    await f.connect();
+    f.advance(3550000);
+    f.state.refreshError = code;
+    await assert.rejects(f.provider.chatgptModels({ fresh: true }), /Connect again/);
+    assert.equal((await f.provider.chatgptStatus('studio-owner')).loggedIn, false, code);
+  }
+});
+
+test('a stale or foreign model id falls back to the account model instead of failing', async (t) => {
+  const f = await fixture(t);
+  await f.connect();
+  const text = await f.provider.chatgptChat({ model: 'gemini-4-argon', messages: [{ role: 'user', content: 'Plan.' }] });
+  assert.equal(text, '{"shots":[]}');
+  const sent = JSON.parse(f.calls.filter((c) => c.url.endsWith('/responses')).at(-1).options.body);
+  assert.equal(sent.model, 'model-b');
+});
+
+test('a connection dropped mid-stream is a retryable interruption, never a partial plan', async (t) => {
+  const f = await fixture(t);
+  await f.connect();
+  f.state.response = () => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(event({ type: 'response.output_text.delta', delta: '{"sho' }))); c.error(new TypeError('socket hang up')); } }));
+  await assert.rejects(f.provider.chatgptChat({ model: 'model-b', messages: [{ role: 'user', content: 'Plan.' }] }), (e) => e.retryable === true && /interrupted/.test(e.message));
 });
