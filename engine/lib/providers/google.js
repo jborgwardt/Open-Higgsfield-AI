@@ -78,9 +78,12 @@ export async function googleVideo(p, ctx = {}) {
   if (!p.previousInteractionId) {
     if (p.image) input.push(part(p.image));
     if (p.endImage) input.push(part(p.endImage));
+    // Reference-to-video: up to 6 identity photos (e.g. a character), sent as plain image inputs.
+    for (const r of (p.refs || []).filter(Boolean).slice(0, 6)) input.push(part(r));
   }
   const dur = p.duration ? ` Duration: about ${Math.round(p.duration)} seconds.` : '';
-  input.push({ type: 'text', text: `${p.prompt}${dur}` });
+  const refNote = p.refs?.length && !p.image ? ' The attached photos are identity references for the main character: keep that exact animal\'s look; do not show the photos themselves.' : '';
+  input.push({ type: 'text', text: `${p.prompt}${refNote}${dur}` });
   const body = {
     model: p.model || 'gemini-omni-1.1-flash',
     input,
