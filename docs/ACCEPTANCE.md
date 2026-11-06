@@ -2,9 +2,19 @@
 
 Owner: integration session. Updated 2026-11-05.
 
-## Milestone 1: usable build for feedback
+## Current release: build 9 — Settings design credit
 
-**Delivered build (current):** app commit `c70102a`, published 18:21 EST. It includes:
+- Settings ends with “AI-designed in the claws of Claude.”
+- Mac and iOS release archives succeeded. The Mac signature verifies; build 9 is installed in `/Applications/Film Studio.app`, and the footer was verified in the running Settings window.
+- fal.ai was already configured on the live studio. Its existing credential passed a read-only authenticated request-history check (HTTP 200); no generation was started and no credential was changed.
+- The signed OTA IPA and Mac zip are published. The Feather source lists build 9 with the matching IPA size. The public IPA SHA-256 is `662a433c7194c5ad557dfc1d3c2e1ba6dc16ae8b3af46c7db992a5ca944d162e`.
+- [SignTools build 9](https://sign.heil.haus/apps/85c47227-d593-4791-8e0c-ddd77fcefb48/install) is also published. Its downloaded IPA is version 1.0.0 (9), preserves the original bundle and team, and passes strict signature verification. SignTools retains its generic manifest version `2.0`; the signed IPA itself has the correct build number.
+- The actual iPhone 15 Pro Max and iPad Pro M4 were unavailable to `devicectl` during this update. Build 9 is therefore not claimed as installed on those devices; their update is available through the install routes.
+- This change does not alter the connected ChatGPT account or selected director.
+
+## Milestone 1: initial usable build for feedback (historical)
+
+**Initial delivered build:** app commit `c70102a`, published 18:21 EST. It includes:
 - the Save-to-Photos crash fix and playback audio session (`256a958`)
 - the Mac sign-in fix: app activation, waiting text, Cancel (`f21a119`)
 - the per-film director fix (`f721105`, test `ccedab5`)

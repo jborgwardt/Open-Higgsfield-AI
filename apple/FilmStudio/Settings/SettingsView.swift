@@ -26,6 +26,13 @@ struct SettingsView: View {
             }
             providersSection
             appSection
+            Section {
+                Label("AI-designed in the claws of Claude.", systemImage: "sparkles")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
         }
         .studioForm()
         .navigationTitle("Settings")
