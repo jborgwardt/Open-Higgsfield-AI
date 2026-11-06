@@ -1,8 +1,23 @@
 # Film Studio acceptance checklist
 
-Owner: integration session. Updated 2026-11-05.
+Owner: integration session. Updated 2026-11-06.
 
-## Current release: build 9 — Settings design credit
+## Current release: 1.0.1 (11) — reliable export and Google Drive backups
+
+- The iPhone's three logged save failures were `Download: The request timed out.` on build 8. The VPS had about 45 GiB available memory and 60 GB free disk, so memory/disk exhaustion was not the cause established by diagnostics.
+- Downloads stream to disk, allow 180 seconds of inactivity, retry a transient failure once with resume data when available, show progress/cancellation, and reuse a completed download when switching destinations. Photos completion is awaited and errors remain visible.
+- iOS now exposes **Save to Photos**, **Save to Files**, and **Share**, plus viewer/Library context menus. Files uses a document export picker; iPad popovers are anchored.
+- Mac build 11 is installed. Its native Save workflow exported the complete 146,802,253-byte music video to `~/Movies/The Road on Side B.mp4`; SHA-256 matched the server master: `4e8f4e03793007b807ce39c6698d5bce867390899387e75841020d9d8b165704`.
+- The signed OTA IPA and Mac ZIP, Feather source, and [SignTools build 11](https://sign.heil.haus/apps/ab629d07-4fe1-4337-bf33-15028a579287/install) are published. Actual IPA version/build is 1.0.1 (11), bundle `com.borgwardt.filmstudio`, signing team `F2M8XJL997`. OTA IPA SHA-256: `bb80146cacdc6862e8dbaaf516ddd85db8c5abe06c544980ad7c95e05412f767`.
+- The physical iPhone and iPad were unavailable to `devicectl`. Build 11 is installed on the existing iPhone 15 Pro Max simulator, but the current Photos/Files workflows are **not claimed as runtime-verified on iOS**. Use the [install page](https://ota.heil.haus:8443/film-studio.html) to update physical devices.
+- Native and web Settings expose immediate/24-hour/48-hour Drive backup timing, 24-hour/48-hour/keep-local retention, status, folder links, and manual backup. Each completed project includes project metadata and referenced media in a private folder. Cleanup applies only to verified finished videos; editable source media and references remain local.
+- The original shared rclone Google client hit its project-wide API quota. The deployed host broker now renews a Drive-only short-lived token through the owner's existing Google connection; broad refresh credentials stay in Incus `god`. See [broker operations](drive-token-broker.md).
+- Real Drive backup: `prod_e578cbb9952c` (The Prodigal Son — The Road on Side B), all 54 assets and 509,565,981 media bytes checksum-verified in its [private project folder](https://drive.google.com/drive/folders/1rZp6IvUuXZklh0aTvrf16Moh0Ao0HEag). No files removed; quota backoff cleared.
+- Real restore: the original master was retained under a temporary name, then an authenticated media HEAD request restored the archived copy in 3.546 seconds (HTTP 200, 146,802,253 bytes). Both files had the exact SHA-256 above. The canonical media path is intact and the temporary duplicate was removed.
+- Automatic backup was enabled through the running Mac Settings window: **Immediately**, **2 Days** local retention. The server persisted `enabled:true, uploadDelayHours:0, removeLocalAfterHours:48`. The initial automatic queue advanced to two verified projects and ten standalone videos without error. A screenshot confirmed the real UI values; the macOS accessibility tree retained stale label text.
+- Final safety correction `be6306e` preserves hidden/upscaled intermediate clips and follows transitive asset references before restoration. All **16 archive unit/API tests passed on the VPS** in an isolated container without production data/network. Earlier, all 165 backend tests passed before the final archive corrections. Four native Drive contract tests, four broker safety tests, native Mac/iOS archives, and the Vite production build also passed. The persisted runtime image passed an isolated HTTP health check with no production data or network.
+
+## Historical release: build 9 — Settings design credit
 
 - Settings ends with “AI-designed in the claws of Claude.”
 - Mac and iOS release archives succeeded. The Mac signature verifies; build 9 is installed in `/Applications/Film Studio.app`, and the footer was verified in the running Settings window.
