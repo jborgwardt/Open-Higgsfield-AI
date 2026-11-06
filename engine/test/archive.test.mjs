@@ -5,9 +5,16 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { createArchiveManager, sanitizedSnapshot } from '../lib/archive.js';
+import { createArchiveManager, sanitizedSnapshot, remoteMD5 } from '../lib/archive.js';
 
 const md5 = (b) => crypto.createHash('md5').update(b).digest('hex');
+test('normalizes actual rclone lowercase hashes and uppercase legacy examples', () => {
+  const liveShape = { Path: 'a_64b885e77835.mp4', Name: 'a_64b885e77835.mp4', Size: 1865649, IsDir: false, Hashes: { md5: '01d28204cffaaa46f5f3c6ea3179938b' }, ID: 'synthetic-drive-id' };
+  assert.equal(remoteMD5(liveShape), '01d28204cffaaa46f5f3c6ea3179938b');
+  assert.equal(remoteMD5({ Hashes: { MD5: '01D28204CFFAAA46F5F3C6EA3179938B' } }), remoteMD5(liveShape));
+  assert.equal(remoteMD5({ Hashes: { SHA256: 'unrelated' } }), '');
+  assert.equal(remoteMD5(null), '');
+});
 async function fixture(t) {
   const data = await fsp.mkdtemp(path.join(os.tmpdir(), 'studio-archive-')), media = path.join(data, 'media');
   await fsp.mkdir(media);
@@ -21,7 +28,7 @@ async function fixture(t) {
     async stat(key) {
       if (offline) throw new Error('Drive is offline');
       if (!remote.has(key)) { if ([...remote.keys()].some((k) => k.startsWith(key + '/'))) return { IsDir: true, ID: 'private-folder-id' }; throw new Error('not found'); }
-      const b = remote.get(key); return { Size: b.length, Hashes: { MD5: md5(b) }, ID: 'file-id', IsDir: false };
+      const b = remote.get(key); return { Size: b.length, Hashes: { md5: md5(b) }, ID: 'file-id', IsDir: false };
     },
     async download(key, file) { calls.downloads++; await fsp.writeFile(file, corruptDownload ? 'corrupt' : remote.get(key)); },
   };

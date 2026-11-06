@@ -8,6 +8,8 @@ import { spawn } from 'node:child_process';
 
 const HOUR = 3600_000;
 const fail = (status, message) => Object.assign(new Error(message), { status });
+// Current rclone emits Hashes.md5; older examples use Hashes.MD5. Both name the same digest.
+export const remoteMD5 = (metadata) => String(Object.entries(metadata?.Hashes || {}).find(([name]) => name.toLowerCase() === 'md5')?.[1] || '').toLowerCase();
 const digest = async (file) => {
   const hash = crypto.createHash('md5');
   for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
@@ -166,7 +168,7 @@ export function createArchiveManager({ data, media, getAsset, listAssets, listPr
     const before = await fsp.stat(abs), md5 = await digest(abs);
     await drive.upload(abs, remotePath);
     const remote = await drive.stat(remotePath), after = await fsp.stat(abs);
-    if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || remote.IsDir || remote.Size !== before.size || String(remote.Hashes?.MD5 || '').toLowerCase() !== md5) throw fail(502, 'Google Drive verification failed; the local video was kept');
+    if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || remote.IsDir || remote.Size !== before.size || remoteMD5(remote) !== md5) throw fail(502, 'Google Drive verification failed; the local video was kept');
     const previous = state.assets[asset.id];
     state.assets[asset.id] = { id: asset.id, file: asset.file, remotePath, driveId: remote.ID || null, size: before.size, md5,
       verifiedAt: stamp(), firstVerifiedAt: previous?.md5 === md5 ? previous.firstVerifiedAt || stamp() : stamp(), lastAccessAt: previous?.lastAccessAt || null,
@@ -180,7 +182,7 @@ export function createArchiveManager({ data, media, getAsset, listAssets, listPr
     const md5 = await digest(local), size = (await fsp.stat(local)).size;
     await drive.upload(local, remotePath);
     const remote = await drive.stat(remotePath);
-    if (remote.Size !== size || String(remote.Hashes?.MD5 || '').toLowerCase() !== md5) throw fail(502, 'Project metadata verification failed; local files were kept');
+    if (remote.Size !== size || remoteMD5(remote) !== md5) throw fail(502, 'Project metadata verification failed; local files were kept');
   }
   async function folderUrl(folder) {
     try { const s = await (drive.folderStat ? drive.folderStat(folder) : drive.stat(folder)); return s.IsDir && s.ID ? `https://drive.google.com/drive/folders/${encodeURIComponent(s.ID)}` : null; } catch { return null; }
@@ -249,7 +251,7 @@ export function createArchiveManager({ data, media, getAsset, listAssets, listPr
       const abs = localPath(a);
       if (!fs.existsSync(abs)) continue;
       const before = await fsp.stat(abs), localHash = await digest(abs), remote = await drive.stat(r.remotePath);
-      if (remote.IsDir || remote.Size !== r.size || String(remote.Hashes?.MD5 || '').toLowerCase() !== r.md5 || localHash !== r.md5) throw fail(502, 'Backup verification failed during cleanup; local files were kept');
+      if (remote.IsDir || remote.Size !== r.size || remoteMD5(remote) !== r.md5 || localHash !== r.md5) throw fail(502, 'Backup verification failed during cleanup; local files were kept');
       // No await between the final activity/identity check and unlink, so a newly started job wins.
       if (!state.policy.enabled || state.policy.removeLocalAfterHours == null || isBusy() || restores.size || !evictionCandidates().includes(id)) continue;
       if (clock() - Math.max(Date.parse(r.firstVerifiedAt || r.verifiedAt) || clock(), Date.parse(r.lastAccessAt) || 0) < state.policy.removeLocalAfterHours * HOUR) continue;
