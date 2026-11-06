@@ -14,7 +14,7 @@ struct BriefEditor: View {
     @State private var ready = false
     @State private var confirmDiscard = false
     @FocusState private var focused: Field?
-    private enum Field: Hashable { case title, script, style }
+    private enum Field: Hashable { case title, script, style, length }
     private var dirty: Bool { ready && brief != original }
 
     private var isNew: Bool { production == nil }
@@ -52,8 +52,25 @@ struct BriefEditor: View {
                     }
 
                     Section {
-                        Stepper(value: $brief.targetMinutes, in: 0.5...maxMinutes, step: brief.targetMinutes < 2 ? 0.5 : 1) {
-                            LabeledContent("Length", value: brief.lengthText)
+                        // Type any length (e.g. 7 or 2.5 minutes); the +/− buttons still nudge it.
+                        HStack(spacing: 10) {
+                            Text("Length")
+                            Spacer(minLength: 8)
+                            TextField("5", value: $brief.targetMinutes, format: .number.precision(.fractionLength(0...1)))
+                                #if os(iOS)
+                                .keyboardType(.decimalPad)
+                                #endif
+                                .multilineTextAlignment(.trailing)
+                                .frame(width: 64)
+                                .focused($focused, equals: .length)
+                                .accessibilityIdentifier("brief.lengthMinutes")
+                            Text("min").foregroundStyle(.secondary)
+                            Stepper("Length", value: $brief.targetMinutes, in: 0.5...maxMinutes, step: brief.targetMinutes < 2 ? 0.5 : 1)
+                                .labelsHidden()
+                        }
+                        .onChange(of: brief.targetMinutes) { _, v in
+                            let clamped = min(max(v, 0.5), maxMinutes)
+                            if clamped != v { brief.targetMinutes = clamped }
                         }
                         Picker("Clip length", selection: $brief.clipSeconds) {
                             ForEach(clipChoices, id: \.self) { Text("\(Int($0)) s").tag($0) }
